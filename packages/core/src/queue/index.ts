@@ -1,1 +1,1 @@
-export * from './task-queue.js';
+export * from './task-queue';

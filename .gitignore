@@ -50,5 +50,8 @@ credentials/
 # Drizzle
 drizzle/
 
+# Generated files (agent outputs)
+generated/
+
 # OS
 Thumbs.db

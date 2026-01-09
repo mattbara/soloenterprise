@@ -2,7 +2,8 @@
   "name": "soloenterprise",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "next dev",
+    "dev:turbo": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -15,7 +16,10 @@
     "db:push": "pnpm --filter @soloenterprise/db push",
     "db:studio": "pnpm --filter @soloenterprise/db studio",
     "test:echo": "tsx scripts/test-echo.ts",
-    "worker:echo": "pnpm --filter @soloenterprise/core worker"
+    "test:backend": "tsx scripts/test-backend-agent.ts",
+    "worker": "pnpm --filter @soloenterprise/core worker",
+    "worker:echo": "pnpm --filter @soloenterprise/core worker:echo",
+    "worker:backend": "pnpm --filter @soloenterprise/core worker:backend"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.9.5",
@@ -25,7 +29,8 @@
     "drizzle-orm": "^0.30.0",
     "next": "^15.0.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "react-markdown": "^10.1.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.0.0",

@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { questions } from "@soloenterprise/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { MarkdownRenderer, PriorityBadge } from "@/components";
 
 export const dynamic = "force-dynamic";
 
@@ -77,13 +78,13 @@ export default async function QuestionsPage() {
                         {new Date(question.createdAt!).toLocaleString()}
                       </span>
                     </div>
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">
-                      {question.question}
-                    </h3>
+                    <div className="mb-2">
+                      <MarkdownRenderer content={question.question} />
+                    </div>
                     {question.context && (
-                      <p className="text-sm text-gray-600 mb-4 bg-gray-50 p-3 rounded">
-                        {question.context}
-                      </p>
+                      <div className="text-sm mb-4 bg-gray-50 p-3 rounded">
+                        <MarkdownRenderer content={question.context} className="text-gray-600" />
+                      </div>
                     )}
                     
                     <form action={answerQuestion} className="mt-4">
@@ -152,13 +153,15 @@ export default async function QuestionsPage() {
             answeredQuestions.map((question) => (
               <div key={question.id} className="px-6 py-4">
                 <div className="flex justify-between items-start">
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">{question.question}</p>
+                  <div className="flex-1">
+                    <div className="text-sm font-medium text-gray-900">
+                      <MarkdownRenderer content={question.question} />
+                    </div>
                     <p className="text-sm text-green-600 mt-1">
                       ✓ {question.answer}
                     </p>
                   </div>
-                  <span className="text-xs text-gray-400">
+                  <span className="text-xs text-gray-400 ml-4 flex-shrink-0">
                     {question.answeredAt ? new Date(question.answeredAt).toLocaleString() : "—"}
                   </span>
                 </div>
@@ -168,20 +171,5 @@ export default async function QuestionsPage() {
         </div>
       </div>
     </div>
-  );
-}
-
-function PriorityBadge({ priority }: { priority: string }) {
-  const priorityClasses: Record<string, string> = {
-    critical: "bg-red-100 text-red-800",
-    high: "bg-orange-100 text-orange-800",
-    medium: "bg-yellow-100 text-yellow-800",
-    low: "bg-gray-100 text-gray-800",
-  };
-
-  return (
-    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${priorityClasses[priority] || "bg-gray-100 text-gray-800"}`}>
-      {priority}
-    </span>
   );
 }

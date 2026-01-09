@@ -1,1 +1,1 @@
-export * from './file-lock-manager.js';
+export * from './file-lock-manager';

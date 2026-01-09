@@ -10,7 +10,7 @@ SoloEnterprise is an AI agent orchestration system with human-in-the-loop feedba
 
 ```bash
 # Development
-pnpm dev              # Next.js dev server with turbopack
+pnpm dev              # Next.js dev server with Turbopack
 pnpm dev:all          # Turbo: dev all packages in parallel
 
 # Build
@@ -90,3 +90,97 @@ Required variables (see `.env.example`):
 - `REDIS_URL` - Upstash Redis URL for BullMQ
 - `ANTHROPIC_API_KEY` - Claude API key for agents
 - `GITHUB_TOKEN`, `GITHUB_REPO`, `GITHUB_BRANCH` - GitHub integration
+
+### Claude Model Configuration (Optional)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CLAUDE_MODEL` | `claude-3-5-haiku-latest` | Model for backend agent |
+| `CLAUDE_MAX_TOKENS` | `8192` | Max response tokens |
+
+**Available Models:**
+| Model | Speed | Quality | Cost | Max Tokens |
+|-------|-------|---------|------|------------|
+| `claude-3-5-haiku-latest` | Fast (~30s) | Good | Cheapest | 8192 |
+| `claude-sonnet-4-5-20250929` | Slow (~2min) | Best | Higher | 16000 |
+
+**Note:** If switching to Sonnet, also update `CLAUDE_MAX_TOKENS=16000` to use full capacity.
+
+---
+
+## GUARDRAILS (MUST FOLLOW)
+
+**IMPORTANT: Read this file BEFORE starting any task.**
+
+### 1. Server-Side API Calls
+- API calls and data fetching MUST be done server-side (Server Components, Server Actions, API routes)
+- Client-side fetch is only allowed when absolutely necessary (real-time updates, user interactions that can't be server-rendered)
+- Use `"use server"` for Server Actions, keep data fetching in Server Components
+
+### 2. No Sensitive Data in Code
+- NEVER commit secrets, API keys, tokens, or credentials to the codebase
+- All sensitive values MUST use environment variables
+- Double-check before committing: no hardcoded passwords, no API keys, no connection strings
+
+### 3. TypeScript Only - No File Extensions in Imports
+- Use `.ts` and `.tsx` extensions exclusively for all code
+- **NEVER** use `.js`, `.jsx`, or any file extensions in import/export statements
+- Imports should be extensionless: `import { foo } from './bar'` NOT `import { foo } from './bar.js'`
+- This project uses `"moduleResolution": "Bundler"` in TypeScript config, which allows extensionless imports
+- Do NOT create `.js` files - all source code must be TypeScript
+
+### 4. No Deletions Without Permission
+- **NEVER delete files, functions, or significant code without explicit permission**
+- Always ASK before removing anything, even if edits are pre-approved
+- Explain what you want to delete and why before proceeding
+- This applies to: files, database migrations, environment variables, dependencies
+
+### 5. Always Read CLAUDE.md First
+- Before starting ANY task, read this file to understand project context and constraints
+- Check for updates to guardrails and patterns
+- Follow established conventions in this document
+
+### 6. Cost Optimization (CRITICAL)
+This project runs on paid services (Neon PostgreSQL, Upstash Redis, Anthropic API, GCP). **Every API call, database query, and AI request costs money.**
+
+**MUST FOLLOW:**
+- **NO client-side polling** - Never use `setInterval` or `setTimeout` to poll APIs
+- **NO auto-refresh** - Use `router.refresh()` (free, server-side) instead of API calls
+- **Return data in mutations** - POST/PUT/DELETE should return updated state, no second fetch
+- **Server-first data fetching** - Fetch ALL data in Server Components, pass as props to client
+- **No unused endpoints** - Delete API routes and SSE connections that aren't actively used
+- **Pass props, don't fetch** - Pass data from parent components instead of fetching in children
+- **Optimize AI prompts** - Minimize token usage, use shorter prompts where possible
+
+**Patterns to avoid (they cost money):**
+```typescript
+// BAD - Client fetch on mount
+useEffect(() => { fetch('/api/data'); }, []);
+
+// BAD - Polling
+setInterval(() => fetch('/api/status'), 5000);
+
+// BAD - Double fetch after mutation
+await fetch('/api/create', { method: 'POST' });
+await fetch('/api/list'); // Second fetch
+
+// BAD - Fetching in modal on open
+useEffect(() => { if (isOpen) fetchProjects(); }, [isOpen]);
+```
+
+**Correct patterns (free or minimal cost):**
+```typescript
+// GOOD - Server Component fetches, passes as props
+export default async function Page() {
+  const data = await db.query.table.findMany();
+  return <ClientComponent data={data} />;
+}
+
+// GOOD - router.refresh() for updates (RSC, no API cost)
+const router = useRouter();
+router.refresh();
+
+// GOOD - Mutation returns updated data
+const result = await fetch('/api/create', { method: 'POST' });
+const newState = await result.json(); // Use this, don't re-fetch
+```

@@ -8,8 +8,9 @@
 import { db } from '@soloenterprise/db';
 import { tasks, projects } from '@soloenterprise/db/schema';
 import { eq } from 'drizzle-orm';
-import { Queue, ConnectionOptions } from 'bullmq';
-import { Redis } from 'ioredis';
+import { Queue } from 'bullmq';
+import { getSharedRedisConnection, closeSharedRedisConnection } from '../utils/index';
+import { publishTaskEvent, type TaskEvent } from './task-events';
 
 // Task creation input
 export interface CreateTaskInput {
@@ -33,25 +34,6 @@ export interface TaskJobData {
   attemptNumber: number;
 }
 
-// Redis connection singleton
-let redisConnection: Redis | null = null;
-
-function getRedisConnection(): ConnectionOptions {
-  if (!redisConnection) {
-    const redisUrl = process.env.REDIS_URL;
-    if (!redisUrl) {
-      throw new Error('REDIS_URL environment variable is required');
-    }
-    // Upstash requires TLS - detect by rediss:// or upstash.io in URL
-    const useTls = redisUrl.startsWith('rediss://') || redisUrl.includes('upstash.io');
-    redisConnection = new Redis(redisUrl, {
-      maxRetriesPerRequest: null,
-      tls: useTls ? {} : undefined,
-    });
-  }
-  return redisConnection as unknown as ConnectionOptions;
-}
-
 // Queue cache
 const queues = new Map<string, Queue>();
 
@@ -60,7 +42,7 @@ function getQueue(queueName: string): Queue {
   if (existing) return existing;
 
   const queue = new Queue(queueName, {
-    connection: getRedisConnection(),
+    connection: getSharedRedisConnection(),
     defaultJobOptions: {
       attempts: 1,
       removeOnComplete: { age: 24 * 60 * 60, count: 1000 },
@@ -171,6 +153,20 @@ export async function updateTaskStatus(
   await db.update(tasks).set(updateData).where(eq(tasks.id, taskId));
 
   console.log(`[TaskService] Updated task ${taskId} status to ${status}`);
+
+  // Publish task event for SSE subscribers
+  const eventType: TaskEvent['type'] =
+    status === 'completed' ? 'task-completed' :
+    status === 'failed' ? 'task-failed' :
+    status === 'waiting_human' ? 'task-waiting-human' :
+    'task-updated';
+
+  await publishTaskEvent({
+    type: eventType,
+    taskId,
+    status,
+    timestamp: Date.now(),
+  });
 }
 
 /**
@@ -195,9 +191,5 @@ export async function shutdown(): Promise<void> {
     await queue.close();
   }
   queues.clear();
-
-  if (redisConnection) {
-    await redisConnection.quit();
-    redisConnection = null;
-  }
+  await closeSharedRedisConnection();
 }
