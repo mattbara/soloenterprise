@@ -1,0 +1,46 @@
+{
+  "name": "soloenterprise",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "dev:all": "turbo run dev",
+    "build:all": "turbo run build",
+    "test:all": "turbo run test",
+    "lint:all": "turbo run lint",
+    "db:generate": "pnpm --filter @soloenterprise/db generate",
+    "db:migrate": "pnpm --filter @soloenterprise/db migrate",
+    "db:push": "pnpm --filter @soloenterprise/db push",
+    "db:studio": "pnpm --filter @soloenterprise/db studio",
+    "test:echo": "tsx scripts/test-echo.ts",
+    "worker:echo": "pnpm --filter @soloenterprise/core worker"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^0.9.5",
+    "@soloenterprise/core": "workspace:^",
+    "@soloenterprise/db": "workspace:^",
+    "dotenv": "^16.4.0",
+    "drizzle-orm": "^0.30.0",
+    "next": "^15.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.0.0",
+    "@types/node": "^20.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^15.0.0",
+    "tailwindcss": "^4.0.0",
+    "tsx": "^4.7.0",
+    "turbo": "^2.0.0",
+    "typescript": "^5.3.0"
+  },
+  "packageManager": "pnpm@9.0.0",
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
