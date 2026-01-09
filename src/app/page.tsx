@@ -1,7 +1,10 @@
 import { db } from "@/lib/db";
 import { projects, tasks, questions, fileLocks } from "@soloenterprise/db/schema";
-import { eq, count, and, isNull } from "drizzle-orm";
+import { eq, count, desc } from "drizzle-orm";
 import Link from "next/link";
+import { WorkerStatus, RecentTasks } from "@/components";
+import { DashboardHeader } from "@/components/DashboardHeader";
+import { getWorkerStatus } from "@soloenterprise/core";
 
 export const dynamic = "force-dynamic";
 
@@ -44,32 +47,70 @@ async function getStats() {
   };
 }
 
-async function getRecentTasks() {
-  return db.query.tasks.findMany({
-    limit: 10,
-    orderBy: (tasks, { desc }) => [desc(tasks.createdAt)],
-    with: {
-      project: true,
-    },
-  });
-}
-
 async function getPendingQuestions() {
   return db.query.questions.findMany({
     where: eq(questions.status, "pending"),
     limit: 5,
-    orderBy: (questions, { desc }) => [desc(questions.createdAt)],
+    orderBy: (questions, { asc }) => [asc(questions.createdAt)],
+  });
+}
+
+async function getRecentTasks() {
+  const dbTasks = await db.query.tasks.findMany({
+    limit: 10,
+    orderBy: [desc(tasks.createdAt)],
+    with: {
+      project: true,
+    },
+  });
+
+  // Serialize for client component (Date -> string)
+  return dbTasks.map((task) => ({
+    id: task.id,
+    name: task.name,
+    status: task.status,
+    agentType: task.agentType,
+    attemptCount: task.attemptCount,
+    maxAttempts: task.maxAttempts,
+    createdAt: task.createdAt.toISOString(),
+    project: task.project ? { id: task.project.id, name: task.project.name } : null,
+  }));
+}
+
+async function getWorkerStatuses() {
+  const [backendStatus, echoStatus] = await Promise.all([
+    getWorkerStatus("backend"),
+    getWorkerStatus("echo"),
+  ]);
+  return { backend: backendStatus, echo: echoStatus };
+}
+
+async function getProjects() {
+  return db.query.projects.findMany({
+    columns: { id: true, name: true },
+    orderBy: (projects, { asc }) => [asc(projects.name)],
   });
 }
 
 export default async function DashboardPage() {
-  const stats = await getStats();
-  const recentTasks = await getRecentTasks();
-  const pendingQuestions = await getPendingQuestions();
+  // Fetch ALL data server-side - no client-side API calls needed!
+  const [stats, pendingQuestionsList, recentTasks, workerStatuses, projectsList] = await Promise.all([
+    getStats(),
+    getPendingQuestions(),
+    getRecentTasks(),
+    getWorkerStatuses(),
+    getProjects(),
+  ]);
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+      <DashboardHeader projects={projectsList} />
+
+      {/* Worker Status - pass initial data, no client fetch on mount */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <WorkerStatus workerType="backend" initialStatus={workerStatuses.backend} />
+        <WorkerStatus workerType="echo" initialStatus={workerStatuses.echo} />
+      </div>
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -82,7 +123,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* Pending Questions Alert */}
-      {pendingQuestions.length > 0 && (
+      {pendingQuestionsList.length > 0 && (
         <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
           <div className="flex">
             <div className="flex-shrink-0">
@@ -92,7 +133,7 @@ export default async function DashboardPage() {
             </div>
             <div className="ml-3">
               <h3 className="text-sm font-medium text-yellow-800">
-                {pendingQuestions.length} question(s) awaiting your response
+                {pendingQuestionsList.length} question(s) awaiting your response
               </h3>
               <div className="mt-2 text-sm text-yellow-700">
                 <Link href="/questions" className="font-medium underline">
@@ -104,64 +145,8 @@ export default async function DashboardPage() {
         </div>
       )}
 
-      {/* Recent Tasks */}
-      <div className="bg-white shadow rounded-lg">
-        <div className="px-4 py-5 sm:px-6 border-b">
-          <h2 className="text-lg font-medium text-gray-900">Recent Tasks</h2>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Task
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Project
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Agent
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Attempts
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {recentTasks.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-6 py-4 text-center text-gray-500">
-                    No tasks yet
-                  </td>
-                </tr>
-              ) : (
-                recentTasks.map((task) => (
-                  <tr key={task.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {task.name}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {task.project?.name || "—"}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {task.agentType}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <StatusBadge status={task.status} />
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {task.attemptCount}/{task.maxAttempts}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      {/* Recent Tasks - pure server component, no client API calls */}
+      <RecentTasks tasks={recentTasks} />
     </div>
   );
 }
@@ -195,20 +180,3 @@ function StatCard({ title, value, color }: { title: string; value: number; color
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const statusClasses: Record<string, string> = {
-    pending: "bg-gray-100 text-gray-800",
-    queued: "bg-blue-100 text-blue-800",
-    running: "bg-green-100 text-green-800",
-    waiting_human: "bg-yellow-100 text-yellow-800",
-    blocked: "bg-orange-100 text-orange-800",
-    completed: "bg-green-100 text-green-800",
-    failed: "bg-red-100 text-red-800",
-  };
-
-  return (
-    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusClasses[status] || "bg-gray-100 text-gray-800"}`}>
-      {status.replace("_", " ")}
-    </span>
-  );
-}

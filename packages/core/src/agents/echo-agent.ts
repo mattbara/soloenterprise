@@ -5,31 +5,12 @@
  * Uses claude-sonnet-4-5-20250929 to make input more professional.
  */
 
-import { Worker, Job, ConnectionOptions } from 'bullmq';
-import { Redis } from 'ioredis';
+import { Worker, Job } from 'bullmq';
 import Anthropic from '@anthropic-ai/sdk';
-import { updateTaskStatus, type TaskJobData } from '../services/task-service.js';
+import { updateTaskStatus, type TaskJobData } from '../services/task-service';
+import { getSharedRedisConnection, closeSharedRedisConnection } from '../utils/index';
 
 const QUEUE_NAME = 'echo-tasks';
-
-// Redis connection
-let redisConnection: Redis | null = null;
-
-function getRedisConnection(): ConnectionOptions {
-  if (!redisConnection) {
-    const redisUrl = process.env.REDIS_URL;
-    if (!redisUrl) {
-      throw new Error('REDIS_URL environment variable is required');
-    }
-    // Upstash requires TLS - detect by rediss:// or upstash.io in URL
-    const useTls = redisUrl.startsWith('rediss://') || redisUrl.includes('upstash.io');
-    redisConnection = new Redis(redisUrl, {
-      maxRetriesPerRequest: null,
-      tls: useTls ? {} : undefined,
-    });
-  }
-  return redisConnection as unknown as ConnectionOptions;
-}
 
 // Anthropic client
 let anthropicClient: Anthropic | null = null;
@@ -118,7 +99,7 @@ export function createEchoWorker(): Worker<TaskJobData> {
   console.log(`[EchoAgent] Starting worker for queue: ${QUEUE_NAME}`);
 
   const worker = new Worker<TaskJobData>(QUEUE_NAME, processEchoTask, {
-    connection: getRedisConnection(),
+    connection: getSharedRedisConnection(),
     concurrency: 1,
   });
 
@@ -147,11 +128,6 @@ export function createEchoWorker(): Worker<TaskJobData> {
 export async function shutdownEchoWorker(worker: Worker): Promise<void> {
   console.log('[EchoAgent] Shutting down...');
   await worker.close();
-
-  if (redisConnection) {
-    await redisConnection.quit();
-    redisConnection = null;
-  }
-
+  await closeSharedRedisConnection();
   console.log('[EchoAgent] Shutdown complete');
 }

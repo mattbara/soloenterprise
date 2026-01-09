@@ -16,7 +16,9 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "test": "vitest",
-    "worker": "tsx src/worker.ts"
+    "worker": "tsx src/worker.ts",
+    "worker:echo": "tsx src/worker.ts echo",
+    "worker:backend": "tsx src/worker.ts backend"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

@@ -1,14 +1,21 @@
 /**
  * Worker Entry Point
  *
- * Starts the echo agent worker and handles graceful shutdown.
+ * Starts the agent workers and handles graceful shutdown.
  * Loads environment variables from .env file in repo root.
+ * Integrates with worker registry for status tracking and idle timeout.
+ *
+ * Usage:
+ *   pnpm worker        - Start all workers
+ *   pnpm worker:echo   - Start echo worker only
+ *   pnpm worker:backend - Start backend worker only
  */
 
 import { config } from 'dotenv';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import type { Worker } from 'bullmq';
+import type { WorkerType } from './services/worker-registry';
 
 // Get directory of this file
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -25,29 +32,175 @@ for (const envVar of requiredEnvVars) {
   }
 }
 
-console.log('[Worker] Environment variables loaded');
-console.log('[Worker] Starting echo agent worker...');
+// Parse command line arguments
+const args = process.argv.slice(2);
+const workerType = args[0] || 'all';
 
-// Store worker and shutdown function for cleanup
-let echoWorker: Worker | null = null;
-let shutdownEchoWorkerFn: ((worker: Worker) => Promise<void>) | null = null;
+// Idle timeout configuration (default 5 minutes)
+const IDLE_TIMEOUT_MS = parseInt(process.env.WORKER_IDLE_TIMEOUT_MS || '300000', 10);
+const HEARTBEAT_INTERVAL_MS = 10000; // 10 seconds
+const IDLE_CHECK_INTERVAL_MS = 30000; // 30 seconds
+
+console.log('[Worker] Environment variables loaded');
+console.log(`[Worker] Idle timeout: ${IDLE_TIMEOUT_MS / 1000}s`);
+
+// Store workers and shutdown functions for cleanup
+const workers: { worker: Worker; shutdown: (w: Worker) => Promise<void>; type: string }[] = [];
+
+// Track last task time for idle timeout
+let lastTaskTime = Date.now();
+
+// Intervals for cleanup
+let heartbeatInterval: NodeJS.Timeout | null = null;
+let idleCheckInterval: NodeJS.Timeout | null = null;
+
+// Flag to prevent multiple shutdowns
+let isShuttingDown = false;
 
 async function start() {
   // Dynamic import after env is loaded
-  const { createEchoWorker, shutdownEchoWorker } = await import('./agents/index.js');
-  shutdownEchoWorkerFn = shutdownEchoWorker;
+  const {
+    createEchoWorker,
+    shutdownEchoWorker,
+    createBackendWorker,
+    shutdownBackendWorker,
+  } = await import('./agents/index');
 
-  echoWorker = createEchoWorker();
-  console.log('[Worker] Echo agent worker started');
+  const {
+    registerWorker,
+    sendHeartbeat,
+    updateLastTaskTime,
+    isStopRequested,
+    clearStopRequest,
+  } = await import('./services/worker-registry');
+
+  const { publishTaskEvent } = await import('./services/task-events');
+
+  // Helper to setup worker event handlers
+  function setupWorkerEvents(worker: Worker, type: WorkerType) {
+    worker.on('completed', async (job) => {
+      lastTaskTime = Date.now();
+      await updateLastTaskTime(type);
+      console.log(`[Worker] Task completed on ${type}, last task time updated`);
+
+      // Publish task completion event for SSE subscribers
+      const taskId = job?.data?.taskId;
+      if (taskId) {
+        await publishTaskEvent({
+          type: 'task-completed',
+          taskId,
+          status: 'completed',
+          timestamp: Date.now(),
+        });
+        console.log(`[Worker] Published task-completed event for ${taskId}`);
+      }
+    });
+
+    worker.on('failed', async (job, error) => {
+      console.log(`[Worker] Task failed on ${type}:`, error?.message);
+
+      // Publish task failed event for SSE subscribers
+      const taskId = job?.data?.taskId;
+      if (taskId) {
+        await publishTaskEvent({
+          type: 'task-failed',
+          taskId,
+          status: 'failed',
+          timestamp: Date.now(),
+        });
+        console.log(`[Worker] Published task-failed event for ${taskId}`);
+      }
+    });
+
+    worker.on('active', () => {
+      console.log(`[Worker] Task started on ${type}`);
+    });
+  }
+
+  if (workerType === 'all' || workerType === 'echo') {
+    console.log('[Worker] Starting echo agent worker...');
+    const echoWorker = createEchoWorker();
+    setupWorkerEvents(echoWorker, 'echo');
+    workers.push({ worker: echoWorker, shutdown: shutdownEchoWorker, type: 'echo' });
+    await registerWorker('echo', process.pid);
+    console.log('[Worker] Echo agent worker started and registered');
+  }
+
+  if (workerType === 'all' || workerType === 'backend') {
+    console.log('[Worker] Starting backend agent worker...');
+    const backendWorker = createBackendWorker();
+    setupWorkerEvents(backendWorker, 'backend');
+    workers.push({ worker: backendWorker, shutdown: shutdownBackendWorker, type: 'backend' });
+    await registerWorker('backend', process.pid);
+    console.log('[Worker] Backend agent worker started and registered');
+  }
+
+  // Start heartbeat interval
+  heartbeatInterval = setInterval(async () => {
+    for (const { type } of workers) {
+      await sendHeartbeat(type as WorkerType);
+    }
+  }, HEARTBEAT_INTERVAL_MS);
+
+  // Start idle check and stop request check interval
+  idleCheckInterval = setInterval(async () => {
+    // Check for stop requests
+    for (const { type } of workers) {
+      const shouldStop = await isStopRequested(type as WorkerType);
+      if (shouldStop) {
+        console.log(`[Worker] Stop requested for ${type}, shutting down...`);
+        await clearStopRequest(type as WorkerType);
+        await shutdown();
+        return;
+      }
+    }
+
+    // Check for idle timeout
+    const idleTime = Date.now() - lastTaskTime;
+    if (idleTime > IDLE_TIMEOUT_MS) {
+      console.log(`[Worker] Idle timeout reached (${Math.round(idleTime / 1000)}s), shutting down...`);
+      await shutdown();
+    }
+  }, IDLE_CHECK_INTERVAL_MS);
+
   console.log('[Worker] Waiting for tasks...');
 }
 
 async function shutdown() {
+  // Prevent multiple shutdowns
+  if (isShuttingDown) {
+    return;
+  }
+  isShuttingDown = true;
+
   console.log('\n[Worker] Received shutdown signal');
 
-  if (echoWorker && shutdownEchoWorkerFn) {
-    await shutdownEchoWorkerFn(echoWorker);
+  // Clear intervals
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
   }
+  if (idleCheckInterval) {
+    clearInterval(idleCheckInterval);
+    idleCheckInterval = null;
+  }
+
+  // Import registry and task events functions for cleanup
+  const { deregisterWorker, closeRegistryConnection } = await import('./services/worker-registry');
+  const { closePublisher } = await import('./services/task-events');
+
+  // Shutdown workers and deregister
+  for (const { worker, shutdown: shutdownFn, type } of workers) {
+    await shutdownFn(worker);
+    await deregisterWorker(type as 'backend' | 'echo');
+    console.log(`[Worker] Deregistered ${type}`);
+  }
+
+  // Close registry connection
+  await closeRegistryConnection();
+
+  // Close task events publisher
+  await closePublisher();
 
   console.log('[Worker] Shutdown complete');
   process.exit(0);
