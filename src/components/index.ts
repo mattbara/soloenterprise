@@ -8,3 +8,4 @@ export { MarkdownRenderer } from "./MarkdownRenderer";
 export { WorkerStatus } from "./WorkerStatus";
 export { RecentTasks } from "./RecentTasks";
 export { RefreshButton } from "./RefreshButton";
+export { LiveLogs } from "./LiveLogs";

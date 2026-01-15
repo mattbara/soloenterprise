@@ -29,6 +29,7 @@ export function RequirementsModal({
   projects,
 }: RequirementsModalProps) {
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+  const [title, setTitle] = useState<string>("");
   const [requirements, setRequirements] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,6 +46,7 @@ export function RequirementsModal({
   useEffect(() => {
     if (!isOpen) {
       setSelectedProjectId("");
+      setTitle("");
       setRequirements("");
       setError(null);
       setTaskResult(null);
@@ -58,6 +60,11 @@ export function RequirementsModal({
     // Validate
     if (!selectedProjectId) {
       setError("Please select a project");
+      return;
+    }
+
+    if (!title.trim()) {
+      setError("Please enter a title");
       return;
     }
 
@@ -76,6 +83,7 @@ export function RequirementsModal({
         },
         body: JSON.stringify({
           projectId: selectedProjectId,
+          title: title.trim(),
           requirements: requirements.trim(),
         }),
       });
@@ -216,6 +224,25 @@ export function RequirementsModal({
           )}
         </div>
 
+        {/* Title Input */}
+        <div>
+          <label
+            htmlFor="title"
+            className="block text-sm font-medium text-gray-700"
+          >
+            Title
+          </label>
+          <input
+            type="text"
+            id="title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            disabled={isLoading}
+            placeholder="e.g., Add user authentication API"
+            className="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm p-3 disabled:bg-gray-100 disabled:cursor-not-allowed"
+          />
+        </div>
+
         {/* Requirements Textarea */}
         <div>
           <label
@@ -249,7 +276,7 @@ export function RequirementsModal({
             type="submit"
             variant="primary"
             isLoading={isLoading}
-            disabled={!selectedProjectId || !requirements.trim()}
+            disabled={!selectedProjectId || !title.trim() || !requirements.trim()}
           >
             Create Task
           </Button>

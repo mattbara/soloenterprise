@@ -1,8 +1,8 @@
 import { db } from "@/lib/db";
-import { projects, tasks, questions, fileLocks } from "@soloenterprise/db/schema";
-import { eq, count, desc } from "drizzle-orm";
+import { projects, tasks, questions, fileLocks, taskLogs } from "@soloenterprise/db/schema";
+import { eq, count, desc, and, or, isNull } from "drizzle-orm";
 import Link from "next/link";
-import { WorkerStatus, RecentTasks } from "@/components";
+import { WorkerStatus, RecentTasks, LiveLogs } from "@/components";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { getWorkerStatus } from "@soloenterprise/core";
 
@@ -57,6 +57,7 @@ async function getPendingQuestions() {
 
 async function getRecentTasks() {
   const dbTasks = await db.query.tasks.findMany({
+    where: or(eq(tasks.archived, false), isNull(tasks.archived)), // Filter out archived tasks (include null as not archived)
     limit: 10,
     orderBy: [desc(tasks.createdAt)],
     with: {
@@ -68,11 +69,13 @@ async function getRecentTasks() {
   return dbTasks.map((task) => ({
     id: task.id,
     name: task.name,
+    description: task.description,
     status: task.status,
     agentType: task.agentType,
     attemptCount: task.attemptCount,
     maxAttempts: task.maxAttempts,
     createdAt: task.createdAt.toISOString(),
+    processingStartedAt: task.processingStartedAt?.toISOString() ?? null,
     project: task.project ? { id: task.project.id, name: task.project.name } : null,
   }));
 }
@@ -92,14 +95,31 @@ async function getProjects() {
   });
 }
 
+async function getLogs() {
+  const dbLogs = await db.query.taskLogs.findMany({
+    limit: 50,
+    orderBy: [desc(taskLogs.createdAt)],
+  });
+
+  // Serialize for client component (Date -> string)
+  return dbLogs.map((log) => ({
+    id: log.id,
+    taskId: log.taskId,
+    level: log.level,
+    message: log.message,
+    createdAt: log.createdAt.toISOString(),
+  }));
+}
+
 export default async function DashboardPage() {
   // Fetch ALL data server-side - no client-side API calls needed!
-  const [stats, pendingQuestionsList, recentTasks, workerStatuses, projectsList] = await Promise.all([
+  const [stats, pendingQuestionsList, recentTasks, workerStatuses, projectsList, logs] = await Promise.all([
     getStats(),
     getPendingQuestions(),
     getRecentTasks(),
     getWorkerStatuses(),
     getProjects(),
+    getLogs(),
   ]);
 
   return (
@@ -147,6 +167,9 @@ export default async function DashboardPage() {
 
       {/* Recent Tasks - pure server component, no client API calls */}
       <RecentTasks tasks={recentTasks} />
+
+      {/* Live Logs - pure server component, no client API calls */}
+      <LiveLogs logs={logs} />
     </div>
   );
 }

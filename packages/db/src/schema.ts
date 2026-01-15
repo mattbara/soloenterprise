@@ -36,13 +36,15 @@ export const projectStatusEnum = pgEnum('project_status', [
 ]);
 
 export const taskStatusEnum = pgEnum('task_status', [
-  'pending',       // Created but not yet queued
-  'queued',        // Ready to be picked up by an agent
-  'running',       // Agent is working on it
-  'waiting_human', // Blocked on human input
-  'blocked',       // Blocked on dependency
-  'completed',     // Successfully finished
-  'failed',        // Failed after retries exhausted
+  'pending',            // Created but not yet queued
+  'queued',             // Ready to be picked up by an agent
+  'running',            // Agent is working on it
+  'waiting_human',      // Blocked on human input
+  'processing_answer',  // Human provided answer, being processed
+  'blocked',            // Blocked on dependency
+  'completed',          // Successfully finished
+  'failed',             // Failed after retries exhausted
+  'cancelled',          // Cancelled by user
 ]);
 
 export const taskPriorityEnum = pgEnum('task_priority', [
@@ -181,12 +183,17 @@ export const tasks = pgTable('tasks', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   startedAt: timestamp('started_at', { withTimezone: true }),
   completedAt: timestamp('completed_at', { withTimezone: true }),
+  processingStartedAt: timestamp('processing_started_at', { withTimezone: true }),
+
+  // Archive flag
+  archived: boolean('archived').default(false),
 }, (table) => ({
   projectIdx: index('tasks_project_idx').on(table.projectId),
   statusIdx: index('tasks_status_idx').on(table.status),
   agentTypeIdx: index('tasks_agent_type_idx').on(table.agentType),
   priorityIdx: index('tasks_priority_idx').on(table.priority),
   parentTaskIdx: index('tasks_parent_task_idx').on(table.parentTaskId),
+  archivedIdx: index('tasks_archived_idx').on(table.archived),
 }));
 
 // ============================================================================
@@ -435,6 +442,45 @@ export const deploymentsRelations = relations(deployments, ({ one }) => ({
 export const agentSessionsRelations = relations(agentSessions, ({ one }) => ({
   currentTask: one(tasks, {
     fields: [agentSessions.currentTaskId],
+    references: [tasks.id],
+  }),
+}));
+
+// ============================================================================
+// TASK LOGS (for live logging)
+// ============================================================================
+
+export const logLevelEnum = pgEnum('log_level', [
+  'debug',
+  'info',
+  'warn',
+  'error',
+]);
+
+export const taskLogs = pgTable('task_logs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+
+  // Relationships
+  taskId: uuid('task_id').references(() => tasks.id, { onDelete: 'cascade' }),
+
+  // Log info
+  level: logLevelEnum('level').notNull().default('info'),
+  message: text('message').notNull(),
+
+  // Optional metadata
+  metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
+
+  // Timestamps
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  taskIdx: index('task_logs_task_idx').on(table.taskId),
+  levelIdx: index('task_logs_level_idx').on(table.level),
+  createdAtIdx: index('task_logs_created_at_idx').on(table.createdAt),
+}));
+
+export const taskLogsRelations = relations(taskLogs, ({ one }) => ({
+  task: one(tasks, {
+    fields: [taskLogs.taskId],
     references: [tasks.id],
   }),
 }));
