@@ -46,23 +46,30 @@ function getAnthropicClient(): Anthropic {
 let skillFileContent: string | null = null;
 
 /**
- * Loads the backend engineer SKILL file content.
+ * Loads common + backend engineer SKILL file content.
  */
 async function loadSkillFile(): Promise<string> {
   if (skillFileContent) {
     return skillFileContent;
   }
 
-  // Path from packages/core/src/agents -> skills/SKILL-backend-engineer.md
-  const skillPath = resolve(__dirname, '../../../../skills/SKILL-backend-engineer.md');
+  // Paths from packages/core/src/agents -> skills/
+  const skillsDir = resolve(__dirname, '../../../../skills');
+  const commonPath = resolve(skillsDir, 'SKILL-common.md');
+  const agentPath = resolve(skillsDir, 'SKILL-backend-engineer.md');
 
   try {
-    skillFileContent = await readFile(skillPath, 'utf-8');
-    console.log('[BackendAgent] Loaded SKILL file successfully');
+    const [commonSkill, agentSkill] = await Promise.all([
+      readFile(commonPath, 'utf-8'),
+      readFile(agentPath, 'utf-8'),
+    ]);
+    
+    skillFileContent = `${commonSkill}\n\n---\n\n${agentSkill}`;
+    console.log('[BackendAgent] Loaded SKILL files successfully');
     return skillFileContent;
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    throw new Error(`Failed to load SKILL file: ${message}`);
+    throw new Error(`Failed to load SKILL files: ${message}`);
   }
 }
 

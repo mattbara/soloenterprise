@@ -47,8 +47,9 @@ export function parseAgentOutput(response: string): ParseResult {
     }
   }
 
-  // Check for questions section
-  const questionsResult = extractQuestions(response);
+  // Check for questions section - pass whether files were generated
+  // If files exist, be more strict about question detection
+  const questionsResult = extractQuestions(response, files.length > 0);
 
   return {
     files,
@@ -90,25 +91,48 @@ function normalizePath(path: string): string {
 
 /**
  * Extracts questions section from the response.
- * Detects questions in multiple formats:
- * - "## Questions" markdown header
- * - "Questions:" or "Clarification needed:" sections
- * - Numbered questions (1. What...? 2. How...?)
- * - Multiple question marks indicating clarifying questions
+ *
+ * If files were generated (hasFiles=true), we're strict:
+ *   - Only look for explicit ## Questions header
+ *   - Must contain actual question marks
+ *   - Must pass validation (not "None", etc.)
+ *
+ * If no files (hasFiles=false), the agent couldn't proceed:
+ *   - Check multiple question formats more broadly
  */
-function extractQuestions(response: string): { hasQuestions: boolean; content: string | null } {
-  // 1. Look for ## Questions section (preferred format)
+function extractQuestions(response: string, hasFiles: boolean): { hasQuestions: boolean; content: string | null } {
+  // Look for ## Questions section (preferred format)
   const questionsHeaderRegex = /##\s*Questions?\s*\n([\s\S]*?)(?=\n##|\n```xml|$)/i;
   const headerMatch = questionsHeaderRegex.exec(response);
 
   if (headerMatch && headerMatch[1]) {
     const questionsContent = headerMatch[1].trim();
+
+    if (hasFiles) {
+      // Files generated = task likely complete
+      // Only flag if there are ACTUAL question marks AND valid content
+      const hasRealQuestions = (questionsContent.match(/\?/g) || []).length >= 1;
+      if (hasRealQuestions && isValidQuestionsContent(questionsContent)) {
+        return { hasQuestions: true, content: questionsContent };
+      }
+      // Files exist but no real questions - task is complete
+      return { hasQuestions: false, content: null };
+    }
+
+    // No files - check if content is valid
     if (isValidQuestionsContent(questionsContent)) {
       return { hasQuestions: true, content: questionsContent };
     }
   }
 
-  // 2. Look for "Questions:" or "Clarification needed:" or similar sections
+  // If files were generated, don't use broader detection - task is done
+  if (hasFiles) {
+    return { hasQuestions: false, content: null };
+  }
+
+  // No files generated - agent couldn't proceed, check for questions more broadly
+
+  // Look for "Questions:" or "Clarification needed:" or similar sections
   const sectionRegex = /(?:questions|clarification needed|before i proceed|i need to know|please clarify|could you clarify|i have (?:some |a few )?questions?):\s*\n?([\s\S]*?)(?=\n\n\n|$)/i;
   const sectionMatch = sectionRegex.exec(response);
 
@@ -119,28 +143,24 @@ function extractQuestions(response: string): { hasQuestions: boolean; content: s
     }
   }
 
-  // 3. Look for numbered questions pattern (1. What...? 2. How...?)
+  // Look for numbered questions pattern (1. What...? 2. How...?)
   const numberedQuestionsRegex = /(?:^|\n)\s*(?:\d+\.|[-•])\s*[^?\n]*\?\s*(?:\n|$)/gm;
   const numberedMatches = response.match(numberedQuestionsRegex);
 
   if (numberedMatches && numberedMatches.length >= 2) {
-    // Found multiple numbered questions - extract them
     const questionsContent = numberedMatches.map(q => q.trim()).join('\n');
     return { hasQuestions: true, content: questionsContent };
   }
 
-  // 4. Count question marks - if response has multiple questions but no code, it's asking for clarification
+  // Count question marks - multiple questions likely means clarification needed
   const questionMarks = (response.match(/\?/g) || []).length;
-  const hasCodeBlocks = /<file\s+path=/.test(response);
 
-  if (questionMarks >= 3 && !hasCodeBlocks) {
-    // Multiple questions and no code output - likely asking for clarification
-    // Extract sentences ending with ?
+  if (questionMarks >= 3) {
     const questionSentences = response.match(/[^.!?\n]*\?/g);
     if (questionSentences && questionSentences.length >= 2) {
       const questionsContent = questionSentences
         .map(q => q.trim())
-        .filter(q => q.length > 10) // Filter out very short fragments
+        .filter(q => q.length > 10)
         .join('\n• ');
       if (questionsContent.length > 20) {
         return { hasQuestions: true, content: '• ' + questionsContent };
@@ -156,11 +176,44 @@ function extractQuestions(response: string): { hasQuestions: boolean; content: s
 
 /**
  * Validates that questions content is meaningful.
+ * Returns false for "None", "N/A", "No questions", etc.
  */
 function isValidQuestionsContent(content: string): boolean {
   if (content.length === 0) return false;
-  const lower = content.toLowerCase();
-  if (lower.includes('no questions') || lower === 'none' || lower === 'n/a') return false;
+
+  // Too short to be real questions
+  if (content.length < 20) return false;
+
+  const trimmed = content.trim();
+  const lower = trimmed.toLowerCase();
+
+  // Common "no questions" patterns
+  const noQuestionsPatterns = [
+    /^none\.?$/i,
+    /^n\/a\.?$/i,
+    /^no questions?\.?$/i,
+    /^no clarification/i,
+    /^straightforward/i,
+    /^clear requirements/i,
+    /^requirements are clear/i,
+    /^the requirements are clear/i,
+    /^no additional/i,
+    /^nothing to clarify/i,
+    /^all clear/i,
+    /^understood/i,
+    /^i understand/i,
+    /^no further/i,
+  ];
+
+  for (const pattern of noQuestionsPatterns) {
+    if (pattern.test(trimmed)) {
+      return false;
+    }
+  }
+
+  // Also check if it contains "no questions" anywhere
+  if (lower.includes('no questions')) return false;
+
   return true;
 }
 
