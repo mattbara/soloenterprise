@@ -55,3 +55,33 @@ All agents output files using XML tags:
 2. **Error handling** — never swallow errors
 3. **Tests included** — for all new functionality
 4. **Self-documenting code** — clear naming, minimal comments
+
+---
+
+## Code Quality Requirements
+
+### Syntax Validity (CRITICAL)
+
+All generated code MUST be syntactically valid and compile without errors.
+
+**Common mistakes to avoid:**
+
+| Mistake | Example | Correct |
+|---------|---------|---------|
+| Missing template literal bracket | `sql<number\`...\`` | `sql<number>\`...\`` |
+| Typos in imports/functions | `sq\`...\`` | `sql\`...\`` |
+| Unclosed brackets | `({ foo: bar` | `({ foo: bar })` |
+| Missing commas | `{ a: 1 b: 2 }` | `{ a: 1, b: 2 }` |
+| Unterminated strings | `"hello` | `"hello"` |
+
+**Before outputting code, mentally verify:**
+1. All brackets are balanced: `()`, `{}`, `[]`, `<>`
+2. All template literals have matching backticks
+3. All strings are terminated
+4. All imports match what you're using
+5. No typos in function/variable names
+
+### Import Patterns
+
+Always use import paths that match the existing codebase context:
+```typescript

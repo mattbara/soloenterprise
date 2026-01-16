@@ -15,6 +15,7 @@ import { artifacts, questions } from '@soloenterprise/db/schema';
 import { updateTaskStatus, getTask, type TaskJobData } from '../services/task-service';
 import { parseAgentOutput, validateParsedFiles } from './utils/output-parser';
 import { writeGeneratedFiles } from './utils/file-writer';
+import { validateGeneratedFiles } from './utils/file-validator';
 import { getSharedRedisConnection, closeSharedRedisConnection } from '../utils/index';
 
 const QUEUE_NAME = 'backend-tasks';
@@ -291,6 +292,33 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
     // Write files to disk
     const writeResult = await writeGeneratedFiles(taskId, parseResult.files, 'backend');
 
+    // Validate generated files for syntax errors
+    console.log('[BackendAgent] Validating generated files...');
+    const validationResult = await validateGeneratedFiles(writeResult.taskDir, writeResult.files);
+
+    if (!validationResult.valid) {
+      console.warn('[BackendAgent] Syntax validation errors:', validationResult.errors);
+
+      // Create question for human with syntax errors
+      const task = await getTask(taskId);
+      if (task) {
+        const errorList = validationResult.errors
+          .map(e => `- ${e.file}${e.line ? `:${e.line}` : ''}: ${e.message}`)
+          .join('\n');
+
+        await db.insert(questions).values({
+          projectId: task.projectId,
+          taskId,
+          question: `Generated code has syntax errors:\n\n${errorList}\n\nFiles were generated but may not compile. Please review and fix, or request regeneration.`,
+          context: `Task: ${name}\n\nDescription: ${description}`,
+          askedByAgent: 'backend',
+          status: 'pending',
+          priority: 'important',
+          isBlocking: false, // Non-blocking - files exist but have issues
+        });
+      }
+    }
+
     console.log('[BackendAgent] Creating artifact records...');
 
     // Create artifact records
@@ -318,20 +346,27 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
 
     console.log(`[BackendAgent] Task ${taskId} completed successfully`);
 
+    // Build summary with validation info
+    const validationWarnings = validationResult.errors.length;
+    const summary = validationWarnings > 0
+      ? `Generated ${parseResult.files.length} file(s) with ${validationWarnings} validation warning(s)`
+      : `Generated ${parseResult.files.length} file(s)`;
+
     // Update task status
     await updateTaskStatus(taskId, 'completed', {
       success: true,
-      summary: `Generated ${parseResult.files.length} file(s)`,
+      summary,
       outputs: {
         generatedDir: writeResult.taskDir,
         files: writeResult.files,
         artifactIds,
+        validationErrors: validationResult.errors.length > 0 ? validationResult.errors : undefined,
       },
     });
 
     return {
       success: true,
-      summary: `Generated ${parseResult.files.length} file(s)`,
+      summary,
       artifactIds,
     };
   } catch (error) {
