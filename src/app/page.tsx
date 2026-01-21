@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { projects, tasks, questions, fileLocks } from "@soloenterprise/db/schema";
-import { eq, count, desc } from "drizzle-orm";
+import { eq, count, desc, or, isNull } from "drizzle-orm";
 import Link from "next/link";
 import { WorkerStatus, RecentTasks } from "@/components";
 import { DashboardHeader } from "@/components/DashboardHeader";
@@ -57,6 +57,7 @@ async function getPendingQuestions() {
 
 async function getRecentTasks() {
   const dbTasks = await db.query.tasks.findMany({
+    where: or(eq(tasks.archived, false), isNull(tasks.archived)), // Filter out archived tasks (include null as not archived)
     limit: 10,
     orderBy: [desc(tasks.createdAt)],
     with: {
@@ -68,12 +69,15 @@ async function getRecentTasks() {
   return dbTasks.map((task) => ({
     id: task.id,
     name: task.name,
+    description: task.description,
     status: task.status,
     agentType: task.agentType,
     attemptCount: task.attemptCount,
     maxAttempts: task.maxAttempts,
     createdAt: task.createdAt.toISOString(),
+    processingStartedAt: task.processingStartedAt?.toISOString() ?? null,
     project: task.project ? { id: task.project.id, name: task.project.name } : null,
+    warnings: task.warnings ?? null,
   }));
 }
 

@@ -36,13 +36,15 @@ export const projectStatusEnum = pgEnum('project_status', [
 ]);
 
 export const taskStatusEnum = pgEnum('task_status', [
-  'pending',       // Created but not yet queued
-  'queued',        // Ready to be picked up by an agent
-  'running',       // Agent is working on it
-  'waiting_human', // Blocked on human input
-  'blocked',       // Blocked on dependency
-  'completed',     // Successfully finished
-  'failed',        // Failed after retries exhausted
+  'pending',            // Created but not yet queued
+  'queued',             // Ready to be picked up by an agent
+  'running',            // Agent is working on it
+  'waiting_human',      // Blocked on human input
+  'processing_answer',  // Human provided answer, being processed
+  'blocked',            // Blocked on dependency
+  'completed',          // Successfully finished
+  'failed',             // Failed after retries exhausted
+  'cancelled',          // Cancelled by user
 ]);
 
 export const taskPriorityEnum = pgEnum('task_priority', [
@@ -170,6 +172,11 @@ export const tasks = pgTable('tasks', {
     artifactIds?: string[];
     prUrl?: string;
     error?: string;
+    outputs?: {
+      generatedDir?: string;
+      files?: string[];
+      warnings?: Array<{ file: string; line?: number; message: string }>;
+    };
   }>(),
   
   // Retry tracking (3-strike rule)
@@ -181,12 +188,20 @@ export const tasks = pgTable('tasks', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   startedAt: timestamp('started_at', { withTimezone: true }),
   completedAt: timestamp('completed_at', { withTimezone: true }),
+  processingStartedAt: timestamp('processing_started_at', { withTimezone: true }),
+
+  // Archive flag
+  archived: boolean('archived').default(false),
+
+  // Syntax validation warnings (stored separately for easy querying)
+  warnings: jsonb('warnings').$type<Array<{ file: string; line?: number; message: string }>>(),
 }, (table) => ({
   projectIdx: index('tasks_project_idx').on(table.projectId),
   statusIdx: index('tasks_status_idx').on(table.status),
   agentTypeIdx: index('tasks_agent_type_idx').on(table.agentType),
   priorityIdx: index('tasks_priority_idx').on(table.priority),
   parentTaskIdx: index('tasks_parent_task_idx').on(table.parentTaskId),
+  archivedIdx: index('tasks_archived_idx').on(table.archived),
 }));
 
 // ============================================================================

@@ -349,6 +349,29 @@ export async function getQueueStats(agentType: AgentType): Promise<{
 }
 
 /**
+ * Remove a task from the queue.
+ * Called when a task is cancelled to prevent it from being processed.
+ */
+export async function removeTaskFromQueue(taskId: string, agentType: AgentType): Promise<number> {
+  const queue = getQueue(agentType);
+  let removedCount = 0;
+
+  // Get all jobs and remove those matching this taskId
+  const waitingJobs = await queue.getWaiting();
+  const delayedJobs = await queue.getDelayed();
+
+  for (const job of [...waitingJobs, ...delayedJobs]) {
+    if (job.data.taskId === taskId) {
+      await job.remove();
+      removedCount++;
+      console.log(`[TaskQueue] Removed job ${job.id} for task ${taskId} from ${agentType} queue`);
+    }
+  }
+
+  return removedCount;
+}
+
+/**
  * Shutdown queues gracefully.
  */
 export async function shutdown(): Promise<void> {

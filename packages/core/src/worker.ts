@@ -50,6 +50,9 @@ const workers: { worker: Worker; shutdown: (w: Worker) => Promise<void>; type: s
 // Track last task time for idle timeout
 let lastTaskTime = Date.now();
 
+// Track active jobs to prevent shutdown during processing
+let activeJobCount = 0;
+
 // Intervals for cleanup
 let heartbeatInterval: NodeJS.Timeout | null = null;
 let idleCheckInterval: NodeJS.Timeout | null = null;
@@ -79,9 +82,10 @@ async function start() {
   // Helper to setup worker event handlers
   function setupWorkerEvents(worker: Worker, type: WorkerType) {
     worker.on('completed', async (job) => {
+      activeJobCount = Math.max(0, activeJobCount - 1);
       lastTaskTime = Date.now();
       await updateLastTaskTime(type);
-      console.log(`[Worker] Task completed on ${type}, last task time updated`);
+      console.log(`[Worker] Task completed on ${type}, active jobs: ${activeJobCount}`);
 
       // Publish task completion event for SSE subscribers
       const taskId = job?.data?.taskId;
@@ -97,7 +101,8 @@ async function start() {
     });
 
     worker.on('failed', async (job, error) => {
-      console.log(`[Worker] Task failed on ${type}:`, error?.message);
+      activeJobCount = Math.max(0, activeJobCount - 1);
+      console.log(`[Worker] Task failed on ${type}: ${error?.message}, active jobs: ${activeJobCount}`);
 
       // Publish task failed event for SSE subscribers
       const taskId = job?.data?.taskId;
@@ -113,7 +118,8 @@ async function start() {
     });
 
     worker.on('active', () => {
-      console.log(`[Worker] Task started on ${type}`);
+      activeJobCount++;
+      console.log(`[Worker] Task started on ${type}, active jobs: ${activeJobCount}`);
     });
   }
 
@@ -155,7 +161,12 @@ async function start() {
       }
     }
 
-    // Check for idle timeout
+    // Check for idle timeout (skip if jobs are running)
+    if (activeJobCount > 0) {
+      console.log(`[Worker] Skipping idle check, ${activeJobCount} job(s) active`);
+      return;
+    }
+
     const idleTime = Date.now() - lastTaskTime;
     if (idleTime > IDLE_TIMEOUT_MS) {
       console.log(`[Worker] Idle timeout reached (${Math.round(idleTime / 1000)}s), shutting down...`);

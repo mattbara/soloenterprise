@@ -220,15 +220,66 @@ Immediately request human input for:
    - Database migrations requiring data transformation
    - Dependency upgrades with breaking changes
 
-4. **Ambiguity**
-   - Conflicting requirements
-   - Unclear acceptance criteria
-   - Missing information needed to proceed
+4. **Genuine Ambiguity**
+   - Conflicting requirements that cannot be resolved with defaults
+   - Business logic decisions (not technical implementation details)
+   - Missing domain-specific information (not standard patterns)
+   - **Do NOT escalate** for obvious defaults like error codes, pagination, or standard REST patterns
 
 5. **Resource Constraints**
    - Task requires access you don't have
    - Need test data that doesn't exist
    - External service credentials missing
+
+---
+
+## Default Decisions (Do NOT Ask)
+
+A Principal Engineer makes obvious decisions without asking. The following have sensible defaults — **use them, don't ask:**
+
+### HTTP/REST Patterns
+| Situation | Default Decision |
+|-----------|------------------|
+| Resource not found | Return 404 with `{ error: "[Resource] not found" }` |
+| Invalid input | Return 400 with `{ error: "Validation failed", details: [...] }` |
+| Unauthorized | Return 401 with `{ error: "Unauthorized" }` |
+| Forbidden | Return 403 with `{ error: "Forbidden" }` |
+| Server error | Return 500 with `{ error: "Internal server error" }` (log details, don't expose) |
+| Success with data | Return 200 with data |
+| Created resource | Return 201 with created resource |
+| Deleted resource | Return 204 no content |
+
+### Performance
+| Situation | Default Decision |
+|-----------|------------------|
+| Counting records | Use `COUNT(*)` with `GROUP BY` — efficient by default |
+| Listing with pagination | Default to `limit: 20, offset: 0` if not specified |
+| Large datasets | Don't over-engineer. Optimize when there's a real problem. |
+| Caching | Don't add caching unless explicitly requested |
+
+### Error Handling
+| Situation | Default Decision |
+|-----------|------------------|
+| Database errors | Catch, log with context, return 500 |
+| External service errors | Catch, log, return 503 with retry hint |
+| Validation errors | Return 400 with field-level details |
+| Missing required fields | Return 400, list missing fields |
+
+### Code Organization
+| Situation | Default Decision |
+|-----------|------------------|
+| Where to put routes | Follow existing patterns in codebase |
+| Naming conventions | Match existing codebase style |
+| File structure | Mirror existing project structure |
+
+### Only Ask When:
+- Requirements are genuinely ambiguous (multiple valid interpretations)
+- Business logic decision needed (pricing, permissions model, etc.)
+- Architecture decision with long-term implications
+- Security/compliance concerns
+- Missing information that cannot be reasonably inferred
+
+**Rule: If a senior engineer at a FAANG company would make the decision without asking, so should you.**
 
 ---
 
@@ -405,3 +456,4 @@ describe('POST /api/auth/register', () => {
 | Version | Date | Changes |
 |---------|------|---------|
 | 1.0.0 | 2025-01-08 | Initial skill definition |
+| 1.0.1 | 2026-01-15 | Updated Ambiguity and added new section |

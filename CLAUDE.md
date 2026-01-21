@@ -6,6 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 SoloEnterprise is an AI agent orchestration system with human-in-the-loop feedback. It coordinates multiple specialized AI agents (orchestrator, backend, frontend, QA, devops, feedback) to build products autonomously while escalating to humans when needed.
 
+## Communication Style
+
+Be harsh, objective, and opinionated. Provide direct feedback without hedging. If an idea is bad, say so. Give pros/cons only when there's genuine tradeoff to discuss, not as padding.
+
 ## Commands
 
 ```bash
@@ -183,4 +187,24 @@ router.refresh();
 // GOOD - Mutation returns updated data
 const result = await fetch('/api/create', { method: 'POST' });
 const newState = await result.json(); // Use this, don't re-fetch
+```
+
+### 7. File Safety (CRITICAL SECURITY)
+
+**All agent file writes are SANDBOXED to `packages/core/generated/tasks/{task-id}/`.**
+
+Agents CANNOT write to the actual codebase. The file-writer enforces this regardless of what paths Claude outputs:
+- Absolute paths like `/etc/passwd` → sandboxed to `generated/tasks/{id}/etc/passwd`
+- Traversal attempts like `../../../etc/passwd` → stripped and sandboxed
+- Production paths like `packages/db/src/schema.ts` → sandboxed, NOT written to actual codebase
+
+**If you see files appearing outside `packages/core/generated/`, this is a security bug. Stop and fix immediately.**
+
+To review generated code before applying to codebase:
+```bash
+# View what was generated for a task
+ls packages/core/generated/tasks/{task-id}/
+
+# Copy to actual codebase (manual review required)
+cp packages/core/generated/tasks/{task-id}/src/file.ts src/file.ts
 ```

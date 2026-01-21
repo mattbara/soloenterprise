@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { questions } from "@soloenterprise/db/schema";
+import { questions, tasks } from "@soloenterprise/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { MarkdownRenderer, PriorityBadge } from "@/components";
@@ -8,12 +8,23 @@ export const dynamic = "force-dynamic";
 
 async function answerQuestion(formData: FormData) {
   "use server";
-  
+
   const questionId = formData.get("questionId") as string;
   const answer = formData.get("answer") as string;
 
   if (!questionId || !answer) return;
 
+  // Get the question to find its task
+  const question = await db.query.questions.findFirst({
+    where: eq(questions.id, questionId),
+  });
+
+  if (!question) return;
+
+  // Check if user wants to cancel the task
+  const isCancelled = answer.toLowerCase().trim() === "cancelled";
+
+  // Update the question
   await db
     .update(questions)
     .set({
@@ -23,7 +34,33 @@ async function answerQuestion(formData: FormData) {
     })
     .where(eq(questions.id, questionId));
 
+  // Update the task status based on the answer
+  if (question.taskId) {
+    if (isCancelled) {
+      // Cancel the task
+      await db
+        .update(tasks)
+        .set({
+          status: "cancelled",
+          updatedAt: new Date(),
+          completedAt: new Date(),
+        })
+        .where(eq(tasks.id, question.taskId));
+    } else {
+      // Set task to processing_answer status with timestamp for progress tracking
+      await db
+        .update(tasks)
+        .set({
+          status: "processing_answer",
+          processingStartedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(tasks.id, question.taskId));
+    }
+  }
+
   revalidatePath("/questions");
+  revalidatePath("/"); // Also refresh dashboard
 }
 
 export default async function QuestionsPage() {
@@ -70,6 +107,11 @@ export default async function QuestionsPage() {
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center space-x-2 mb-2">
+                      {question.task?.id && (
+                        <span className="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded text-gray-600">
+                          Task: {question.task.id.slice(0, 8)}
+                        </span>
+                      )}
                       <PriorityBadge priority={question.priority} />
                       <span className="text-xs text-gray-500">
                         {question.task?.agentType || "Unknown agent"}
@@ -120,7 +162,7 @@ export default async function QuestionsPage() {
                         <input
                           type="text"
                           name="answer"
-                          placeholder="Type your answer..."
+                          placeholder="Type your answer... (or 'cancelled' to cancel task)"
                           className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2"
                         />
                         <button
@@ -130,6 +172,9 @@ export default async function QuestionsPage() {
                           Answer
                         </button>
                       </div>
+                      <p className="mt-1 text-xs text-gray-400">
+                        Tip: Type &quot;cancelled&quot; to cancel this task
+                      </p>
                     </form>
                   </div>
                 </div>
@@ -154,7 +199,12 @@ export default async function QuestionsPage() {
               <div key={question.id} className="px-6 py-4">
                 <div className="flex justify-between items-start">
                   <div className="flex-1">
-                    <div className="text-sm font-medium text-gray-900">
+                    {question.task?.id && (
+                      <span className="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded text-gray-600 mr-2">
+                        Task: {question.task.id.slice(0, 8)}
+                      </span>
+                    )}
+                    <div className="text-sm font-medium text-gray-900 mt-1">
                       <MarkdownRenderer content={question.question} />
                     </div>
                     <p className="text-sm text-green-600 mt-1">

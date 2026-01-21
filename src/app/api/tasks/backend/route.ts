@@ -4,12 +4,19 @@ import { createTask } from "@soloenterprise/core/services";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { projectId, requirements } = body;
+    const { projectId, title, requirements } = body;
 
     // Validate required fields
     if (!projectId) {
       return NextResponse.json(
         { error: "projectId is required" },
+        { status: 400 }
+      );
+    }
+
+    if (!title || typeof title !== "string" || !title.trim()) {
+      return NextResponse.json(
+        { error: "title is required and must be a non-empty string" },
         { status: 400 }
       );
     }
@@ -25,7 +32,7 @@ export async function POST(request: Request) {
     // The createTask function already validates that the project exists
     // and throws an error if not found
     const result = await createTask(projectId, {
-      name: "Backend Implementation",
+      name: title.trim(),
       description: requirements.trim(),
       agentType: "backend",
       priority: "medium",
