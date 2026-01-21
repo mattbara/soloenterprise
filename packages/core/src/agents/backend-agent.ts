@@ -15,6 +15,8 @@ import { parseAgentOutput, validateParsedFiles } from './utils/output-parser';
 import { writeGeneratedFiles } from './utils/file-writer';
 import { validateGeneratedFiles } from './utils/file-validator';
 import { loadSkillsForTask, type TaskComplexity } from './utils/skill-loader';
+import { buildContextWithProfile, getEmptyContextResult, type ProfiledContextResult } from './utils/context-loader';
+import type { ContextProfileName } from './utils/context-profiles';
 import { getSharedRedisConnection, closeSharedRedisConnection } from '../utils/index';
 
 const QUEUE_NAME = 'backend-tasks';
@@ -30,10 +32,17 @@ interface TokenMetrics {
   outputTokens: number;
   skillTokens: number;
   contextTokens: number;
+  codebaseContextTokens: number;
   questionsAsked: number;
   filesGenerated: number;
   layersLoaded: number;
   complexity: TaskComplexity;
+  // Context profile metrics
+  contextProfile: ContextProfileName;
+  schemaIncluded: boolean;
+  tablesLoaded: number;
+  routeExamplesLoaded: number;
+  serviceExamplesLoaded: number;
 }
 
 function logTokenBaseline(metrics: TokenMetrics): void {
@@ -171,8 +180,24 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
     console.log(`[BackendAgent] Task complexity: simple=${complexity.simple}, database=${complexity.database}, newPattern=${complexity.newPattern}`);
     console.log(`[BackendAgent] Loaded layers: ${layers.map(l => l.split('/').pop()).join(', ')}`);
 
-    // Build prompt
-    const userPrompt = buildPrompt(name, description, context);
+    // Load codebase context with profile-based selection
+    let codebaseContext: ProfiledContextResult;
+    try {
+      codebaseContext = await buildContextWithProfile(description);
+    } catch (err) {
+      console.warn('[BackendAgent] Failed to load codebase context, continuing without it:', err);
+      codebaseContext = getEmptyContextResult('simple-endpoint');
+    }
+
+    console.log(`[BackendAgent] Context profile: ${codebaseContext.profile}`);
+    console.log(`[BackendAgent] Schema included: ${codebaseContext.schemaIncluded}, Tables: ${codebaseContext.tablesLoaded}`);
+    console.log(`[BackendAgent] Context tokens: ~${codebaseContext.tokens}`);
+
+    // Build prompt with codebase context prepended
+    const basePrompt = buildPrompt(name, description, context);
+    const userPrompt = codebaseContext.content
+      ? `${codebaseContext.content}\n\n${basePrompt}`
+      : basePrompt;
 
     console.log('[BackendAgent] Calling Claude API...');
 
@@ -211,11 +236,18 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
       inputTokens: response.usage?.input_tokens ?? 0,
       outputTokens: response.usage?.output_tokens ?? 0,
       skillTokens,
-      contextTokens: Math.ceil(userPrompt.length / 4),
+      contextTokens: Math.ceil(basePrompt.length / 4),
+      codebaseContextTokens: codebaseContext.tokens,
       questionsAsked: parseResult.hasQuestions ? 1 : 0,
       filesGenerated: parseResult.files.length,
       layersLoaded: layers.length,
       complexity,
+      // Context profile metrics
+      contextProfile: codebaseContext.profile,
+      schemaIncluded: codebaseContext.schemaIncluded,
+      tablesLoaded: codebaseContext.tablesLoaded,
+      routeExamplesLoaded: codebaseContext.routeExamplesLoaded,
+      serviceExamplesLoaded: codebaseContext.serviceExamplesLoaded,
     });
 
     // Handle questions if present

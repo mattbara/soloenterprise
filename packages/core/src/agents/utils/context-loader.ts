@@ -3,16 +3,23 @@
  *
  * Loads relevant codebase files to inject into the agent prompt.
  * This gives the agent awareness of the database schema and existing patterns.
+ *
+ * Supports context profiles for selective loading to reduce token consumption.
  */
 
 import { readFile } from 'fs/promises';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import type { ContextConfig, ContextProfileName } from './context-profiles';
+import { selectContextProfile, getContextConfig } from './context-profiles';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Max lines before truncating a file
 const MAX_LINES = 500;
+
+// Approximate token estimation: 4 chars = 1 token
+const CHARS_PER_TOKEN = 4;
 
 export interface CodebaseContext {
   schema: { path: string; content: string } | null;
@@ -180,4 +187,189 @@ export async function getCodebaseContext(): Promise<string> {
 export function clearContextCache(): void {
   cachedContext = null;
   cachedContextFormatted = null;
+}
+
+// ============================================================================
+// Profile-Based Context Loading
+// ============================================================================
+
+export interface ProfiledContextResult {
+  content: string;
+  profile: ContextProfileName;
+  tokens: number;
+  schemaIncluded: boolean;
+  tablesLoaded: number;
+  routeExamplesLoaded: number;
+  serviceExamplesLoaded: number;
+}
+
+/**
+ * Filters schema content to only include specified tables.
+ * Parses Drizzle ORM schema format: export const tableName = pgTable('...')
+ */
+function filterSchemaToTables(fullSchema: string, tables: string[]): string {
+  const lines = fullSchema.split('\n');
+  const relevantLines: string[] = [];
+  let inRelevantTable = false;
+  let braceDepth = 0;
+
+  // Always include imports at the top
+  for (const line of lines) {
+    if (line.startsWith('import ')) {
+      relevantLines.push(line);
+    }
+  }
+
+  if (relevantLines.length > 0) {
+    relevantLines.push('');
+    relevantLines.push('// ... filtered to relevant tables ...');
+    relevantLines.push('');
+  }
+
+  for (const line of lines) {
+    // Check if line starts a table definition
+    const tableMatch = line.match(/export const (\w+)\s*=\s*pgTable/);
+    if (tableMatch) {
+      const tableName = tableMatch[1];
+      inRelevantTable = tables.some(
+        (t) => tableName.toLowerCase().includes(t.toLowerCase()) || t.toLowerCase().includes(tableName.toLowerCase())
+      );
+      if (inRelevantTable) {
+        braceDepth = 0;
+      }
+    }
+
+    if (inRelevantTable) {
+      relevantLines.push(line);
+
+      // Track brace depth to know when table definition ends
+      for (const char of line) {
+        if (char === '(') braceDepth++;
+        if (char === ')') braceDepth--;
+      }
+
+      // Check for table definition end (closing paren at depth 0)
+      if (braceDepth === 0 && line.includes(');')) {
+        inRelevantTable = false;
+        relevantLines.push(''); // Add spacing
+      }
+    }
+  }
+
+  return relevantLines.join('\n');
+}
+
+/**
+ * Build context using a profile configuration.
+ * Selectively loads schema and examples based on task type.
+ */
+export async function buildContextWithProfile(
+  taskDescription: string,
+  overrideProfile?: ContextProfileName
+): Promise<ProfiledContextResult> {
+  const profile = overrideProfile ?? selectContextProfile(taskDescription);
+  const config = getContextConfig(profile, taskDescription);
+
+  console.log(`[ContextLoader] Using profile: ${profile}`);
+
+  // Load raw context (uses cache)
+  if (!cachedContext) {
+    cachedContext = await loadCodebaseContext();
+  }
+
+  const sections: string[] = [];
+  let tablesLoaded = 0;
+  let routeExamplesLoaded = 0;
+  let serviceExamplesLoaded = 0;
+
+  sections.push('## Codebase Context\n');
+  sections.push('Use the following codebase context to understand existing patterns. Follow these patterns in your implementation.\n');
+
+  // Schema - only if config says so
+  if (config.includeSchema && cachedContext.schema) {
+    if (config.schemaTablesFilter && config.schemaTablesFilter.length > 0) {
+      // Filter to relevant tables only
+      const filteredSchema = filterSchemaToTables(cachedContext.schema.content, config.schemaTablesFilter);
+      sections.push(`### Database Schema (Relevant Tables: ${config.schemaTablesFilter.join(', ')})\n`);
+      sections.push('```typescript');
+      sections.push(filteredSchema);
+      sections.push('```\n');
+      tablesLoaded = config.schemaTablesFilter.length;
+      console.log(`[ContextLoader] Loaded ${tablesLoaded} tables: ${config.schemaTablesFilter.join(', ')}`);
+    } else {
+      // Full schema
+      sections.push(`### Database Schema (${cachedContext.schema.path})\n`);
+      sections.push('```typescript');
+      sections.push(cachedContext.schema.content);
+      sections.push('```\n');
+      tablesLoaded = -1; // Indicates full schema loaded
+      console.log('[ContextLoader] Loaded full schema');
+    }
+  }
+
+  // Route examples - only if config says so
+  if (config.includeRouteExamples && cachedContext.routeExamples.length > 0) {
+    const limited = cachedContext.routeExamples.slice(0, config.maxExamples);
+    routeExamplesLoaded = limited.length;
+
+    sections.push('### Existing Route Patterns\n');
+    sections.push('Follow these patterns when creating new API routes:\n');
+
+    for (const example of limited) {
+      sections.push(`#### ${example.path}\n`);
+      sections.push('```typescript');
+      sections.push(example.content);
+      sections.push('```\n');
+    }
+    console.log(`[ContextLoader] Loaded ${routeExamplesLoaded} route examples`);
+  }
+
+  // Service examples - only if config says so
+  if (config.includeServiceExamples && cachedContext.serviceExamples.length > 0) {
+    const limited = cachedContext.serviceExamples.slice(0, config.maxExamples);
+    serviceExamplesLoaded = limited.length;
+
+    sections.push('### Existing Service Patterns\n');
+    sections.push('Follow these patterns when creating new services:\n');
+
+    for (const example of limited) {
+      sections.push(`#### ${example.path}\n`);
+      sections.push('```typescript');
+      sections.push(example.content);
+      sections.push('```\n');
+    }
+    console.log(`[ContextLoader] Loaded ${serviceExamplesLoaded} service examples`);
+  }
+
+  sections.push('---\n');
+
+  const content = sections.join('\n');
+  const tokens = Math.ceil(content.length / CHARS_PER_TOKEN);
+
+  console.log(`[ContextLoader] Profile ${profile}: ~${tokens} tokens`);
+
+  return {
+    content,
+    profile,
+    tokens,
+    schemaIncluded: config.includeSchema,
+    tablesLoaded,
+    routeExamplesLoaded,
+    serviceExamplesLoaded,
+  };
+}
+
+/**
+ * Get empty context result for profiles that don't need any context.
+ */
+export function getEmptyContextResult(profile: ContextProfileName): ProfiledContextResult {
+  return {
+    content: '',
+    profile,
+    tokens: 0,
+    schemaIncluded: false,
+    tablesLoaded: 0,
+    routeExamplesLoaded: 0,
+    serviceExamplesLoaded: 0,
+  };
 }

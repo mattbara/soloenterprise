@@ -17,7 +17,8 @@
       "Bash(wc:*)",
       "Bash(for f in /Users/matteobaratella/Projects/PERSONAL_PROJECTS/SoloEnterprise/soloenterprise/skills/orchestrator/SKILL-orchestrator-*.md)",
       "Bash(done)",
-      "Bash(pnpm tsc:*)"
+      "Bash(pnpm tsc:*)",
+      "Bash(pnpm --filter @soloenterprise/core lint:*)"
     ]
   }
 }
