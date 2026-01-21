@@ -172,6 +172,11 @@ export const tasks = pgTable('tasks', {
     artifactIds?: string[];
     prUrl?: string;
     error?: string;
+    outputs?: {
+      generatedDir?: string;
+      files?: string[];
+      warnings?: Array<{ file: string; line?: number; message: string }>;
+    };
   }>(),
   
   // Retry tracking (3-strike rule)
@@ -187,6 +192,9 @@ export const tasks = pgTable('tasks', {
 
   // Archive flag
   archived: boolean('archived').default(false),
+
+  // Syntax validation warnings (stored separately for easy querying)
+  warnings: jsonb('warnings').$type<Array<{ file: string; line?: number; message: string }>>(),
 }, (table) => ({
   projectIdx: index('tasks_project_idx').on(table.projectId),
   statusIdx: index('tasks_status_idx').on(table.status),

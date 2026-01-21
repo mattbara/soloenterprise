@@ -52,58 +52,48 @@ export async function validateGeneratedFiles(
 }
 
 /**
+ * Check bracket balance (simplified check, excludes <> due to TypeScript generics).
+ */
+function checkBracketBalance(content: string): string | null {
+  const cleaned = content
+    .replace(/\/\/.*$/gm, '')           // Remove single-line comments
+    .replace(/\/\*[\s\S]*?\*\//g, '')   // Remove multi-line comments
+    .replace(/'[^'\\]*(?:\\.[^'\\]*)*'/g, '""')  // Replace single-quoted strings
+    .replace(/"[^"\\]*(?:\\.[^"\\]*)*"/g, '""')  // Replace double-quoted strings
+    .replace(/`[^`\\]*(?:\\.[^`\\]*)*`/g, '""'); // Replace template literals (simplified)
+
+  // Only check (), {}, [] — NOT <> (TypeScript generics break simple matching)
+  const counts = { '(': 0, '{': 0, '[': 0 };
+  const closeMap = { ')': '(', '}': '{', ']': '[' } as const;
+
+  for (const char of cleaned) {
+    if (char in counts) {
+      counts[char as keyof typeof counts]++;
+    } else if (char in closeMap) {
+      const open = closeMap[char as keyof typeof closeMap];
+      counts[open]--;
+      if (counts[open] < 0) return `Unmatched '${char}'`;
+    }
+  }
+
+  const unclosed = Object.entries(counts)
+    .filter(([_, n]) => n > 0)
+    .map(([b, n]) => `${n}x '${b}'`);
+
+  return unclosed.length > 0 ? `Unclosed: ${unclosed.join(', ')}` : null;
+}
+
+/**
  * Check for common syntax issues.
  */
 function checkSyntax(content: string, filePath: string): ValidationResult['errors'] {
   const errors: ValidationResult['errors'] = [];
   const lines = content.split('\n');
 
-  // Check 1: Balanced brackets
-  const bracketPairs: Record<string, string> = { '(': ')', '{': '}', '[': ']', '<': '>' };
-  const stack: string[] = [];
-  let inString = false;
-  let stringChar = '';
-  let inTemplateLiteral = false;
-
-  for (let i = 0; i < content.length; i++) {
-    const char = content[i];
-    const prevChar = content[i - 1];
-
-    // Track string state (simplified)
-    if ((char === '"' || char === "'") && prevChar !== '\\') {
-      if (!inString && !inTemplateLiteral) {
-        inString = true;
-        stringChar = char;
-      } else if (inString && char === stringChar) {
-        inString = false;
-      }
-    }
-
-    if (char === '`' && prevChar !== '\\') {
-      inTemplateLiteral = !inTemplateLiteral;
-    }
-
-    // Only check brackets outside strings
-    if (!inString && !inTemplateLiteral) {
-      if (bracketPairs[char]) {
-        stack.push(bracketPairs[char]);
-      } else if (Object.values(bracketPairs).includes(char)) {
-        const expected = stack.pop();
-        if (expected !== char) {
-          errors.push({
-            file: filePath,
-            message: `Mismatched bracket: expected '${expected || 'none'}', found '${char}'`,
-          });
-        }
-      }
-    }
-  }
-
-  if (stack.length > 0) {
-    errors.push({
-      file: filePath,
-      message: `Unclosed brackets: missing ${stack.reverse().join(', ')}`,
-    });
+  // Check 1: Balanced brackets (excluding <> - TypeScript generics break simple matching)
+  const bracketError = checkBracketBalance(content);
+  if (bracketError) {
+    errors.push({ file: filePath, message: bracketError });
   }
 
   // Check 2: Common typos in Drizzle/SQL

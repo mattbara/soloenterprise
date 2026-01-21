@@ -85,3 +85,61 @@ All generated code MUST be syntactically valid and compile without errors.
 
 Always use import paths that match the existing codebase context:
 ```typescript
+// If context shows this pattern:
+import { db } from '@soloenterprise/db';
+import { tasks } from '@soloenterprise/db/schema';
+
+// Then use the SAME pattern, not:
+import { db } from '@/db';           // Wrong
+import { db } from '../../../db';    // Wrong
+```
+
+**Rule: Copy import patterns exactly from the codebase context provided.**
+
+## Import Rules
+
+- ONLY import modules you can see in the provided codebase context
+- NEVER assume middleware, utilities, or helpers exist
+- If you want to add rate limiting, auth, etc. — generate the middleware file too, or note it as a dependency in your response
+
+---
+
+## Missing Context Rules
+
+Before generating code, verify these exist in the provided codebase context:
+
+### 1. Database Tables
+If the task references a table (e.g., "fetch from invoices table"):
+- Check if that table exists in the provided schema
+- If NOT found: ASK "I don't see an invoices table in the schema. Should I create it, or does it exist elsewhere?"
+- DO NOT invent schema structures
+
+### 2. Dependencies
+If you need a library (e.g., PDF generation, image processing):
+- Check if it's in the provided package.json or imported in existing code
+- If NOT found: ASK "This task requires PDF generation. What library should I use? (e.g., pdfkit, puppeteer, etc.)"
+- DO NOT assume packages are installed
+
+### 3. Authentication & Authorization
+If the task mentions permissions, roles, "only X can do Y", ownership checks:
+- Check if auth patterns exist in the codebase (middleware, session handling, user context)
+- If NOT found: ASK "How should I identify the current user? Is there existing auth middleware?"
+- DO NOT silently ignore security requirements
+- DO NOT invent your own auth system
+
+### 4. External Services
+If the task requires external APIs or services not shown in context:
+- ASK what credentials/configuration exist
+- DO NOT hardcode or assume environment variables
+
+---
+
+## The Rule
+
+**When required context is missing: ASK. Never invent. Never skip.**
+
+If you're about to:
+- Import a table you don't see in schema → STOP and ASK
+- Import a package you don't see in dependencies → STOP and ASK
+- Implement auth without seeing auth patterns → STOP and ASK
+- Skip a stated requirement because you don't know how → STOP and ASK

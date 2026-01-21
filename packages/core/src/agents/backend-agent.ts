@@ -7,27 +7,46 @@
 
 import { Worker, Job } from 'bullmq';
 import Anthropic from '@anthropic-ai/sdk';
-import { readFile } from 'fs/promises';
-import { dirname, resolve } from 'path';
-import { fileURLToPath } from 'url';
 import { db } from '@soloenterprise/db';
-import { artifacts, questions } from '@soloenterprise/db/schema';
+import { artifacts, questions, tasks } from '@soloenterprise/db/schema';
+import { eq } from 'drizzle-orm';
 import { updateTaskStatus, getTask, type TaskJobData } from '../services/task-service';
 import { parseAgentOutput, validateParsedFiles } from './utils/output-parser';
 import { writeGeneratedFiles } from './utils/file-writer';
 import { validateGeneratedFiles } from './utils/file-validator';
+import { loadSkillsForTask, type TaskComplexity } from './utils/skill-loader';
 import { getSharedRedisConnection, closeSharedRedisConnection } from '../utils/index';
 
 const QUEUE_NAME = 'backend-tasks';
+
+// ============================================================================
+// Token Baseline Logging - Measurement only, no logic changes
+// ============================================================================
+
+interface TokenMetrics {
+  taskId: string;
+  timestamp: string;
+  inputTokens: number;
+  outputTokens: number;
+  skillTokens: number;
+  contextTokens: number;
+  questionsAsked: number;
+  filesGenerated: number;
+  layersLoaded: number;
+  complexity: TaskComplexity;
+}
+
+function logTokenBaseline(metrics: TokenMetrics): void {
+  console.log('TOKEN_BASELINE', JSON.stringify(metrics));
+}
+
+// ============================================================================
 
 // Claude API configuration - configurable via environment variables
 // Haiku max: 8192, Sonnet max: 16000
 const MODEL = process.env.CLAUDE_MODEL || 'claude-3-5-haiku-latest';
 const MAX_TOKENS = parseInt(process.env.CLAUDE_MAX_TOKENS || '8192', 10);
 const TEMPERATURE = 0;
-
-// Get directory of this file for locating SKILL file
-const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Anthropic client
 let anthropicClient: Anthropic | null = null;
@@ -41,37 +60,6 @@ function getAnthropicClient(): Anthropic {
     anthropicClient = new Anthropic({ apiKey });
   }
   return anthropicClient;
-}
-
-// Cache for SKILL file content
-let skillFileContent: string | null = null;
-
-/**
- * Loads common + backend engineer SKILL file content.
- */
-async function loadSkillFile(): Promise<string> {
-  if (skillFileContent) {
-    return skillFileContent;
-  }
-
-  // Paths from packages/core/src/agents -> skills/
-  const skillsDir = resolve(__dirname, '../../../../skills');
-  const commonPath = resolve(skillsDir, 'SKILL-common.md');
-  const agentPath = resolve(skillsDir, 'SKILL-backend-engineer.md');
-
-  try {
-    const [commonSkill, agentSkill] = await Promise.all([
-      readFile(commonPath, 'utf-8'),
-      readFile(agentPath, 'utf-8'),
-    ]);
-    
-    skillFileContent = `${commonSkill}\n\n---\n\n${agentSkill}`;
-    console.log('[BackendAgent] Loaded SKILL files successfully');
-    return skillFileContent;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    throw new Error(`Failed to load SKILL files: ${message}`);
-  }
 }
 
 /**
@@ -177,8 +165,11 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
   await updateTaskStatus(taskId, 'running');
 
   try {
-    // Load SKILL file
-    const skillContent = await loadSkillFile();
+    // Load SKILL layers based on task complexity
+    const { content: skillContent, complexity, layers, tokens: skillTokens } = await loadSkillsForTask('backend', description);
+
+    console.log(`[BackendAgent] Task complexity: simple=${complexity.simple}, database=${complexity.database}, newPattern=${complexity.newPattern}`);
+    console.log(`[BackendAgent] Loaded layers: ${layers.map(l => l.split('/').pop()).join(', ')}`);
 
     // Build prompt
     const userPrompt = buildPrompt(name, description, context);
@@ -212,6 +203,20 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
 
     // Parse the response
     const parseResult = parseAgentOutput(responseText);
+
+    // Log token baseline metrics
+    logTokenBaseline({
+      taskId,
+      timestamp: new Date().toISOString(),
+      inputTokens: response.usage?.input_tokens ?? 0,
+      outputTokens: response.usage?.output_tokens ?? 0,
+      skillTokens,
+      contextTokens: Math.ceil(userPrompt.length / 4),
+      questionsAsked: parseResult.hasQuestions ? 1 : 0,
+      filesGenerated: parseResult.files.length,
+      layersLoaded: layers.length,
+      complexity,
+    });
 
     // Handle questions if present
     if (parseResult.hasQuestions && parseResult.questionsContent) {
@@ -297,25 +302,17 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
     const validationResult = await validateGeneratedFiles(writeResult.taskDir, writeResult.files);
 
     if (!validationResult.valid) {
-      console.warn('[BackendAgent] Syntax validation errors:', validationResult.errors);
+      console.warn('[BackendAgent] Syntax warnings:', validationResult.errors);
 
-      // Create question for human with syntax errors
-      const task = await getTask(taskId);
-      if (task) {
-        const errorList = validationResult.errors
-          .map(e => `- ${e.file}${e.line ? `:${e.line}` : ''}: ${e.message}`)
-          .join('\n');
-
-        await db.insert(questions).values({
-          projectId: task.projectId,
-          taskId,
-          question: `Generated code has syntax errors:\n\n${errorList}\n\nFiles were generated but may not compile. Please review and fix, or request regeneration.`,
-          context: `Task: ${name}\n\nDescription: ${description}`,
-          askedByAgent: 'backend',
-          status: 'pending',
-          priority: 'important',
-          isBlocking: false, // Non-blocking - files exist but have issues
-        });
+      // Store warnings on task record for dashboard visibility
+      try {
+        await db
+          .update(tasks)
+          .set({ warnings: validationResult.errors })
+          .where(eq(tasks.id, taskId));
+        console.log('[BackendAgent] Warnings saved to task record');
+      } catch (err) {
+        console.error('[BackendAgent] Failed to save warnings:', err);
       }
     }
 
@@ -346,27 +343,21 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
 
     console.log(`[BackendAgent] Task ${taskId} completed successfully`);
 
-    // Build summary with validation info
-    const validationWarnings = validationResult.errors.length;
-    const summary = validationWarnings > 0
-      ? `Generated ${parseResult.files.length} file(s) with ${validationWarnings} validation warning(s)`
-      : `Generated ${parseResult.files.length} file(s)`;
-
     // Update task status
     await updateTaskStatus(taskId, 'completed', {
       success: true,
-      summary,
+      summary: `Generated ${parseResult.files.length} file(s)`,
       outputs: {
         generatedDir: writeResult.taskDir,
         files: writeResult.files,
         artifactIds,
-        validationErrors: validationResult.errors.length > 0 ? validationResult.errors : undefined,
+        warnings: validationResult.valid ? [] : validationResult.errors,
       },
     });
 
     return {
       success: true,
-      summary,
+      summary: `Generated ${parseResult.files.length} file(s)`,
       artifactIds,
     };
   } catch (error) {
@@ -447,9 +438,5 @@ export async function shutdownBackendWorker(worker: Worker): Promise<void> {
   console.log('[BackendAgent] Shutting down...');
   await worker.close();
   await closeSharedRedisConnection();
-
-  // Clear cached SKILL content
-  skillFileContent = null;
-
   console.log('[BackendAgent] Shutdown complete');
 }

@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import Link from "next/link";
+import { db } from "@/lib/db";
+import { tasks } from "@soloenterprise/db/schema";
+import { eq, count, isNotNull } from "drizzle-orm";
+import { NavErrorsLink } from "@/components/NavErrorsLink";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -10,11 +14,32 @@ export const metadata: Metadata = {
   description: "AI Agent Orchestration System",
 };
 
-export default function RootLayout({
+async function getErrorCounts() {
+  const [failedCount] = await db
+    .select({ count: count() })
+    .from(tasks)
+    .where(eq(tasks.status, "failed"));
+
+  const tasksWithResult = await db.query.tasks.findMany({
+    where: isNotNull(tasks.result),
+    columns: { result: true },
+    limit: 200,
+  });
+
+  const warningCount = tasksWithResult.filter(
+    (t) => t.result?.outputs?.warnings && t.result.outputs.warnings.length > 0
+  ).length;
+
+  return { errors: failedCount.count, warnings: warningCount };
+}
+
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const errorCounts = await getErrorCounts();
+
   return (
     <html lang="en">
       <body className={inter.className}>
@@ -57,6 +82,10 @@ export default function RootLayout({
                     >
                       Questions
                     </Link>
+                    <NavErrorsLink
+                      errorCount={errorCounts.errors}
+                      warningCount={errorCounts.warnings}
+                    />
                   </div>
                 </div>
               </div>

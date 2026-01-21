@@ -77,6 +77,7 @@ async function getRecentTasks() {
     createdAt: task.createdAt.toISOString(),
     processingStartedAt: task.processingStartedAt?.toISOString() ?? null,
     project: task.project ? { id: task.project.id, name: task.project.name } : null,
+    warnings: task.warnings ?? null,
   }));
 }
 

@@ -19,7 +19,6 @@ export function DashboardHeader({ projects }: DashboardHeaderProps) {
   const router = useRouter();
 
   function handleSuccess() {
-    // Refresh the page to show the new task
     router.refresh();
   }
 
