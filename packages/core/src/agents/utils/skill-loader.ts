@@ -20,6 +20,15 @@ export interface TaskComplexity {
   newPattern: boolean;  // Auth, queues, websockets, first-time patterns
 }
 
+export type OrchestratorAction =
+  | 'assign'
+  | 'decompose'
+  | 'review'
+  | 'complete'
+  | 'promote'
+  | 'kickoff'
+  | 'question';
+
 /**
  * Classify task complexity from description.
  */
@@ -186,4 +195,83 @@ export async function loadSkillsForTask(
   console.log(`[SkillLoader] Layers: ${layers.map(l => l.split('/').pop()).join(', ')}`);
 
   return { content, complexity, layers, tokens };
+}
+
+/**
+ * Select SKILL layers for orchestrator based on action type.
+ */
+export function selectOrchestratorLayers(action: OrchestratorAction): string[] {
+  const base = `${SKILLS_DIR}/orchestrator`;
+
+  // Always load core
+  const layers: string[] = [`${base}/SKILL-orchestrator-core.md`];
+
+  switch (action) {
+    case 'assign':
+    case 'decompose':
+    case 'question':
+      layers.push(`${base}/SKILL-orchestrator-assignment.md`);
+      break;
+
+    case 'review':
+    case 'complete':
+    case 'promote':
+      layers.push(`${base}/SKILL-orchestrator-quality.md`);
+      break;
+
+    case 'kickoff':
+      // Project kickoff needs assignment + examples
+      layers.push(`${base}/SKILL-orchestrator-assignment.md`);
+      layers.push(`${base}/SKILL-orchestrator-examples.md`);
+      break;
+  }
+
+  return layers;
+}
+
+/**
+ * Detect orchestrator action from task/command description.
+ */
+export function detectOrchestratorAction(description: string): OrchestratorAction {
+  const lower = description.toLowerCase();
+
+  if (lower.includes('kickoff') || lower.includes('start project') || lower.includes('new project')) {
+    return 'kickoff';
+  }
+
+  if (lower.includes('promote') || lower.includes('deploy') || lower.includes('release')) {
+    return 'promote';
+  }
+
+  if (lower.includes('review') || lower.includes('complete') || lower.includes('verify') || lower.includes('gate')) {
+    return 'review';
+  }
+
+  if (lower.includes('question') || lower.includes('answer') || lower.includes('decision')) {
+    return 'question';
+  }
+
+  if (lower.includes('decompose') || lower.includes('break down') || lower.includes('plan')) {
+    return 'decompose';
+  }
+
+  // Default to assign
+  return 'assign';
+}
+
+/**
+ * Load skills for orchestrator task.
+ */
+export async function loadSkillsForOrchestrator(
+  description: string
+): Promise<{ content: string; action: OrchestratorAction; layers: string[]; tokens: number }> {
+  const action = detectOrchestratorAction(description);
+  const layers = selectOrchestratorLayers(action);
+  const content = await loadSkillContent(layers);
+  const tokens = estimateTokens(content);
+
+  console.log(`[SkillLoader] Orchestrator action: ${action}`);
+  console.log(`[SkillLoader] Layers: ${layers.map(l => l.split('/').pop()).join(', ')}`);
+
+  return { content, action, layers, tokens };
 }
