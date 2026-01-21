@@ -14,7 +14,10 @@
       "mcp__Neon__run_sql",
       "mcp__Neon__get_database_tables",
       "Bash(pnpm exec tsc:*)",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "Bash(for f in /Users/matteobaratella/Projects/PERSONAL_PROJECTS/SoloEnterprise/soloenterprise/skills/orchestrator/SKILL-orchestrator-*.md)",
+      "Bash(done)",
+      "Bash(pnpm tsc:*)"
     ]
   }
 }
