@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { Modal } from "./Modal";
 import { Button } from "./Button";
 
+type AgentType = "backend" | "frontend";
+
 interface Project {
   id: string;
   name: string;
@@ -13,6 +15,7 @@ interface TaskResult {
   taskId: string;
   jobId: string;
   projectId: string;
+  agentType: AgentType;
 }
 
 interface RequirementsModalProps {
@@ -29,6 +32,7 @@ export function RequirementsModal({
   projects,
 }: RequirementsModalProps) {
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+  const [agentType, setAgentType] = useState<AgentType>("backend");
   const [title, setTitle] = useState<string>("");
   const [requirements, setRequirements] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
@@ -46,6 +50,7 @@ export function RequirementsModal({
   useEffect(() => {
     if (!isOpen) {
       setSelectedProjectId("");
+      setAgentType("backend");
       setTitle("");
       setRequirements("");
       setError(null);
@@ -76,13 +81,14 @@ export function RequirementsModal({
     setIsLoading(true);
 
     try {
-      const response = await fetch("/api/tasks/backend", {
+      const response = await fetch("/api/tasks/create", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           projectId: selectedProjectId,
+          agentType,
           title: title.trim(),
           requirements: requirements.trim(),
         }),
@@ -150,7 +156,7 @@ export function RequirementsModal({
           <div className="border-t pt-4">
             <h5 className="text-sm font-medium text-gray-900 mb-2">What happens next?</h5>
             <ol className="text-sm text-gray-600 space-y-2 list-decimal list-inside">
-              <li>The backend worker will pick up this task</li>
+              <li>The {taskResult.agentType} worker will pick up this task</li>
               <li>Claude AI will analyze your requirements</li>
               <li>If clarification is needed, you&apos;ll be asked questions</li>
               <li>Generated code will appear in the artifacts</li>
@@ -168,7 +174,7 @@ export function RequirementsModal({
                   <strong>Note:</strong> Make sure the worker is running:
                 </p>
                 <code className="text-xs text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded mt-1 inline-block">
-                  pnpm worker:backend
+                  pnpm worker:{taskResult.agentType}
                 </code>
               </div>
             </div>
@@ -186,7 +192,7 @@ export function RequirementsModal({
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="New Backend Task">
+    <Modal isOpen={isOpen} onClose={onClose} title="New Task">
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Error Message */}
         {error && (
@@ -194,6 +200,31 @@ export function RequirementsModal({
             <p className="text-sm text-red-700">{error}</p>
           </div>
         )}
+
+        {/* Agent Type Dropdown */}
+        <div>
+          <label
+            htmlFor="agentType"
+            className="block text-sm font-medium text-gray-700"
+          >
+            Agent Type
+          </label>
+          <select
+            id="agentType"
+            value={agentType}
+            onChange={(e) => setAgentType(e.target.value as AgentType)}
+            disabled={isLoading}
+            className="mt-1 block w-full rounded-md border border-gray-300 bg-white py-2 px-3 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+          >
+            <option value="backend">Backend</option>
+            <option value="frontend">Frontend</option>
+          </select>
+          <p className="mt-1 text-xs text-gray-500">
+            {agentType === "backend"
+              ? "API routes, database queries, services, etc."
+              : "React components, pages, hooks, etc."}
+          </p>
+        </div>
 
         {/* Project Dropdown */}
         <div>

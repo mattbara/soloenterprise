@@ -35,26 +35,17 @@ pnpm db:studio        # Open Drizzle Studio GUI
 
 ## Architecture
 
+See `docs/DOCUMENTATION_STRUCTURE.md` for detailed project structure.
+
 ### Monorepo Structure (pnpm workspaces + Turbo)
 
 ```
 packages/
 ├── core/           # @soloenterprise/core - Agent orchestration
-│   └── src/
-│       ├── queue/  # BullMQ task queue (per-agent-type queues)
-│       └── locks/  # File lock management (prevents concurrent edits)
 └── db/             # @soloenterprise/db - Database layer
-    └── src/
-        ├── schema.ts  # Drizzle schema definitions
-        └── index.ts   # Neon HTTP client
 
+skills/             # Agent skill files (modular prompts)
 src/                # Next.js 15 application
-├── app/            # App Router
-│   ├── api/        # API routes (projects, questions)
-│   ├── projects/   # Project management UI
-│   ├── questions/  # Human input queue UI
-│   └── tasks/      # Task monitoring UI
-└── lib/            # Utilities
 ```
 
 ### Key Patterns

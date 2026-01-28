@@ -82,11 +82,11 @@ async function getRecentTasks() {
 }
 
 async function getWorkerStatuses() {
-  const [backendStatus, echoStatus] = await Promise.all([
+  const [backendStatus, frontendStatus] = await Promise.all([
     getWorkerStatus("backend"),
-    getWorkerStatus("echo"),
+    getWorkerStatus("frontend"),
   ]);
-  return { backend: backendStatus, echo: echoStatus };
+  return { backend: backendStatus, frontend: frontendStatus };
 }
 
 async function getProjects() {
@@ -113,7 +113,7 @@ export default async function DashboardPage() {
       {/* Worker Status - pass initial data, no client fetch on mount */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <WorkerStatus workerType="backend" initialStatus={workerStatuses.backend} />
-        <WorkerStatus workerType="echo" initialStatus={workerStatuses.echo} />
+        <WorkerStatus workerType="frontend" initialStatus={workerStatuses.frontend} />
       </div>
 
       {/* Stats Grid */}

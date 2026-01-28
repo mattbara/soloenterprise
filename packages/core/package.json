@@ -18,7 +18,8 @@
     "test": "vitest",
     "worker": "tsx src/worker.ts",
     "worker:echo": "tsx src/worker.ts echo",
-    "worker:backend": "tsx src/worker.ts backend"
+    "worker:backend": "tsx src/worker.ts backend",
+    "worker:frontend": "tsx src/worker.ts frontend"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

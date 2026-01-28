@@ -67,6 +67,8 @@ async function start() {
     shutdownEchoWorker,
     createBackendWorker,
     shutdownBackendWorker,
+    createFrontendWorker,
+    shutdownFrontendWorker,
   } = await import('./agents/index');
 
   const {
@@ -139,6 +141,15 @@ async function start() {
     workers.push({ worker: backendWorker, shutdown: shutdownBackendWorker, type: 'backend' });
     await registerWorker('backend', process.pid);
     console.log('[Worker] Backend agent worker started and registered');
+  }
+
+  if (workerType === 'all' || workerType === 'frontend') {
+    console.log('[Worker] Starting frontend agent worker...');
+    const frontendWorker = createFrontendWorker();
+    setupWorkerEvents(frontendWorker, 'frontend');
+    workers.push({ worker: frontendWorker, shutdown: shutdownFrontendWorker, type: 'frontend' });
+    await registerWorker('frontend', process.pid);
+    console.log('[Worker] Frontend agent worker started and registered');
   }
 
   // Start heartbeat interval

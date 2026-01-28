@@ -69,6 +69,7 @@ All generated code MUST be syntactically valid and compile without errors.
 | Mistake | Example | Correct |
 |---------|---------|---------|
 | Missing template literal bracket | `sql<number\`...\`` | `sql<number>\`...\`` |
+| JSX attribute missing braces | `className=\`flex\`` | `className={\`flex\`}` |
 | Typos in imports/functions | `sq\`...\`` | `sql\`...\`` |
 | Unclosed brackets | `({ foo: bar` | `({ foo: bar })` |
 | Missing commas | `{ a: 1 b: 2 }` | `{ a: 1, b: 2 }` |
@@ -95,6 +96,29 @@ import { db } from '../../../db';    // Wrong
 ```
 
 **Rule: Copy import patterns exactly from the codebase context provided.**
+
+### JSX/TSX Syntax — All Agents
+
+When generating JSX/TSX code with dynamic attributes:
+
+**ALWAYS write:**
+```tsx
+attribute={`template ${variable} literal`}
+```
+
+**NEVER write:**
+```tsx
+attribute=`template ${variable} literal`}
+```
+
+The opening curly brace `{` before the backtick is REQUIRED. This is especially important when the template contains apostrophes like `'s`:
+```tsx
+// ✓ Correct
+aria-label={`${name}'s profile`}
+
+// ✗ Wrong - will not compile
+aria-label=`${name}'s profile`}
+```
 
 ## Import Rules
 

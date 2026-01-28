@@ -20,8 +20,12 @@
 | 7. Principal Reviewer | ⬜ NOT STARTED | 1 week |
 | 8. Multi-Agent Integration | ⬜ NOT STARTED | 2-3 weeks |
 | 9. Documentation | ⬜ NOT STARTED | 1 week |
+| 10. Product Manager | 🔮 FUTURE | TBD |
+| 11. Design | 🔮 FUTURE | TBD |
+| 12. Go-to-Market | 🔮 FUTURE | TBD |
+| 13. Operations | 🔮 FUTURE | TBD |
 
-**Total Estimate:** 18-22 weeks remaining
+**Total Estimate:** 18-22 weeks remaining (Phases 3-9 only)
 
 ---
 
@@ -337,6 +341,104 @@ export const decisions = pgTable('decisions', {
 - [ ] Create SKILL file authoring guide
 - [ ] Create troubleshooting runbook
 - [ ] Write ADRs (BullMQ, Neon, layered SKILLs, Opus for orchestrator)
+
+---
+
+## Future Phases: Business Automation
+
+> **Note:** These phases are vision, not committed. Engineering foundation (Phases 3-9) must be complete and stable first.
+
+### Phase 10: Product Manager Agent 🔮 FUTURE
+
+**Prerequisite:** Engineering agents stable (Phases 3-9 complete)
+**Model:** Claude Opus (strategic reasoning)
+
+**Why First After Engineering:**
+- Feeds directly into engineering pipeline
+- PRDs are structured documents (easier to validate than marketing copy)
+- Completes "idea → shipped product" loop
+
+**Scope:**
+- Input: Market research, user feedback, business goals
+- Output: PRDs (Markdown + YAML frontmatter), user stories, acceptance criteria
+- Validation: Engineering agents can execute the specs
+
+**Checklist:**
+- [ ] Create `SKILL-product-manager-*.md` files
+- [ ] Create `product-agent.ts`
+- [ ] Define PRD template format
+- [ ] Integration with orchestrator
+- [ ] Test: Can engineering agents execute generated PRDs?
+
+---
+
+### Phase 11: Design Agent 🔮 FUTURE
+
+**Prerequisite:** Phase 10 complete
+**Model:** Claude Sonnet
+
+**Scope:**
+- Input: PRD, brand guidelines
+- Output: Component specs, Tailwind configs, React component skeletons
+- NOT: Figma files, images
+
+**Checklist:**
+- [ ] Create `SKILL-design-*.md` files
+- [ ] Create `design-agent.ts`
+- [ ] Define component spec format
+- [ ] Integration with frontend agent
+
+---
+
+### Phase 12: Go-to-Market Agents 🔮 FUTURE
+
+**Prerequisite:** Product to market exists
+**Agents:** Content, Marketing
+
+**Content Agent:**
+- Input: Product features, target audience
+- Output: Blog posts, documentation, social posts
+- Validation: Human review (brand voice)
+
+**Marketing Agent:**
+- Input: Product positioning, channels, budget
+- Output: Campaign plans, ad copy, email sequences
+- Validation: Human approval before spend
+
+**Checklist:**
+- [ ] Create `SKILL-content-*.md` files
+- [ ] Create `SKILL-marketing-*.md` files
+- [ ] Create `content-agent.ts`
+- [ ] Create `marketing-agent.ts`
+- [ ] Define output formats (Markdown for content, JSON for campaigns)
+- [ ] Human approval workflows
+
+---
+
+### Phase 13: Operations Agents 🔮 FUTURE
+
+**Risk Level:** HIGH (financial, legal liability)
+**Agents:** Finance, Legal
+
+**Finance Agent:**
+- Input: Bank transactions, invoices
+- Output: Reports, forecasts, categorization
+- Requires: Plaid, Stripe, QuickBooks integrations
+- Gate: Human review ALWAYS
+
+**Legal Agent:**
+- Input: Contract templates, business context
+- Output: Draft contracts, compliance checklists
+- Gate: Human review MANDATORY (never auto-execute)
+
+**Checklist:**
+- [ ] Create `SKILL-finance-*.md` files
+- [ ] Create `SKILL-legal-*.md` files
+- [ ] Create `finance-agent.ts`
+- [ ] Create `legal-agent.ts`
+- [ ] Financial service integrations (Plaid, Stripe, etc.)
+- [ ] Mandatory human approval gates
+- [ ] Audit logging for all outputs
 
 ---
 

@@ -25,7 +25,7 @@ export function DashboardHeader({ projects }: DashboardHeaderProps) {
   return (
     <div className="flex justify-between items-center">
       <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-      <Button onClick={() => setIsModalOpen(true)}>+ New Backend Task</Button>
+      <Button onClick={() => setIsModalOpen(true)}>+ New Task</Button>
 
       <RequirementsModal
         isOpen={isModalOpen}

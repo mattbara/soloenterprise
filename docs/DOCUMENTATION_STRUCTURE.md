@@ -12,51 +12,82 @@
 
 ---
 
-## Recommended Structure
+## Current Structure (SoloEnterprise)
 
 ```
-product-factory/
+soloenterprise/
 │
-├── README.md                      # Entry point (what is this project?)
+├── README.md                      # Entry point
+├── CLAUDE.md                      # Claude Code guidelines & guardrails
 │
-├── docs/                          # All documentation
-│   ├── BOOTSTRAP.md               # One-time setup guide
-│   ├── ARCHITECTURE.md            # System design
-│   ├── CONTRIBUTING.md            # How to contribute
-│   ├── ENVIRONMENTS.md            # Environment details (URLs, configs)
+├── docs/                          # Documentation
+│   ├── DOCUMENTATION_STRUCTURE.md # This file
+│   ├── ARCHITECTURE.md            # System design (TODO)
+│   ├── runbooks/                  # Operational procedures (TODO)
+│   └── adr/                       # Architecture Decision Records (TODO)
+│
+├── packages/
+│   ├── core/                      # @soloenterprise/core - Agent orchestration
+│   │   ├── src/
+│   │   │   ├── agents/            # AI agent implementations
+│   │   │   │   ├── backend-agent.ts
+│   │   │   │   ├── frontend-agent.ts
+│   │   │   │   ├── echo-agent.ts
+│   │   │   │   └── utils/         # Shared agent utilities
+│   │   │   │       ├── context-loader.ts
+│   │   │   │       ├── context-profiles.ts
+│   │   │   │       ├── frontend-context-loader.ts
+│   │   │   │       ├── frontend-context-profiles.ts
+│   │   │   │       ├── file-writer.ts
+│   │   │   │       ├── file-validator.ts
+│   │   │   │       ├── output-parser.ts
+│   │   │   │       └── skill-loader.ts
+│   │   │   ├── queue/             # BullMQ task queue
+│   │   │   ├── locks/             # File lock management
+│   │   │   ├── services/          # Shared services
+│   │   │   └── worker.ts          # BullMQ worker entry point
+│   │   └── generated/             # Sandboxed agent outputs
+│   │       └── tasks/{task-id}/   # Generated code per task
 │   │
-│   ├── runbooks/                  # Operational procedures
-│   │   ├── deployment.md          # How to deploy
-│   │   ├── rollback.md            # How to rollback
-│   │   ├── incident-response.md   # What to do when things break
-│   │   └── on-call.md             # On-call procedures
-│   │
-│   └── adr/                       # Architecture Decision Records
-│       ├── template.md            # ADR template
-│       ├── 001-use-typescript.md  # Why TypeScript
-│       ├── 002-use-postgresql.md  # Why PostgreSQL
-│       └── 003-use-bullmq.md      # Why BullMQ
+│   └── db/                        # @soloenterprise/db - Database layer
+│       └── src/
+│           ├── schema.ts          # Drizzle schema definitions
+│           └── index.ts           # Neon HTTP client
 │
-├── skills/                        # Agent SKILL files
-│   ├── SKILL-orchestrator.md
-│   ├── SKILL-backend-engineer.md
-│   ├── SKILL-frontend-engineer.md
-│   ├── SKILL-qa-engineer.md
-│   └── SKILL-devops-engineer.md
-│
-├── infrastructure/
-│   └── terraform/
-│       └── README.md              # Infrastructure-specific docs
-│
-├── apps/
+├── skills/                        # Agent skill files (modular prompts)
 │   ├── backend/
-│   │   └── README.md              # Backend-specific docs
-│   └── frontend/
-│       └── README.md              # Frontend-specific docs
+│   │   ├── SKILL-backend-core.md
+│   │   ├── SKILL-backend-examples.md
+│   │   └── SKILL-backend-patterns.md
+│   ├── frontend/
+│   │   ├── SKILL-frontend-core.md
+│   │   ├── SKILL-frontend-examples.md
+│   │   └── SKILL-frontend-patterns.md
+│   ├── orchestrator/
+│   │   ├── SKILL-orchestrator-core.md
+│   │   ├── SKILL-orchestrator-assignment.md
+│   │   ├── SKILL-orchestrator-examples.md
+│   │   └── SKILL-orchestrator-quality.md
+│   ├── common/                    # Shared skills
+│   ├── devops/                    # DevOps agent skills
+│   ├── qa/                        # QA agent skills
+│   └── SKILL-*.md                 # Legacy monolithic files
 │
-└── packages/
-    └── shared/
-        └── README.md              # Shared package docs
+├── src/                           # Next.js 15 application
+│   ├── app/                       # App Router
+│   │   ├── api/
+│   │   │   ├── projects/          # Project CRUD
+│   │   │   ├── questions/         # Human input endpoints
+│   │   │   ├── tasks/             # Task management
+│   │   │   └── workers/           # Worker status
+│   │   ├── errors/                # Error tracking UI
+│   │   ├── projects/              # Project management UI
+│   │   ├── questions/             # Human input queue UI
+│   │   └── tasks/                 # Task monitoring UI
+│   ├── components/                # React components
+│   └── lib/                       # Utilities
+│
+└── scripts/                       # Dev/test scripts
 ```
 
 ---
@@ -66,14 +97,12 @@ product-factory/
 | Document | Location | Purpose | Updated By |
 |----------|----------|---------|------------|
 | README.md | Root | Project overview | Human |
-| BOOTSTRAP.md | docs/ | One-time setup | Human |
+| CLAUDE.md | Root | Claude Code guidelines | Human |
 | ARCHITECTURE.md | docs/ | System design | Human + Agents |
-| CONTRIBUTING.md | docs/ | Dev workflow | Human |
-| ENVIRONMENTS.md | docs/ | Env details | DevOps Agent |
 | Runbooks | docs/runbooks/ | Operations | DevOps Agent |
 | ADRs | docs/adr/ | Decisions | Human (always) |
-| SKILLs | skills/ | Agent definitions | Human |
-| Component READMEs | apps/*, packages/* | Component docs | Relevant Agent |
+| SKILLs | skills/{agent}/ | Agent prompts (modular) | Human |
+| Package READMEs | packages/core/, packages/db/ | Package docs | Relevant Agent |
 
 ---
 
@@ -121,10 +150,11 @@ Use TypeScript with strict mode for all code.
 
 ```
 # Good: docs next to code
-apps/backend/README.md           # Backend docs in backend folder
+packages/core/README.md          # Core package docs in core folder
+packages/db/README.md            # DB package docs in db folder
 
 # Bad: all docs in one place
-docs/backend-readme.md           # Disconnected from code
+docs/core-readme.md              # Disconnected from code
 ```
 
 ### 3. Version Everything
@@ -169,11 +199,11 @@ git commit -m "docs: migrate documentation to repository"
 ```bash
 # Where to put things:
 
+# Claude Code guidelines
+→ CLAUDE.md
+
 # System architecture
 → docs/ARCHITECTURE.md
-
-# Setup instructions
-→ docs/BOOTSTRAP.md
 
 # How to deploy
 → docs/runbooks/deployment.md
@@ -181,16 +211,25 @@ git commit -m "docs: migrate documentation to repository"
 # Why we chose X
 → docs/adr/NNN-decision-title.md
 
-# How agents work
-→ skills/SKILL-agent-name.md
+# Agent skills (modular)
+→ skills/{agent}/SKILL-{agent}-core.md
+→ skills/{agent}/SKILL-{agent}-examples.md
+→ skills/{agent}/SKILL-{agent}-patterns.md
 
-# Backend API docs
-→ apps/backend/README.md
-→ apps/backend/docs/api.md
+# Agent implementations
+→ packages/core/src/agents/{agent}-agent.ts
 
-# Frontend component docs
-→ apps/frontend/README.md
-→ apps/frontend/docs/components.md
+# Database schema
+→ packages/db/src/schema.ts
+
+# API routes
+→ src/app/api/{resource}/route.ts
+
+# UI pages
+→ src/app/{page}/page.tsx
+
+# React components
+→ src/components/{Component}.tsx
 ```
 
 ---
