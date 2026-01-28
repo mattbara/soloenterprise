@@ -671,6 +671,89 @@ Per your requirement: **Feedback agent notifies, never auto-acts**
 
 ---
 
+## Future Vision: Full Business Automation
+
+> **Status:** VISION — Not committed. Engineering foundation (Phases 3-9) must be complete and stable first.
+
+### The Full Picture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      SOLO ENTERPRISE                            │
+│                   "Your AI Company"                             │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐             │
+│  │   PRODUCT   │  │  ENGINEERING │  │   GROWTH    │             │
+│  │             │  │              │  │             │             │
+│  │  • Product  │  │  • Backend   │  │  • Marketing│             │
+│  │  • Design   │  │  • Frontend  │  │  • Content  │             │
+│  │             │  │  • QA        │  │  • PR       │             │
+│  │             │  │  • DevOps    │  │             │             │
+│  └──────┬──────┘  └──────┬───────┘  └──────┬──────┘             │
+│         │                │                 │                    │
+│         └────────────────┼─────────────────┘                    │
+│                          │                                      │
+│                   ┌──────┴──────┐                               │
+│                   │ ORCHESTRATOR │                               │
+│                   │   (Opus)     │                               │
+│                   └──────┬──────┘                               │
+│                          │                                      │
+│                   ┌──────┴──────┐                               │
+│                   │    HUMAN    │                               │
+│                   │  (Founder)  │                               │
+│                   └─────────────┘                               │
+│                                                                 │
+│  ┌─────────────┐                                                │
+│  │  OPERATIONS │  (Future)                                      │
+│  │  • Finance  │                                                │
+│  │  • Legal    │                                                │
+│  │  • HR       │                                                │
+│  └─────────────┘                                                │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Why Engineering First
+
+Code is **verifiable**. You can run it, test it, see if it works. Marketing copy? Design decisions? Product strategy? These require human judgment.
+
+**Agent Validation Difficulty:**
+
+| Agent | Input | Output | Validation | Difficulty |
+|-------|-------|--------|------------|------------|
+| Backend | Task description | Code files | Tests pass, builds | ✅ Solvable |
+| Frontend | Task description | React components | Tests, renders | ✅ Solvable |
+| QA | Code to test | Test files | Tests run | ✅ Solvable |
+| DevOps | Infra requirements | Terraform/CI | Plan succeeds | ✅ Solvable |
+| Product | Market context | PRDs, specs | Human judgment | ⚠️ Fuzzy |
+| Marketing | Product info | Campaigns, copy | Conversion rates? | ⚠️ Fuzzy |
+| Content | Topics | Blog posts, docs | Engagement? | ⚠️ Fuzzy |
+| Finance | Transactions | Reports, forecasts | Requires integrations | ⚠️ Needs real data |
+| Design | Requirements | Component specs | Subjective | ⚠️ Output unclear |
+
+### Output Format Decisions (Future Agents)
+
+Non-code agents need defined output formats:
+
+| Agent | Output Format | Storage |
+|-------|---------------|---------|
+| Product | Markdown PRDs with YAML frontmatter | `docs/prds/` |
+| Content | Markdown posts | Repo or CMS |
+| Marketing | JSON campaign specs | Automation tools |
+| Finance | JSON reports | Dashboard display |
+| Design | CSS/Tailwind tokens + component specs | Code |
+
+### Sequencing
+
+1. **Engineering agents first** (Phases 3-9) — verifiable, builds foundation
+2. **Product agent next** — feeds into engineering, PRDs are structured
+3. **Design agent** — works with Product, outputs feed Frontend
+4. **Go-to-market agents** — needs a product to market
+5. **Operations agents** — highest risk (financial, legal), last
+
+---
+
 ## Next Steps
 
 1. **Review this architecture** — push back on anything wrong

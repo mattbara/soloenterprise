@@ -18,7 +18,11 @@
       "Bash(for f in /Users/matteobaratella/Projects/PERSONAL_PROJECTS/SoloEnterprise/soloenterprise/skills/orchestrator/SKILL-orchestrator-*.md)",
       "Bash(done)",
       "Bash(pnpm tsc:*)",
-      "Bash(pnpm --filter @soloenterprise/core lint:*)"
+      "Bash(pnpm --filter @soloenterprise/core lint:*)",
+      "Bash(find:*)",
+      "Bash(pnpm --filter @soloenterprise/core build:*)",
+      "Bash(node -e:*)",
+      "Bash(npx tsx:*)"
     ]
   }
 }

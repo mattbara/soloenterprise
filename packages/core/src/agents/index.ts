@@ -6,6 +6,7 @@
 
 export { createEchoWorker, shutdownEchoWorker } from './echo-agent';
 export { createBackendWorker, shutdownBackendWorker } from './backend-agent';
+export { createFrontendWorker, shutdownFrontendWorker } from './frontend-agent';
 
 // Utility exports
 export { parseAgentOutput, validateParsedFiles, type ParsedFile, type ParseResult } from './utils/output-parser';
