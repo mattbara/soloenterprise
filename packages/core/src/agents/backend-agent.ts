@@ -17,6 +17,7 @@ import { validateGeneratedFiles } from './utils/file-validator';
 import { loadSkillsForTask, type TaskComplexity } from './utils/skill-loader';
 import { buildContextWithProfile, getEmptyContextResult, type ProfiledContextResult } from './utils/context-loader';
 import type { ContextProfileName } from './utils/context-profiles';
+import { buildCachedSystemPrompt, extractCacheMetrics, logCacheMetrics } from './utils/cache-helper';
 import { getSharedRedisConnection, closeSharedRedisConnection } from '../utils/index';
 
 const QUEUE_NAME = 'backend-tasks';
@@ -43,6 +44,11 @@ interface TokenMetrics {
   tablesLoaded: number;
   routeExamplesLoaded: number;
   serviceExamplesLoaded: number;
+  // Cache metrics
+  cacheCreationInputTokens: number;
+  cacheReadInputTokens: number;
+  cacheHitPercent: number;
+  estimatedSavingsPercent: number;
 }
 
 function logTokenBaseline(metrics: TokenMetrics): void {
@@ -193,21 +199,24 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
     console.log(`[BackendAgent] Schema included: ${codebaseContext.schemaIncluded}, Tables: ${codebaseContext.tablesLoaded}`);
     console.log(`[BackendAgent] Context tokens: ~${codebaseContext.tokens}`);
 
-    // Build prompt with codebase context prepended
-    const basePrompt = buildPrompt(name, description, context);
-    const userPrompt = codebaseContext.content
-      ? `${codebaseContext.content}\n\n${basePrompt}`
-      : basePrompt;
+    // Build user prompt (task-specific, not cached)
+    // Note: codebase context is now in the cached system prompt
+    const userPrompt = buildPrompt(name, description, context);
 
     console.log('[BackendAgent] Calling Claude API...');
 
-    // Call Claude API
+    // Build cached system prompt for cost optimization
+    // SKILL files are cached (static across tasks, ~1800-2100 tokens)
+    // Codebase context is NOT cached (varies per task)
+    const cachedSystem = buildCachedSystemPrompt(skillContent, codebaseContext.content);
+
+    // Call Claude API with cached system prompt
     const client = getAnthropicClient();
     const response = await client.messages.create({
       model: MODEL,
       max_tokens: MAX_TOKENS,
       temperature: TEMPERATURE,
-      system: skillContent,
+      system: cachedSystem,
       messages: [
         {
           role: 'user',
@@ -229,6 +238,10 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
     // Parse the response
     const parseResult = parseAgentOutput(responseText);
 
+    // Extract cache metrics from API response
+    const cacheMetrics = extractCacheMetrics(response.usage);
+    logCacheMetrics('BackendAgent', cacheMetrics);
+
     // Log token baseline metrics
     logTokenBaseline({
       taskId,
@@ -236,7 +249,7 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
       inputTokens: response.usage?.input_tokens ?? 0,
       outputTokens: response.usage?.output_tokens ?? 0,
       skillTokens,
-      contextTokens: Math.ceil(basePrompt.length / 4),
+      contextTokens: Math.ceil(userPrompt.length / 4),
       codebaseContextTokens: codebaseContext.tokens,
       questionsAsked: parseResult.hasQuestions ? 1 : 0,
       filesGenerated: parseResult.files.length,
@@ -248,6 +261,11 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
       tablesLoaded: codebaseContext.tablesLoaded,
       routeExamplesLoaded: codebaseContext.routeExamplesLoaded,
       serviceExamplesLoaded: codebaseContext.serviceExamplesLoaded,
+      // Cache metrics
+      cacheCreationInputTokens: cacheMetrics.cacheCreationInputTokens,
+      cacheReadInputTokens: cacheMetrics.cacheReadInputTokens,
+      cacheHitPercent: cacheMetrics.cacheHitPercent,
+      estimatedSavingsPercent: cacheMetrics.estimatedSavingsPercent,
     });
 
     // Handle questions if present
