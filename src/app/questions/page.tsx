@@ -3,23 +3,36 @@ import { questions, tasks } from "@soloenterprise/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { MarkdownRenderer, PriorityBadge } from "@/components";
+import { enqueueTask } from "@soloenterprise/core/queue";
 
 export const dynamic = "force-dynamic";
 
 async function answerQuestion(formData: FormData) {
   "use server";
 
+  console.log("[QuestionAnswer] Server action invoked");
+
   const questionId = formData.get("questionId") as string;
   const answer = formData.get("answer") as string;
 
-  if (!questionId || !answer) return;
+  console.log(`[QuestionAnswer] Received: questionId=${questionId}, answer=${answer?.substring(0, 50)}...`);
+
+  if (!questionId || !answer) {
+    console.log("[QuestionAnswer] Missing questionId or answer, returning early");
+    return;
+  }
 
   // Get the question to find its task
   const question = await db.query.questions.findFirst({
     where: eq(questions.id, questionId),
   });
 
-  if (!question) return;
+  if (!question) {
+    console.log(`[QuestionAnswer] Question ${questionId} not found`);
+    return;
+  }
+
+  console.log(`[QuestionAnswer] Found question, taskId=${question.taskId}`);
 
   // Check if user wants to cancel the task
   const isCancelled = answer.toLowerCase().trim() === "cancelled";
@@ -46,17 +59,70 @@ async function answerQuestion(formData: FormData) {
           completedAt: new Date(),
         })
         .where(eq(tasks.id, question.taskId));
+
+      console.log(`[QuestionAnswer] Task ${question.taskId} cancelled by user`);
     } else {
-      // Set task to processing_answer status with timestamp for progress tracking
-      await db
-        .update(tasks)
-        .set({
-          status: "processing_answer",
-          processingStartedAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .where(eq(tasks.id, question.taskId));
+      // Get the task to update context with the Q&A
+      const task = await db.query.tasks.findFirst({
+        where: eq(tasks.id, question.taskId),
+      });
+
+      console.log(`[QuestionAnswer] Task found: id=${task?.id}, status=${task?.status}, agentType=${task?.agentType}`);
+
+      if (task && (task.status === "waiting_human" || task.status === "pending")) {
+        // Add the Q&A to the task context for the next processing attempt
+        const existingContext = (task.context as Record<string, unknown>) ?? {};
+        const answeredQuestions = (existingContext.answeredQuestions as Array<{ question: string; answer: string }>) ?? [];
+
+        answeredQuestions.push({
+          question: question.question,
+          answer: answer,
+        });
+
+        // Update task context with the Q&A history
+        await db
+          .update(tasks)
+          .set({
+            context: {
+              ...existingContext,
+              answeredQuestions,
+            },
+            updatedAt: new Date(),
+          })
+          .where(eq(tasks.id, question.taskId));
+
+        // Re-queue the task to the appropriate agent queue
+        console.log(`[QuestionAnswer] Attempting to re-queue task ${task.id} to ${task.agentType} queue...`);
+        console.log(`[QuestionAnswer] REDIS_URL present: ${!!process.env.REDIS_URL}`);
+
+        try {
+          const job = await enqueueTask(
+            task.id,
+            task.agentType as "backend" | "frontend" | "qa" | "orchestrator" | "devops" | "feedback",
+            task.priority as "critical" | "high" | "medium" | "low"
+          );
+          console.log(`[QuestionAnswer] SUCCESS - Task ${task.id} re-queued to ${task.agentType} queue, job ID: ${job.id}`);
+        } catch (queueError) {
+          console.error(`[QuestionAnswer] FAILED to re-queue task ${task.id}:`, queueError);
+          console.error(`[QuestionAnswer] Error details:`, String(queueError));
+          // Still update status to pending even if queue fails, so it can be manually retried
+          await db
+            .update(tasks)
+            .set({
+              status: "pending",
+              updatedAt: new Date(),
+            })
+            .where(eq(tasks.id, question.taskId));
+          console.log(`[QuestionAnswer] Task ${task.id} set to pending status for manual retry`);
+        }
+      } else if (task) {
+        console.log(`[QuestionAnswer] Task ${task.id} is in status '${task.status}', not re-queuing`);
+      } else {
+        console.log(`[QuestionAnswer] Task not found for taskId ${question.taskId}`);
+      }
     }
+  } else {
+    console.log(`[QuestionAnswer] No taskId associated with question ${questionId}`);
   }
 
   revalidatePath("/questions");
@@ -128,10 +194,10 @@ export default async function QuestionsPage() {
                         <MarkdownRenderer content={question.context} className="text-gray-600" />
                       </div>
                     )}
-                    
+
                     <form action={answerQuestion} className="mt-4">
                       <input type="hidden" name="questionId" value={question.id} />
-                      
+
                       {question.suggestedAnswers && question.suggestedAnswers.length > 0 ? (
                         <div className="space-y-2 mb-4">
                           <p className="text-sm font-medium text-gray-700">Suggested answers:</p>
@@ -157,7 +223,7 @@ export default async function QuestionsPage() {
                           </label>
                         </div>
                       ) : null}
-                      
+
                       <div className="flex space-x-2">
                         <input
                           type="text"

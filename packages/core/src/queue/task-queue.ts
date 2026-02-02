@@ -126,6 +126,13 @@ export async function enqueueTask(
 
   const queue = getQueue(agentType);
 
+  // Use timestamp in job ID to ensure uniqueness when re-queuing after human answers
+  // Without this, re-queuing the same task (e.g., after answering a question) would
+  // silently fail because BullMQ ignores duplicate job IDs
+  const jobId = `task-${taskId}-attempt-${task.attemptCount + 1}-${Date.now()}`;
+
+  console.log(`[TaskQueue] Adding job ${jobId} to ${agentType} queue...`);
+
   const job = await queue.add(
     task.name,
     {
@@ -140,7 +147,7 @@ export async function enqueueTask(
     },
     {
       priority: priorityMap[priority],
-      jobId: `task-${taskId}-attempt-${task.attemptCount + 1}`,
+      jobId,
     }
   );
 
@@ -153,7 +160,7 @@ export async function enqueueTask(
     })
     .where(eq(tasks.id, taskId));
 
-  console.log(`[TaskQueue] Enqueued task ${taskId} to ${agentType} queue`);
+  console.log(`[TaskQueue] Enqueued task ${taskId} to ${agentType} queue (job: ${job.id})`);
 
   return job;
 }

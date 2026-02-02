@@ -44,7 +44,7 @@ interface WorkerStatusData {
 }
 
 interface WorkerStatusProps {
-  workerType?: "backend" | "frontend" | "echo";
+  workerType?: "backend" | "frontend" | "qa" | "echo";
   initialStatus?: WorkerStatusData | null;
 }
 

@@ -163,6 +163,7 @@ export const tasks = pgTable('tasks', {
     acceptanceCriteria?: string[];
     relatedFiles?: string[];
     previousAttempts?: { attemptNumber: number; error: string; timestamp: string }[];
+    answeredQuestions?: { question: string; answer: string }[];
   }>().default({}),
   
   // Output

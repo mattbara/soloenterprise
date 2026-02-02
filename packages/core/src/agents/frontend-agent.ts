@@ -113,6 +113,19 @@ function buildPrompt(
     parts.push('');
   }
 
+  // Include answered questions from previous human interaction
+  if (context.answeredQuestions && Array.isArray(context.answeredQuestions)) {
+    parts.push('\n**Previously Asked Questions (Human has answered these):**');
+    for (const qa of context.answeredQuestions) {
+      const typedQA = qa as { question: string; answer: string };
+      parts.push(`\nQ: ${typedQA.question}`);
+      parts.push(`A: ${typedQA.answer}`);
+    }
+    parts.push('\n');
+    parts.push('**IMPORTANT:** Use the answers above to guide your implementation. Do NOT ask these questions again.');
+    parts.push('');
+  }
+
   parts.push('\n---\n');
   parts.push('Please analyze this task and provide your implementation following the output format specified in your skill definition.');
   parts.push('Remember to output all code files using the <file path="...">content</file> XML format.');
