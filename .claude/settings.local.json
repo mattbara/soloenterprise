@@ -22,7 +22,10 @@
       "Bash(find:*)",
       "Bash(pnpm --filter @soloenterprise/core build:*)",
       "Bash(node -e:*)",
-      "Bash(npx tsx:*)"
+      "Bash(npx tsx:*)",
+      "Bash(ls:*)",
+      "Bash(pnpm --filter @soloenterprise/core exec tsc --noEmit)",
+      "Bash(git diff:*)"
     ]
   }
 }

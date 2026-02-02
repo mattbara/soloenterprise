@@ -19,7 +19,8 @@
     "worker": "tsx src/worker.ts",
     "worker:echo": "tsx src/worker.ts echo",
     "worker:backend": "tsx src/worker.ts backend",
-    "worker:frontend": "tsx src/worker.ts frontend"
+    "worker:frontend": "tsx src/worker.ts frontend",
+    "worker:qa": "tsx src/worker.ts qa"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

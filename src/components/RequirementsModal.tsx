@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Modal } from "./Modal";
 import { Button } from "./Button";
 
-type AgentType = "backend" | "frontend";
+type AgentType = "backend" | "frontend" | "qa";
 
 interface Project {
   id: string;
@@ -218,11 +218,14 @@ export function RequirementsModal({
           >
             <option value="backend">Backend</option>
             <option value="frontend">Frontend</option>
+            <option value="qa">QA</option>
           </select>
           <p className="mt-1 text-xs text-gray-500">
             {agentType === "backend"
               ? "API routes, database queries, services, etc."
-              : "React components, pages, hooks, etc."}
+              : agentType === "frontend"
+              ? "React components, pages, hooks, etc."
+              : "Unit tests, component tests, integration tests (Vitest + React Testing Library)"}
           </p>
         </div>
 

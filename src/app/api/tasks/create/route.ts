@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { createTask } from "@soloenterprise/core/services";
 
-type AgentType = "backend" | "frontend";
+type AgentType = "backend" | "frontend" | "qa";
 
-const VALID_AGENT_TYPES: AgentType[] = ["backend", "frontend"];
+const VALID_AGENT_TYPES: AgentType[] = ["backend", "frontend", "qa"];
 
 export async function POST(request: Request) {
   try {
