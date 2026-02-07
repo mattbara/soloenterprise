@@ -13,8 +13,8 @@ import { parse as parseYaml } from 'yaml';
 
 export type AgentType = 'backend' | 'frontend' | 'qa' | 'devops';
 export type TaskPriority = 'critical' | 'high' | 'medium' | 'low';
-export type TaskStatus = 'pending' | 'queued' | 'running' | 'blocked' | 'completed' | 'failed';
-export type QuestionCategory = 'architecture' | 'design' | 'security' | 'technical' | 'strategic';
+export type TaskStatus = 'pending' | 'queued' | 'running' | 'blocked' | 'completed' | 'failed' | 'waiting_human';
+export type QuestionCategory = 'architecture' | 'design' | 'security' | 'technical' | 'strategic' | 'business_logic' | 'architectural';
 export type QuestionPriority = 'critical' | 'high' | 'medium';
 export type FileLockAction = 'acquire' | 'release';
 export type OrchestratorActionType =
@@ -25,6 +25,7 @@ export type OrchestratorActionType =
   | 'assign_task'
   | 'complete_task'
   | 'create_question'
+  | 'request_clarification'    // Orchestrator asking questions before acting
   | 'promote_environment'
   | 'answer_pending_question'  // Orchestrator answering its own questions
   | 'review_progress'          // Orchestrator checking task status
@@ -80,8 +81,8 @@ export interface OrchestratorParseResult {
 
 const VALID_AGENTS: AgentType[] = ['backend', 'frontend', 'qa', 'devops'];
 const VALID_TASK_PRIORITIES: TaskPriority[] = ['critical', 'high', 'medium', 'low'];
-const VALID_TASK_STATUSES: TaskStatus[] = ['pending', 'queued', 'running', 'blocked', 'completed', 'failed'];
-const VALID_QUESTION_CATEGORIES: QuestionCategory[] = ['architecture', 'design', 'security', 'technical', 'strategic'];
+const VALID_TASK_STATUSES: TaskStatus[] = ['pending', 'queued', 'running', 'blocked', 'completed', 'failed', 'waiting_human'];
+const VALID_QUESTION_CATEGORIES: QuestionCategory[] = ['architecture', 'design', 'security', 'technical', 'strategic', 'business_logic', 'architectural'];
 const VALID_QUESTION_PRIORITIES: QuestionPriority[] = ['critical', 'high', 'medium'];
 const VALID_FILE_LOCK_ACTIONS: FileLockAction[] = ['acquire', 'release'];
 const VALID_ACTIONS: OrchestratorActionType[] = [
@@ -92,6 +93,7 @@ const VALID_ACTIONS: OrchestratorActionType[] = [
   'assign_task',
   'complete_task',
   'create_question',
+  'request_clarification',
   'promote_environment',
   'answer_pending_question',
   'review_progress',
@@ -389,10 +391,12 @@ function parseFileLock(raw: unknown, index: number): OrchestratorFileLock | null
 
   const obj = raw as Record<string, unknown>;
 
-  // Validate required fields
-  if (!isValidFileLockAction(obj.action)) {
-    console.warn(`[OrchestratorParser] File lock at index ${index} has invalid action '${obj.action}', expected one of: ${VALID_FILE_LOCK_ACTIONS.join(', ')}`);
-    return null;
+  // Default action to 'acquire' if not specified (orchestrator often omits it in decompose output)
+  let action: FileLockAction = 'acquire';
+  if (isValidFileLockAction(obj.action)) {
+    action = obj.action;
+  } else if (obj.action !== undefined) {
+    console.warn(`[OrchestratorParser] File lock at index ${index} has invalid action '${obj.action}', defaulting to 'acquire'`);
   }
 
   if (typeof obj.path !== 'string' || !obj.path.trim()) {
@@ -400,16 +404,17 @@ function parseFileLock(raw: unknown, index: number): OrchestratorFileLock | null
     return null;
   }
 
-  const taskId = obj.task_id ?? obj.taskId;
+  // Accept multiple property names for task ID: task_id, taskId, locked_by
+  const taskId = obj.task_id ?? obj.taskId ?? obj.locked_by;
   if (typeof taskId !== 'string' || !taskId.trim()) {
-    console.warn(`[OrchestratorParser] File lock at index ${index} missing required 'task_id' field`);
+    console.warn(`[OrchestratorParser] File lock at index ${index} missing required 'task_id'/'locked_by' field`);
     return null;
   }
 
   return {
-    action: obj.action,
+    action,
     path: obj.path.trim(),
-    taskId: taskId.trim(),
+    taskId: (taskId as string).trim(),
   };
 }
 
@@ -508,7 +513,23 @@ export function parseOrchestratorOutput(responseText: string): OrchestratorParse
   const fileLocks = data.file_locks ?? data.fileLocks;
   if (Array.isArray(fileLocks)) {
     for (let i = 0; i < fileLocks.length; i++) {
-      const lock = parseFileLock(fileLocks[i], i);
+      const raw = fileLocks[i] as Record<string, unknown> | null;
+      if (!raw || typeof raw !== 'object') continue;
+
+      // Handle { files: ['a.ts', 'b.ts'], task_id: 'X' } format — expand to multiple locks
+      if (Array.isArray(raw.files) && !raw.path) {
+        for (const file of raw.files) {
+          if (typeof file === 'string' && file.trim()) {
+            const expanded = { ...raw, path: file };
+            delete expanded.files;
+            const lock = parseFileLock(expanded, i);
+            if (lock) result.fileLocks.push(lock);
+          }
+        }
+        continue;
+      }
+
+      const lock = parseFileLock(raw, i);
       if (lock) {
         result.fileLocks.push(lock);
       }

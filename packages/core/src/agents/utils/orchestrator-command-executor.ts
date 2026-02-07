@@ -212,14 +212,25 @@ async function createTasks(
 
 /**
  * Apply status updates to existing tasks.
+ *
+ * @param parentTaskId - The orchestrator's own task ID (to skip self-referencing updates)
  */
 async function applyStatusUpdates(
-  statusUpdates: OrchestratorStatusUpdate[]
+  statusUpdates: OrchestratorStatusUpdate[],
+  parentTaskId: string
 ): Promise<{ updated: string[]; errors: string[] }> {
   const updated: string[] = [];
   const errors: string[] = [];
 
   for (const update of statusUpdates) {
+    // Skip self-referencing status updates — the orchestrator agent code already
+    // handles its own task status (completed/failed/waiting_human).
+    // Also handle truncated UUIDs (e.g., "b5819951" matching "b5819951-e9d9-4792-...")
+    if (update.taskId === parentTaskId || parentTaskId.startsWith(update.taskId)) {
+      console.log(`[CommandExecutor] Skipping self-referencing status update for orchestrator task ${update.taskId}`);
+      continue;
+    }
+
     try {
       // Verify task exists
       const task = await db.query.tasks.findFirst({
@@ -410,9 +421,9 @@ export async function executeOrchestratorCommands(
     idMapping = taskResult.idMapping;
   }
 
-  // 2. Apply status updates
+  // 2. Apply status updates (pass parentTaskId to skip self-referencing updates)
   if (parseResult.statusUpdates.length > 0) {
-    const statusResult = await applyStatusUpdates(parseResult.statusUpdates);
+    const statusResult = await applyStatusUpdates(parseResult.statusUpdates, parentTaskId);
     result.statusesUpdated = statusResult.updated;
     result.errors.push(...statusResult.errors);
   }
