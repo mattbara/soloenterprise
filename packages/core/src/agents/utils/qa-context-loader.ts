@@ -4,11 +4,18 @@
  * Loads source files, existing test patterns, and schema for QA agent prompts.
  * QA context is different from backend/frontend - it focuses on the code TO TEST,
  * not on route/service examples.
+ *
+ * Also loads generated files from dependency tasks (e.g., backend/frontend tasks)
+ * so QA can see the code it needs to test.
  */
 
 import { readFile, readdir } from 'fs/promises';
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import { existsSync, readdirSync, statSync, readFileSync } from 'fs';
+import { db } from '@soloenterprise/db';
+import { tasks } from '@soloenterprise/db/schema';
+import { eq, inArray } from 'drizzle-orm';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MAX_LINES = 500;
@@ -27,11 +34,124 @@ export interface QAContextResult {
   sourceFilesLoaded: number;
   hasExistingTests: boolean;
   hasSchema: boolean;
+  dependencyArtifactsLoaded: number;
+}
+
+interface DependencyArtifact {
+  taskId: string;
+  taskName: string;
+  filePath: string;
+  content: string;
 }
 
 function getRepoRoot(): string {
   // From packages/core/src/agents/utils -> repo root
   return resolve(__dirname, '../../../../../');
+}
+
+/**
+ * Get the generated files directory for a task.
+ */
+function getGeneratedTaskDir(taskId: string): string {
+  // From packages/core/src/agents/utils -> packages/core/generated/tasks/{taskId}
+  return resolve(__dirname, '../../../generated/tasks', taskId);
+}
+
+/**
+ * Recursively get all files in a directory (synchronous version).
+ */
+function getAllFilesSync(dir: string): string[] {
+  const files: string[] = [];
+
+  if (!existsSync(dir)) return files;
+
+  try {
+    const entries = readdirSync(dir, { withFileTypes: true });
+
+    for (const entry of entries) {
+      const fullPath = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        files.push(...getAllFilesSync(fullPath));
+      } else {
+        files.push(fullPath);
+      }
+    }
+  } catch {
+    // Ignore errors
+  }
+
+  return files;
+}
+
+/**
+ * Load generated files from dependency tasks.
+ * This allows QA to see the code it needs to test.
+ */
+async function loadDependencyArtifacts(taskId: string): Promise<DependencyArtifact[]> {
+  // Get the task and its dependencies
+  const task = await db.query.tasks.findFirst({
+    where: eq(tasks.id, taskId),
+  });
+
+  if (!task) {
+    console.log(`[QAContextLoader] Task ${taskId} not found`);
+    return [];
+  }
+
+  const deps = task.dependsOn as string[] | null;
+  if (!deps || deps.length === 0) {
+    console.log('[QAContextLoader] Task has no dependencies');
+    return [];
+  }
+
+  console.log(`[QAContextLoader] Loading artifacts from ${deps.length} dependency task(s)`);
+
+  const results: DependencyArtifact[] = [];
+
+  // Get dependency task info
+  const depTasks = await db.query.tasks.findMany({
+    where: inArray(tasks.id, deps),
+  });
+
+  for (const depTask of depTasks) {
+    // Read files from generated/tasks/{depTaskId}/
+    const taskDir = getGeneratedTaskDir(depTask.id);
+
+    if (!existsSync(taskDir)) {
+      console.log(`[QAContextLoader] No generated files for dependency ${depTask.id} (${depTask.name})`);
+      continue;
+    }
+
+    // Read all generated files
+    const files = getAllFilesSync(taskDir);
+
+    for (const filePath of files) {
+      // Skip manifest.json and other non-source files
+      if (filePath.endsWith('manifest.json')) continue;
+      // Skip existing test files
+      if (filePath.includes('.test.') || filePath.includes('.spec.')) continue;
+      // Skip hidden files
+      if (filePath.split('/').pop()?.startsWith('.')) continue;
+
+      try {
+        const content = readFileSync(filePath, 'utf-8');
+        const relativePath = filePath.replace(taskDir + '/', '');
+
+        results.push({
+          taskId: depTask.id,
+          taskName: depTask.name,
+          filePath: relativePath,
+          content,
+        });
+
+        console.log(`[QAContextLoader] Loaded dependency artifact: ${relativePath} from "${depTask.name}"`);
+      } catch (err) {
+        console.error(`[QAContextLoader] Failed to read ${filePath}:`, err);
+      }
+    }
+  }
+
+  return results;
 }
 
 async function safeReadFile(filePath: string): Promise<string | null> {
@@ -184,10 +304,15 @@ async function loadSchema(repoRoot: string): Promise<string | null> {
 
 /**
  * Build QA context for the agent.
+ *
+ * @param taskDescription - The task description
+ * @param explicitSourceFiles - Optional explicit source file paths
+ * @param taskId - Optional task ID to load dependency artifacts
  */
 export async function buildQAContext(
   taskDescription: string,
-  explicitSourceFiles?: string[]
+  explicitSourceFiles?: string[],
+  taskId?: string
 ): Promise<QAContextResult> {
   const repoRoot = getRepoRoot();
 
@@ -195,16 +320,23 @@ export async function buildQAContext(
   const inferredFiles = extractSourceFilePaths(taskDescription);
   const filesToLoad = explicitSourceFiles?.length ? explicitSourceFiles : inferredFiles;
 
-  // 2. Load source files
+  // 2. Load source files from codebase
   const sourceFiles = await loadSourceFiles(repoRoot, filesToLoad);
 
-  // 3. Load existing test patterns
+  // 3. Load artifacts from dependency tasks (CRITICAL for QA to see generated code)
+  let dependencyArtifacts: DependencyArtifact[] = [];
+  if (taskId) {
+    dependencyArtifacts = await loadDependencyArtifacts(taskId);
+    console.log(`[QAContextLoader] Loaded ${dependencyArtifacts.length} files from dependencies`);
+  }
+
+  // 4. Load existing test patterns
   const existingTestPatterns = await findExistingTestPatterns(repoRoot);
 
-  // 4. Load test config
+  // 5. Load test config
   const testConfig = await loadTestConfig(repoRoot);
 
-  // 5. Load schema if task involves data operations
+  // 6. Load schema if task involves data operations
   const needsSchema = /database|db|schema|model|entity|data|crud/i.test(taskDescription);
   const schema = needsSchema ? await loadSchema(repoRoot) : null;
 
@@ -213,10 +345,24 @@ export async function buildQAContext(
 
   sections.push('## QA Testing Context\n');
 
-  // Source files (most important for QA)
+  // Dependency artifacts (MOST IMPORTANT - these are the files QA needs to test)
+  if (dependencyArtifacts.length > 0) {
+    sections.push('### Source Files From Dependencies\n');
+    sections.push('**IMPORTANT:** These are the files you need to write tests for. They were generated by previous tasks.\n\n');
+
+    for (const artifact of dependencyArtifacts) {
+      sections.push(`#### ${artifact.filePath}\n`);
+      sections.push(`*From task: "${artifact.taskName}"*\n`);
+      sections.push('```typescript');
+      sections.push(artifact.content);
+      sections.push('```\n');
+    }
+  }
+
+  // Source files from codebase
   if (sourceFiles.length > 0) {
-    sections.push('### Source Files to Test\n');
-    sections.push('These are the files you need to write tests for:\n');
+    sections.push('### Source Files from Codebase\n');
+    sections.push('Additional files from the existing codebase:\n');
 
     for (const file of sourceFiles) {
       sections.push(`#### ${file.path}\n`);
@@ -224,9 +370,12 @@ export async function buildQAContext(
       sections.push(file.content);
       sections.push('```\n');
     }
-  } else {
+  }
+
+  // Warning if no source files at all
+  if (dependencyArtifacts.length === 0 && sourceFiles.length === 0) {
     sections.push('### Source Files\n');
-    sections.push('**WARNING:** No source files were loaded. You may need to ask for specific file paths.\n');
+    sections.push('**WARNING:** No source files were loaded from dependencies or codebase. You may need to ask for specific file paths or check if dependency tasks have completed.\n');
   }
 
   // Existing test patterns
@@ -257,7 +406,13 @@ export async function buildQAContext(
   const content = sections.join('\n');
   const tokens = Math.ceil(content.length / CHARS_PER_TOKEN);
 
-  console.log(`[QAContextLoader] Loaded ${sourceFiles.length} source files, ~${tokens} tokens`);
+  // Calculate dependency artifact tokens
+  const dependencyTokens = dependencyArtifacts.reduce(
+    (sum, a) => sum + Math.ceil(a.content.length / CHARS_PER_TOKEN),
+    0
+  );
+
+  console.log(`[QAContextLoader] Loaded ${sourceFiles.length} codebase files, ${dependencyArtifacts.length} dependency artifacts (~${dependencyTokens} tokens), total ~${tokens} tokens`);
 
   return {
     content,
@@ -265,6 +420,7 @@ export async function buildQAContext(
     sourceFilesLoaded: sourceFiles.length,
     hasExistingTests: existingTestPatterns !== null,
     hasSchema: schema !== null,
+    dependencyArtifactsLoaded: dependencyArtifacts.length,
   };
 }
 
@@ -278,5 +434,6 @@ export function getEmptyQAContextResult(): QAContextResult {
     sourceFilesLoaded: 0,
     hasExistingTests: false,
     hasSchema: false,
+    dependencyArtifactsLoaded: 0,
   };
 }

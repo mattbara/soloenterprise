@@ -164,6 +164,14 @@ export const tasks = pgTable('tasks', {
     relatedFiles?: string[];
     previousAttempts?: { attemptNumber: number; error: string; timestamp: string }[];
     answeredQuestions?: { question: string; answer: string }[];
+    // Blocking state (set when dependency fails)
+    blockedReason?: string | null;
+    blockedByTaskId?: string | null;
+    blockedAt?: string | null;
+    unblockedAt?: string | null;
+    // Syntax recovery tracking
+    syntaxRecoveryAttempts?: { fixLoops: number; fullRetries: number; fixTokensUsed: number };
+    finalSyntaxErrors?: Array<{ file: string; line?: number; message: string }>;
   }>().default({}),
   
   // Output
@@ -196,6 +204,18 @@ export const tasks = pgTable('tasks', {
 
   // Syntax validation warnings (stored separately for easy querying)
   warnings: jsonb('warnings').$type<Array<{ file: string; line?: number; message: string }>>(),
+
+  // Token consumption metrics for tracking API usage
+  tokenMetrics: jsonb('token_metrics').$type<{
+    inputTokens?: number;
+    outputTokens?: number;
+    skillTokens?: number;
+    contextTokens?: number;
+    cacheCreationInputTokens?: number;
+    cacheReadInputTokens?: number;
+    cacheHitPercent?: number;
+    estimatedSavingsPercent?: number;
+  }>(),
 }, (table) => ({
   projectIdx: index('tasks_project_idx').on(table.projectId),
   statusIdx: index('tasks_status_idx').on(table.status),

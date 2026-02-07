@@ -71,6 +71,8 @@ async function start() {
     shutdownFrontendWorker,
     createQAWorker,
     shutdownQAWorker,
+    createOrchestratorWorker,
+    shutdownOrchestratorWorker,
   } = await import('./agents/index');
 
   const {
@@ -82,6 +84,7 @@ async function start() {
   } = await import('./services/worker-registry');
 
   const { publishTaskEvent } = await import('./services/task-events');
+  const { resolveCompletedDependency, handleFailedDependency, unblockDependentTasks } = await import('./services/dependency-resolver');
 
   // Helper to setup worker event handlers
   function setupWorkerEvents(worker: Worker, type: WorkerType) {
@@ -101,6 +104,12 @@ async function start() {
           timestamp: Date.now(),
         });
         console.log(`[Worker] Published task-completed event for ${taskId}`);
+
+        // Check if any blocked tasks can now be queued
+        await resolveCompletedDependency(taskId);
+
+        // Also check for previously blocked tasks that can now be unblocked
+        await unblockDependentTasks(taskId);
       }
     });
 
@@ -118,6 +127,9 @@ async function start() {
           timestamp: Date.now(),
         });
         console.log(`[Worker] Published task-failed event for ${taskId}`);
+
+        // Mark dependent tasks as blocked since this task failed
+        await handleFailedDependency(taskId);
       }
     });
 
@@ -161,6 +173,15 @@ async function start() {
     workers.push({ worker: qaWorker, shutdown: shutdownQAWorker, type: 'qa' });
     await registerWorker('qa', process.pid);
     console.log('[Worker] QA agent worker started and registered');
+  }
+
+  if (workerType === 'all' || workerType === 'orchestrator') {
+    console.log('[Worker] Starting Orchestrator agent worker...');
+    const orchestratorWorker = createOrchestratorWorker();
+    setupWorkerEvents(orchestratorWorker, 'orchestrator');
+    workers.push({ worker: orchestratorWorker, shutdown: shutdownOrchestratorWorker, type: 'orchestrator' });
+    await registerWorker('orchestrator', process.pid);
+    console.log('[Worker] Orchestrator agent worker started and registered');
   }
 
   // Start heartbeat interval

@@ -3,6 +3,56 @@
 <!-- Token Target: 1,500-2,000 tokens -->
 <!-- Load When: Project kickoff, first-time patterns only -->
 
+## Pattern: New Client Project (Full Flow)
+
+```yaml
+# Input: Approved project scope for "E-commerce API" (see Project Scoper examples)
+
+# Step 1: Create project from scope
+action: create_project
+project:
+  id: PRJ-001
+  name: E-commerce API
+  client: Example Corp
+  scope_id: SCOPE-001
+  status: active
+
+# Step 2: Generate tasks from scope requirements
+tasks:
+  # Milestone 1: Auth + Products
+  - task: PRJ-001-TASK-001
+    project_id: PRJ-001
+    milestone: "Auth + Products"
+    name: User registration endpoint
+    agent: backend
+    description: POST /api/auth/register with email/password, JWT tokens
+    dependencies: []
+
+  - task: PRJ-001-TASK-002
+    project_id: PRJ-001
+    milestone: "Auth + Products"
+    name: User login endpoint
+    agent: backend
+    description: POST /api/auth/login with JWT token response
+    dependencies: [PRJ-001-TASK-001]
+
+  - task: PRJ-001-TASK-003
+    project_id: PRJ-001
+    milestone: "Auth + Products"
+    name: Auth tests
+    agent: qa
+    description: Unit and integration tests for auth endpoints
+    dependencies: [PRJ-001-TASK-002]
+
+  # ... continued for all requirements
+
+# Step 3: Queue Milestone 1 tasks (no dependencies met check needed for first batch)
+queued: [PRJ-001-TASK-001]
+blocked: [PRJ-001-TASK-002, PRJ-001-TASK-003]  # Waiting on dependencies
+```
+
+---
+
 ## Task Decomposition Patterns
 
 ### Pattern: New Feature

@@ -518,6 +518,8 @@ agent:
 | Frontend Engineer | Sonnet 4.5 | Code generation |
 | QA Engineer | Sonnet 4.5 | Test generation |
 | DevOps Engineer | Sonnet 4.5 | Infrastructure code |
+| Project Scoper | Opus 4.5 | Business judgment for scoping |
+| Client Reporter | Sonnet 4.5 | Structured report generation |
 | Feedback Analyst | Sonnet 4.5 | Analysis |
 
 ---
@@ -668,53 +670,73 @@ Per your requirement: **Feedback agent notifies, never auto-acts**
 7. **No PR merge without passing build gate** ← NEW
 8. **Escalate to human after 3 failed PR attempts** ← NEW
 9. **Prettier auto-fixes, never blocks** ← NEW
+10. **Every project starts with a scoped brief — no coding without written scope**
+11. **Client reports generated weekly for active projects — not optional**
+12. **Token costs tracked per project — maps to billing**
 
 ---
 
 ## Future Vision: Full Business Automation
 
-> **Status:** VISION — Not committed. Engineering foundation (Phases 3-9) must be complete and stable first.
+> **Status:** ACTIVE DEVELOPMENT — Business operations agents (Project Scoper, Client Reporter) are prioritized immediately after Orchestrator. Engineering foundation is necessary but not sufficient.
 
 ### The Full Picture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                      SOLO ENTERPRISE                            │
-│                   "Your AI Company"                             │
+│               "AI-Powered Software Consultancy"                 │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐             │
-│  │   PRODUCT   │  │  ENGINEERING │  │   GROWTH    │             │
-│  │             │  │              │  │             │             │
-│  │  • Product  │  │  • Backend   │  │  • Marketing│             │
-│  │  • Design   │  │  • Frontend  │  │  • Content  │             │
-│  │             │  │  • QA        │  │  • PR       │             │
-│  │             │  │  • DevOps    │  │             │             │
-│  └──────┬──────┘  └──────┬───────┘  └──────┬──────┘             │
-│         │                │                 │                    │
-│         └────────────────┼─────────────────┘                    │
-│                          │                                      │
-│                   ┌──────┴──────┐                               │
-│                   │ ORCHESTRATOR │                               │
-│                   │   (Opus)     │                               │
-│                   └──────┬──────┘                               │
-│                          │                                      │
-│                   ┌──────┴──────┐                               │
-│                   │    HUMAN    │                               │
-│                   │  (Founder)  │                               │
-│                   └─────────────┘                               │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │              CONSULTING PIPELINE                        │   │
+│  │                                                         │   │
+│  │  Client Brief → Scope → Estimate → Execute → Deliver   │   │
+│  │                                                         │   │
+│  │  • Project Scoper (Opus) — briefs → structured specs    │   │
+│  │  • Client Reporter (Sonnet) — progress → reports        │   │
+│  │  • Cost Tracker — token usage → billable hours          │   │
+│  └────────────────────────┬────────────────────────────────┘   │
+│                           │                                     │
+│                           ▼                                     │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │              ENGINEERING PIPELINE                       │   │
+│  │                                                         │   │
+│  │  ┌─────────┐  ┌─────────┐  ┌─────────┐               │   │
+│  │  │ Backend │  │Frontend │  │   QA    │               │   │
+│  │  │(Sonnet) │  │(Sonnet) │  │(Sonnet) │               │   │
+│  │  └─────────┘  └─────────┘  └─────────┘               │   │
+│  │                                                         │   │
+│  │  ┌─────────┐  ┌─────────┐                              │   │
+│  │  │ DevOps  │  │Reviewer │                              │   │
+│  │  │(Sonnet) │  │ (Opus)  │                              │   │
+│  │  └─────────┘  └─────────┘                              │   │
+│  └────────────────────────┬────────────────────────────────┘   │
+│                           │                                     │
+│                    ┌──────┴──────┐                              │
+│                    │ORCHESTRATOR │                              │
+│                    │   (Opus)    │                              │
+│                    └──────┬──────┘                              │
+│                           │                                     │
+│                    ┌──────┴──────┐                              │
+│                    │    HUMAN    │                              │
+│                    │  (Founder)  │                              │
+│                    └─────────────┘                              │
 │                                                                 │
-│  ┌─────────────┐                                                │
-│  │  OPERATIONS │  (Future)                                      │
-│  │  • Finance  │                                                │
-│  │  • Legal    │                                                │
-│  │  • HR       │                                                │
-│  └─────────────┘                                                │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │         FUTURE: GROWTH & OPERATIONS                     │   │
+│  │                                                         │   │
+│  │  • Product Manager    • Content Writer                  │   │
+│  │  • Marketing          • Finance                         │   │
+│  │  • Design             • Legal                           │   │
+│  └─────────────────────────────────────────────────────────┘   │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ### Why Engineering First
+
+Engineering agents are the execution engine, but they don't generate revenue alone. A client doesn't care that your Backend agent writes clean TypeScript — they care that their project is scoped correctly, executed on time, and delivered with clear communication. The consulting pipeline (Project Scoper → Orchestrator → Engineering Agents → Client Reporter) is the minimum viable business. Engineering without scoping and reporting is an incomplete product.
 
 Code is **verifiable**. You can run it, test it, see if it works. Marketing copy? Design decisions? Product strategy? These require human judgment.
 
@@ -726,6 +748,8 @@ Code is **verifiable**. You can run it, test it, see if it works. Marketing copy
 | Frontend | Task description | React components | Tests, renders | ✅ Solvable |
 | QA | Code to test | Test files | Tests run | ✅ Solvable |
 | DevOps | Infra requirements | Terraform/CI | Plan succeeds | ✅ Solvable |
+| Project Scoper | Client brief | Structured spec + estimate | Human reviews scope | ⚠️ Moderate |
+| Client Reporter | Task/project data | Progress report | Human reviews report | ✅ Solvable |
 | Product | Market context | PRDs, specs | Human judgment | ⚠️ Fuzzy |
 | Marketing | Product info | Campaigns, copy | Conversion rates? | ⚠️ Fuzzy |
 | Content | Topics | Blog posts, docs | Engagement? | ⚠️ Fuzzy |
@@ -746,11 +770,13 @@ Non-code agents need defined output formats:
 
 ### Sequencing
 
-1. **Engineering agents first** (Phases 3-9) — verifiable, builds foundation
-2. **Product agent next** — feeds into engineering, PRDs are structured
-3. **Design agent** — works with Product, outputs feed Frontend
-4. **Go-to-market agents** — needs a product to market
-5. **Operations agents** — highest risk (financial, legal), last
+1. **Engineering agents** (Phases 0-4) ✅ COMPLETE — execution layer
+2. **Orchestrator + project management** (Phase 5) — coordination layer
+3. **Real project validation** (Phase 5.5) — prove it works end-to-end
+4. **Business operations agents** (Phase 6-6.5) — Project Scoper + Client Reporter
+5. **DevOps + Reviewer agents** (Phase 7) — automation and quality
+6. **Multi-agent integration** (Phase 8) — parallel execution at scale
+7. **Product/Design/Growth agents** (Phase 10+) — only after revenue validation
 
 ---
 

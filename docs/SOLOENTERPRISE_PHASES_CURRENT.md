@@ -1,7 +1,7 @@
 # SoloEnterprise: Project Phases
 
-**Last Updated:** 2026-02-02
-**Current Phase:** Phase 5 (Orchestrator Agent) — Ready to Start
+**Last Updated:** 2026-02-07
+**Current Phase:** Phase 5 (Orchestrator Agent + Project Management) — Ready to Start
 **Branch:** `phase-5/orchestrator-agent`
 
 ---
@@ -15,9 +15,11 @@
 | 2. Decision Cache | ⏭️ SKIPPED (for now) | — |
 | 3. Frontend Agent | ✅ COMPLETE | 2-3 weeks |
 | 4. QA Agent | ✅ COMPLETE | 1 week |
-| 5. Orchestrator Agent | 🔵 NEXT | 2-3 weeks |
-| 6. DevOps Agent | ⬜ NOT STARTED | 1-2 weeks |
-| 7. Principal Reviewer | ⬜ NOT STARTED | 1 week |
+| 5. Orchestrator Agent + Project Management | 🔵 NEXT | 2-3 weeks |
+| 5.5 Real Project Validation | ⬜ NOT STARTED | 1-2 weeks |
+| 6. Project Scoper Agent | ⬜ NOT STARTED | 1-2 weeks |
+| 6.5 Client Reporter Agent | ⬜ NOT STARTED | 1 week |
+| 7. DevOps Agent + Principal Reviewer | ⬜ NOT STARTED | 2-3 weeks |
 | 8. Multi-Agent Integration | ⬜ NOT STARTED | 2-3 weeks |
 | 9. Documentation | ⬜ NOT STARTED | 1 week |
 | 10. Product Manager | 🔮 FUTURE | TBD |
@@ -25,7 +27,7 @@
 | 12. Go-to-Market | 🔮 FUTURE | TBD |
 | 13. Operations | 🔮 FUTURE | TBD |
 
-**Total Estimate:** 15-19 weeks remaining (Phases 4-9 only)
+**Total Estimate:** 18-24 weeks remaining (Phases 5-9 only)
 
 ---
 
@@ -53,8 +55,10 @@
 | Backend | ✅ Layered | ✅ `backend-agent.ts` | **WORKING** |
 | Frontend | ✅ Layered | ✅ `frontend-agent.ts` | **WORKING** |
 | QA | ✅ Layered | ✅ `qa-agent.ts` | **WORKING** |
-| DevOps | ⚠️ Needs splitting | ❌ Not created | Phase 6 |
+| DevOps | ⚠️ Needs splitting | ❌ Not created | Phase 7 |
 | Orchestrator | ✅ Layered | ❌ Not created | Phase 5 |
+| Project Scoper | ❌ Not created | ❌ Not created | Phase 6 |
+| Client Reporter | ❌ Not created | ❌ Not created | Phase 6.5 |
 | Reviewer | ❌ Not created | ❌ Not created | Phase 7 |
 
 ---
@@ -256,7 +260,7 @@ export const decisions = pgTable('decisions', {
 
 ---
 
-## Phase 5: Orchestrator Agent 🔵 NEXT
+## Phase 5: Orchestrator Agent + Project Management 🔵 NEXT
 
 **Duration:** 2-3 weeks
 **Status:** Ready to start
@@ -272,6 +276,9 @@ export const decisions = pgTable('decisions', {
 - Completion review
 - Human escalation
 - DevOps tasks → escalate to human (agent not yet built)
+- Project-level task management (not just individual tasks)
+- Multi-project awareness (which project is this task for?)
+- Project status aggregation (roll up task statuses to project level)
 
 ### Checklist
 
@@ -283,6 +290,8 @@ export const decisions = pgTable('decisions', {
 - [ ] Test multi-agent workflows
 - [ ] Human escalation flow
 - [ ] Test: DevOps tasks correctly escalate to human
+- [ ] Project context passed to all agent invocations
+- [ ] Project-level status API endpoint
 
 ### Test Plan
 
@@ -290,33 +299,135 @@ export const decisions = pgTable('decisions', {
 1. Simple single-agent task decomposition
 2. Multi-agent feature decomposition (backend + frontend)
 3. Task with dependencies (frontend waits for backend)
-4. Bug fix decomposition (QA first, then fix)
-5. Full feature with all 3 agents
+4. Multi-project task decomposition (2 projects simultaneously)
+5. Full feature with project context flowing to agents
 
 **Stress Tests (6-10):**
 6. Vague requirements → asks clarifying questions
 7. Conflicting requirements → escalates to human
 8. DevOps task requested → escalates (agent unavailable)
-9. Circular dependencies → detects and reports
+9. Two projects with shared agent pool (resource contention)
 10. File lock conflict → resolves or escalates
 
 ---
 
-## Phase 6: DevOps Agent
+## Phase 5.5: Real Project Validation
 
 **Duration:** 1-2 weeks
-**Status:** BLOCKED (SKILL files need splitting)
-**Branch:** `phase-6/devops-agent`
+**Status:** NOT STARTED
 **Prerequisite:** Phase 5 complete
 
-### Pre-work Required
+### Description
+
+Use SoloEnterprise end-to-end on ONE real project. This is not optional. Every failure, human intervention, and workaround gets documented. This data shapes all subsequent phases.
+
+### Checklist
+
+- [ ] Select real project (internal tool or test client)
+- [ ] Define project brief as a client would write it
+- [ ] Run through full pipeline: brief → scope → decompose → execute → deliver
+- [ ] Track: tasks completed vs failed, human interventions, time per task
+- [ ] Track: agent acceptance rate (first attempt vs revisions needed)
+- [ ] Track: total token cost → map to theoretical billable hours
+- [ ] Document ALL pain points
+- [ ] Document what manual work was still needed
+- [ ] Write post-mortem with specific improvements needed
+
+### Output
+
+Validation report that determines if Phase 6+ priorities need changing.
+
+---
+
+## Phase 6: Project Scoper Agent
+
+**Duration:** 1-2 weeks
+**Status:** NOT STARTED
+**Branch:** `phase-6/project-scoper`
+**Prerequisite:** Phase 5.5 complete
+**Model:** Claude Opus (strategic reasoning — scoping requires business judgment)
+
+### Scope
+
+- Parse client briefs (unstructured text) into structured project specs
+- Estimate complexity per component (simple/standard/complex)
+- Map requirements to agent capabilities
+- Generate task breakdown with rough effort estimates
+- Identify gaps/risks requiring human decision
+- Produce client-facing scope document
+
+### Checklist
+
+- [ ] SKILL files created (core, patterns, examples)
+- [ ] Create `project-scoper-agent.ts`
+- [ ] Brief → structured spec parsing
+- [ ] Complexity estimation heuristics
+- [ ] Agent capability mapping
+- [ ] Client-facing scope document generation
+- [ ] Test with 5 different project briefs (varying complexity)
+- [ ] Test with intentionally vague brief → should ask questions
+
+### Test Plan
+
+**Baseline Tests (1-5):**
+1. Simple landing page project brief
+2. CRUD app with auth project brief
+3. Multi-service API project brief
+4. Existing codebase modification brief
+5. Brief with contradictory requirements
+
+**Stress Tests (6-10):**
+6. Extremely vague brief ("build me an app")
+7. Brief requiring tech outside agent capabilities
+8. Brief with unrealistic timeline expectations
+9. Brief in non-English (should flag, not guess)
+10. Brief referencing proprietary/unknown systems
+
+---
+
+## Phase 6.5: Client Reporter Agent
+
+**Duration:** 1 week
+**Status:** NOT STARTED
+**Prerequisite:** Phase 6 complete
+**Model:** Claude Sonnet (structured output generation)
+
+### Scope
+
+- Aggregate task statuses into project-level progress
+- Generate client-facing progress reports (markdown → PDF)
+- Highlight blockers and decisions needed
+- Produce milestone completion summaries
+- Track time/cost per project
+
+### Checklist
+
+- [ ] SKILL files created (core, patterns)
+- [ ] Create `client-reporter-agent.ts`
+- [ ] Progress report generation from task data
+- [ ] Milestone tracking
+- [ ] Cost tracking (token usage → estimated hours)
+- [ ] Report templates (weekly update, milestone report, project summary)
+
+---
+
+## Phase 7: DevOps Agent + Principal Reviewer
+
+**Duration:** 2-3 weeks
+**Status:** NOT STARTED
+**Branch:** `phase-7/devops-agent`
+**Prerequisite:** Phase 6.5 complete
+
+### DevOps Agent
+
+#### Pre-work Required
 
 Before implementation, split `skills/SKILL-devops-engineer.md` (757 lines) into:
 - `skills/devops/SKILL-devops-core.md` (~1,000-1,200 tokens)
 - `skills/devops/SKILL-devops-patterns.md` (~800-1,000 tokens)
 - `skills/devops/SKILL-devops-examples.md` (~1,500-2,000 tokens)
 
-### Checklist
+#### Checklist
 
 - [ ] Split monolithic SKILL file into layered structure
 - [ ] Narrow scope (decide: GitHub Actions + Docker only? Or full Terraform?)
@@ -324,23 +435,18 @@ Before implementation, split `skills/SKILL-devops-engineer.md` (757 lines) into:
 - [ ] Run tests 1-5
 - [ ] Run tests 6-10
 
----
+### Principal Reviewer (Sub-task)
 
-## Phase 7: Principal Reviewer Agent
-
-**Duration:** 1 week  
-**Status:** NOT STARTED  
-**Prerequisite:** Phase 6 complete  
 **Model:** Claude Opus (critical review)
 
-### Scope
+#### Scope
 
 - Security anti-patterns
 - Performance issues
 - Logic errors
 - Error handling gaps
 
-### Checklist
+#### Checklist
 
 - [ ] Create `SKILL-reviewer-*.md` files
 - [ ] Create `reviewer-agent.ts`
@@ -542,6 +648,9 @@ Examples:
 | 12-week timeline | 20-24 weeks |
 | Phase 2 before Phase 3 | Skipped Phase 2, go straight to agents |
 | Phase 5 = DevOps, Phase 6 = Orchestrator | Swapped: Orchestrator first (SKILL files ready) |
+| Engineering-only phases | Business ops phases inserted (Scoper, Reporter) after Orchestrator |
+| No validation gate | Phase 5.5 real project validation required before proceeding |
+| DevOps Agent = Phase 6 | DevOps Agent pushed to Phase 7 (can be done manually initially) |
 
 ### Risk Assessment
 
@@ -551,7 +660,9 @@ Examples:
 | Multi-agent conflicts | MEDIUM | File lock manager exists |
 | Agent output quality varies | MEDIUM | 3-strike rule + human escalation |
 | Scope creep | HIGH | Follow phase checklist strictly |
+| No real-world validation | HIGH | Phase 5.5 mandatory gate |
+| No client-facing pipeline | HIGH | Phase 6/6.5 business agents |
 
 ---
 
-*Version 6.0 — Reordered phases: Orchestrator before DevOps — 2026-02-02*
+*Version 7.0 — Business ops transformation: inserted Phases 5.5, 6, 6.5; DevOps pushed to Phase 7 — 2026-02-07*

@@ -25,7 +25,12 @@
       "Bash(npx tsx:*)",
       "Bash(ls:*)",
       "Bash(pnpm --filter @soloenterprise/core exec tsc --noEmit)",
-      "Bash(git diff:*)"
+      "Bash(git diff:*)",
+      "Bash(pnpm --filter @soloenterprise/core add:*)",
+      "Bash(timeout 5 pnpm:*)",
+      "Bash(pnpm:*)",
+      "Bash(npx drizzle-kit:*)",
+      "mcp__ide__getDiagnostics"
     ]
   }
 }

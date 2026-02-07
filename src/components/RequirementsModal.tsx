@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Modal } from "./Modal";
 import { Button } from "./Button";
 
-type AgentType = "backend" | "frontend" | "qa";
+type AgentType = "orchestrator" | "backend" | "frontend" | "qa";
 
 interface Project {
   id: string;
@@ -216,12 +216,15 @@ export function RequirementsModal({
             disabled={isLoading}
             className="mt-1 block w-full rounded-md border border-gray-300 bg-white py-2 px-3 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
           >
+            <option value="orchestrator">Orchestrator (Coordinator)</option>
             <option value="backend">Backend</option>
             <option value="frontend">Frontend</option>
             <option value="qa">QA</option>
           </select>
           <p className="mt-1 text-xs text-gray-500">
-            {agentType === "backend"
+            {agentType === "orchestrator"
+              ? "Decomposes projects, assigns tasks to other agents, coordinates work"
+              : agentType === "backend"
               ? "API routes, database queries, services, etc."
               : agentType === "frontend"
               ? "React components, pages, hooks, etc."

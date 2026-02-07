@@ -47,7 +47,8 @@ soloenterprise/
 │   │   │   ├── services/          # Shared services
 │   │   │   └── worker.ts          # BullMQ worker entry point
 │   │   └── generated/             # Sandboxed agent outputs
-│   │       └── tasks/{task-id}/   # Generated code per task
+│   │       ├── tasks/{task-id}/   # Generated code per task
+│   │       └── reports/{project-id}/   # Client-facing reports
 │   │
 │   └── db/                        # @soloenterprise/db - Database layer
 │       └── src/
@@ -68,6 +69,13 @@ soloenterprise/
 │   │   ├── SKILL-orchestrator-assignment.md
 │   │   ├── SKILL-orchestrator-examples.md
 │   │   └── SKILL-orchestrator-quality.md
+│   ├── project-scoper/
+│   │   ├── SKILL-project-scoper-core.md
+│   │   ├── SKILL-project-scoper-patterns.md
+│   │   └── SKILL-project-scoper-examples.md
+│   ├── client-reporter/
+│   │   ├── SKILL-client-reporter-core.md
+│   │   └── SKILL-client-reporter-patterns.md
 │   ├── common/                    # Shared skills
 │   ├── devops/                    # DevOps agent skills
 │   ├── qa/                        # QA agent skills
@@ -102,6 +110,9 @@ soloenterprise/
 | Runbooks | docs/runbooks/ | Operations | DevOps Agent |
 | ADRs | docs/adr/ | Decisions | Human (always) |
 | SKILLs | skills/{agent}/ | Agent prompts (modular) | Human |
+| Consulting Pipeline | docs/ | Business workflow | Human |
+| Client Reports | generated/reports/ | Client deliverables | Client Reporter Agent |
+| Project Scopes | generated/reports/ | Structured specs | Project Scoper Agent |
 | Package READMEs | packages/core/, packages/db/ | Package docs | Relevant Agent |
 
 ---
@@ -230,6 +241,15 @@ git commit -m "docs: migrate documentation to repository"
 
 # React components
 → src/components/{Component}.tsx
+
+# Business workflow
+→ docs/CONSULTING_PIPELINE.md
+
+# Project scope output
+→ generated/reports/{project-id}/scope-{date}.md
+
+# Client progress reports
+→ generated/reports/{project-id}/weekly-{date}.md
 ```
 
 ---

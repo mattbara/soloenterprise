@@ -28,13 +28,24 @@ export interface ParseResult {
 export function parseAgentOutput(response: string): ParseResult {
   const files: ParsedFile[] = [];
 
+  // Debug logging
+  console.log('[OutputParser] Response length:', response.length);
+  console.log('[OutputParser] Response starts with:', response.substring(0, 200).replace(/\n/g, '\\n'));
+  console.log('[OutputParser] Contains <file:', response.includes('<file'));
+
+  // Check for file tags with various patterns
+  const fileTagMatches = response.match(/<file[^>]*>/g);
+  console.log('[OutputParser] File tag matches:', fileTagMatches?.length ?? 0, fileTagMatches?.slice(0, 3));
+
   // Regex to match <file path="...">content</file> blocks
   // Handles multiline content and various whitespace
   const fileBlockRegex = /<file\s+path=["']([^"']+)["']\s*>([\s\S]*?)<\/file>/g;
 
   let match;
   while ((match = fileBlockRegex.exec(response)) !== null) {
-    const [, filePath, content] = match;
+    const [fullMatch, filePath, content] = match;
+
+    console.log('[OutputParser] Found file match:', filePath, 'content length:', content?.length ?? 0);
 
     if (filePath && content !== undefined) {
       // Trim leading/trailing whitespace from content but preserve internal formatting
@@ -46,6 +57,51 @@ export function parseAgentOutput(response: string): ParseResult {
       });
     }
   }
+
+  // If no files found but we detected file tags, try alternative patterns
+  if (files.length === 0 && fileTagMatches && fileTagMatches.length > 0) {
+    console.log('[OutputParser] File tags found but regex didn\'t match. Trying fallback patterns...');
+
+    // Try without strict quote matching (some models use backticks or no quotes)
+    const fallbackRegex = /<file\s+path=([^\s>]+)>([\s\S]*?)<\/file>/g;
+    let fallbackMatch;
+    while ((fallbackMatch = fallbackRegex.exec(response)) !== null) {
+      const [, filePath, content] = fallbackMatch;
+      const cleanPath = filePath.replace(/["'`]/g, '').trim();
+      console.log('[OutputParser] Fallback match:', cleanPath);
+      if (cleanPath && content !== undefined) {
+        files.push({
+          path: normalizePath(cleanPath),
+          content: trimFileContent(content),
+        });
+      }
+    }
+  }
+
+  // Also check if response is wrapped in markdown code blocks
+  if (files.length === 0 && response.includes('```')) {
+    console.log('[OutputParser] Checking for file tags inside markdown code blocks...');
+    // Extract content from code blocks and re-parse
+    const codeBlockRegex = /```(?:xml|html)?\s*\n?([\s\S]*?)```/g;
+    let codeMatch;
+    while ((codeMatch = codeBlockRegex.exec(response)) !== null) {
+      const codeContent = codeMatch[1];
+      const innerFileRegex = /<file\s+path=["']([^"']+)["']\s*>([\s\S]*?)<\/file>/g;
+      let innerMatch;
+      while ((innerMatch = innerFileRegex.exec(codeContent)) !== null) {
+        const [, filePath, content] = innerMatch;
+        console.log('[OutputParser] Found file in code block:', filePath);
+        if (filePath && content !== undefined) {
+          files.push({
+            path: normalizePath(filePath),
+            content: trimFileContent(content),
+          });
+        }
+      }
+    }
+  }
+
+  console.log('[OutputParser] Total files extracted:', files.length);
 
   // Check for questions section - pass whether files were generated
   // If files exist, be more strict about question detection
