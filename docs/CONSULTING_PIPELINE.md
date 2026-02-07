@@ -201,14 +201,32 @@ project_context:
 
 **Input:** Completed tasks, passing tests
 **Agent:** Orchestrator (aggregation) + Human (review)
-**Output:** Deliverable package
+**Output:** Deliverable package (merged PRs in codebase)
 
 Per milestone:
-1. Orchestrator aggregates completed work
+1. Orchestrator detects all tasks for the milestone are `completed` (or explicitly descoped by human — no partial PRs)
 2. All quality gates pass (tests, lint, type check, build)
-3. Human reviews final output
-4. Deploy to staging/demo environment
-5. Share with client
+3. Orchestrator emits `create_pull_request` action → command executor creates branch, assembles sandbox files to real paths **in dependency order**, pushes, creates PR via GitHub API
+4. PR assigned to **Principal Software Engineer** for review
+5. Principal reviews on GitHub:
+   - **Approve → merge** (only Principal can merge)
+   - **Request changes →** a single new orchestrator task is created with the full review comments; orchestrator re-decomposes into agent tasks
+6. Once merged, deploy to staging/demo environment
+7. Share with client
+
+### PR Workflow
+
+Agents write code to sandboxed directories (`generated/tasks/{task-id}/`). They have **no git awareness**. The orchestrator and command executor handle the entire git lifecycle:
+
+- **Branch creation** from `development`
+- **File assembly** in dependency order (sandbox path → real codebase path). File path conflicts between non-dependent tasks → fail fast, escalate to human.
+- **Commit, push, PR creation** via GitHub API
+- **PR tracking** in `pull_requests` table
+- **Dashboard notifications** for pending PRs
+
+**HARD RULE:** Only the Principal Software Engineer can merge PRs. No exceptions.
+
+See `MASTER_ARCHITECTURE.md` for the full PR pipeline diagram and `SCHEMA_ADDITIONS.md` for the `pull_requests` table schema.
 
 ---
 

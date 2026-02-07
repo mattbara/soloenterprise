@@ -78,7 +78,11 @@ function getAnthropicClient(): Anthropic {
     if (!apiKey) {
       throw new Error('ANTHROPIC_API_KEY environment variable is required');
     }
-    anthropicClient = new Anthropic({ apiKey });
+    anthropicClient = new Anthropic({
+      apiKey,
+      timeout: 10 * 60 * 1000, // 10 minutes — large decompositions need time
+      maxRetries: 2, // 3 total attempts on transient failures (network errors, 5xx)
+    });
   }
   return anthropicClient;
 }
@@ -192,9 +196,9 @@ async function processOrchestratorTask(job: Job<TaskJobData>): Promise<{
     // Build cached system prompt with orchestrator context
     const cachedSystem = buildCachedSystemPrompt(skillContent, orchestratorContext.content);
 
-    // Call Claude API
+    // Call Claude API (streaming keeps connection alive, prevents timeout on large responses)
     const client = getAnthropicClient();
-    const response = await client.messages.create({
+    const stream = client.messages.stream({
       model: MODEL,
       max_tokens: MAX_TOKENS,
       temperature: TEMPERATURE,
@@ -206,6 +210,16 @@ async function processOrchestratorTask(job: Job<TaskJobData>): Promise<{
         },
       ],
     });
+
+    let chunksReceived = 0;
+    stream.on('text', () => {
+      chunksReceived++;
+      if (chunksReceived % 20 === 0) {
+        console.log(`[OrchestratorAgent] Streaming... ${chunksReceived} chunks received`);
+      }
+    });
+
+    const response = await stream.finalMessage();
 
     // Extract text response
     const textContent = response.content.find((block) => block.type === 'text');

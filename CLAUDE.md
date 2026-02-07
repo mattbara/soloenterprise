@@ -197,3 +197,23 @@ ls packages/core/generated/tasks/{task-id}/
 # Copy to actual codebase (manual review required)
 cp packages/core/generated/tasks/{task-id}/src/file.ts src/file.ts
 ```
+
+### 8. Git Workflow — Principal Software Engineer Approval (MANDATORY)
+
+**NOTHING gets merged without the Principal Software Engineer's explicit approval.**
+
+- All changes MUST go through a Pull Request — no direct pushes to `development` or `main`
+- Every PR MUST be assigned to the Principal Software Engineer as reviewer
+- Only the Principal Software Engineer can merge PRs. No exceptions.
+- No agent, no automation, no CI pipeline merges code. Only the Principal.
+- If the Principal requests changes, address them and re-request review. Do NOT merge around them.
+
+**Workflow:**
+1. Create a feature branch from `development`
+2. Commit changes to the feature branch
+3. Open a PR targeting `development`
+4. Assign the Principal Software Engineer as reviewer
+5. Wait for approval — do NOT merge yourself
+6. Principal merges or requests changes
+
+**This applies to everyone and everything: agents, developers, CI/CD, Claude Code. No shortcuts.**
