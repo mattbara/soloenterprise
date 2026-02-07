@@ -118,6 +118,19 @@ export const costTracking = pgTable('cost_tracking', {
 });
 ```
 
+### Phase 5.6: Architect Layer
+
+```typescript
+// Add to existing tasks table
+technicalSpec: text('technical_spec'),  // JSON string containing architect-generated spec
+techSpecGeneratedAt: timestamp('tech_spec_generated_at'),
+techSpecTokens: integer('tech_spec_tokens'),  // Track cost of spec generation
+```
+
+**Migration:** `ALTER TABLE tasks ADD COLUMN technical_spec TEXT, ADD COLUMN tech_spec_generated_at TIMESTAMP, ADD COLUMN tech_spec_tokens INTEGER;`
+
+---
+
 ## Schema Modifications to Existing Tables
 
 ### projects table — ADD columns:

@@ -1,11 +1,16 @@
 /**
- * Tests for Bug #5: Cross-session dependency resolution.
+ * Tests for:
+ * - Bug #5: Cross-session dependency resolution
+ * - Bug #6: Status update placeholder ID resolution
  *
- * When the orchestrator creates tasks with depends_on referencing existing UUIDs
+ * Bug #5: When the orchestrator creates tasks with depends_on referencing existing UUIDs
  * (not just placeholder IDs like TASK-001), the executor must:
  * 1. Full UUID: verify it exists in the DB, store as valid dependency
  * 2. UUID prefix (e.g., "3c9240e8"): query tasks with LIKE, resolve if exactly 1 match
  * 3. No match: log warning, don't fail
+ *
+ * Bug #6: Status updates must resolve placeholder IDs (e.g., "TASK-001") through
+ * the idMapping built during task creation, just like file locks already do.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';

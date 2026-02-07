@@ -379,6 +379,67 @@ export async function removeTaskFromQueue(taskId: string, agentType: AgentType):
 }
 
 /**
+ * Remove multiple tasks from their queues.
+ * Looks up each task's agentType and removes matching jobs from the correct queue.
+ * Used by bulk-delete and bulk-cancel to keep Redis in sync with the database.
+ */
+export async function removeTaskJobsFromQueues(
+  taskEntries: Array<{ taskId: string; agentType: string }>
+): Promise<number> {
+  // Group by agent type to minimize queue lookups
+  const byAgentType = new Map<string, Set<string>>();
+  for (const entry of taskEntries) {
+    const existing = byAgentType.get(entry.agentType);
+    if (existing) {
+      existing.add(entry.taskId);
+    } else {
+      byAgentType.set(entry.agentType, new Set([entry.taskId]));
+    }
+  }
+
+  let removedCount = 0;
+
+  for (const [agentType, taskIds] of byAgentType) {
+    if (!(agentType in QUEUE_NAMES)) continue;
+
+    const queue = getQueue(agentType as AgentType);
+    const waitingJobs = await queue.getWaiting();
+    const delayedJobs = await queue.getDelayed();
+
+    for (const job of [...waitingJobs, ...delayedJobs]) {
+      if (taskIds.has(job.data.taskId)) {
+        await job.remove();
+        removedCount++;
+        console.log(`[TaskQueue] Removed job ${job.id} for task ${job.data.taskId} from ${agentType} queue`);
+      }
+    }
+  }
+
+  return removedCount;
+}
+
+/**
+ * Drain all queues — removes all waiting and delayed jobs from every queue.
+ * Also cleans completed and failed jobs.
+ * Use this for a full reset (e.g., admin cleanup).
+ */
+export async function drainAllQueues(): Promise<void> {
+  const agentTypes = Object.keys(QUEUE_NAMES) as AgentType[];
+
+  for (const agentType of agentTypes) {
+    const queue = getQueue(agentType);
+    const waiting = await queue.getWaitingCount();
+    const delayed = await queue.getDelayedCount();
+
+    await queue.drain();
+    await queue.clean(0, 1000, 'completed');
+    await queue.clean(0, 1000, 'failed');
+
+    console.log(`[TaskQueue] Drained ${QUEUE_NAMES[agentType]}: removed ${waiting} waiting, ${delayed} delayed`);
+  }
+}
+
+/**
  * Shutdown queues gracefully.
  */
 export async function shutdown(): Promise<void> {

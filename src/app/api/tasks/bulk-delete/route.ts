@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { tasks } from "@soloenterprise/db/schema";
 import { inArray } from "drizzle-orm";
+import { removeTaskJobsFromQueues } from "@soloenterprise/core";
 
 export async function POST(request: Request) {
   try {
@@ -15,7 +16,27 @@ export async function POST(request: Request) {
       );
     }
 
-    // Delete tasks
+    // Look up agent types before deleting so we can clean Redis
+    const tasksToDelete = await db.query.tasks.findMany({
+      where: inArray(tasks.id, taskIds),
+      columns: { id: true, agentType: true },
+    });
+
+    // Remove jobs from BullMQ queues (best effort)
+    try {
+      if (tasksToDelete.length > 0) {
+        const removed = await removeTaskJobsFromQueues(
+          tasksToDelete.map((t) => ({ taskId: t.id, agentType: t.agentType }))
+        );
+        if (removed > 0) {
+          console.log(`[bulk-delete] Removed ${removed} jobs from queues`);
+        }
+      }
+    } catch (queueError) {
+      console.warn("[bulk-delete] Could not clean queues:", queueError);
+    }
+
+    // Delete tasks from database
     const result = await db
       .delete(tasks)
       .where(inArray(tasks.id, taskIds))

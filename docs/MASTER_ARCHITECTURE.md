@@ -751,6 +751,27 @@ Orchestrator detects milestone done │
 
 ---
 
+### Architect Layer (Phase 5.6)
+
+The architect layer sits between task decomposition and agent execution. After the orchestrator creates task records, each task passes through a per-task Opus 4.6 call that generates a detailed technical specification.
+
+**Pipeline:**
+1. Orchestrator decomposes project → creates task records with dependencies
+2. For each task ready for execution (dependencies met):
+   a. Architect step loads dependency artifacts (completed task outputs)
+   b. Opus 4.6 generates technical spec: file structure, interfaces, code patterns, edge cases
+   c. Spec stored in task record (`technicalSpec` column)
+3. Task enters BullMQ queue with enriched context
+4. Agent receives SKILL content + task description + technical spec
+5. Agent executes against the spec
+
+**Why per-task, not batch:**
+- Each spec can reference completed dependency artifacts
+- Focused Opus calls produce higher quality than one massive call
+- Failed spec generation only blocks one task, not the whole project
+
+---
+
 ## Future Vision: Full Business Automation
 
 > **Status:** ACTIVE DEVELOPMENT — Business operations agents (Project Scoper, Client Reporter) are prioritized immediately after Orchestrator. Engineering foundation is necessary but not sufficient.

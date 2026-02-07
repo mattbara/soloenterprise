@@ -10,7 +10,7 @@
 import { readFile } from 'fs/promises';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import type { ContextConfig, ContextProfileName } from './context-profiles';
+import type { ContextConfig, ContextProfileName, ProfileSelectionOptions } from './context-profiles';
 import { selectContextProfile, getContextConfig } from './context-profiles';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -265,9 +265,10 @@ function filterSchemaToTables(fullSchema: string, tables: string[]): string {
  */
 export async function buildContextWithProfile(
   taskDescription: string,
-  overrideProfile?: ContextProfileName
+  overrideProfile?: ContextProfileName,
+  selectionOptions?: ProfileSelectionOptions
 ): Promise<ProfiledContextResult> {
-  const profile = overrideProfile ?? selectContextProfile(taskDescription);
+  const profile = overrideProfile ?? selectContextProfile(taskDescription, selectionOptions);
   const config = getContextConfig(profile, taskDescription);
 
   console.log(`[ContextLoader] Using profile: ${profile}`);

@@ -17,6 +17,7 @@
 | 4. QA Agent | ✅ COMPLETE | 1 week |
 | 5. Orchestrator Agent + Project Management | ✅ COMPLETE | 2-3 weeks |
 | 5.5 Real Project Validation | 🔵 NEXT | 1-2 weeks |
+| 5.6 Architect Layer | ⬜ NOT STARTED | 1-2 weeks |
 | 6. Project Scoper Agent | ⬜ NOT STARTED | 1-2 weeks |
 | 6.5 Client Reporter Agent | ⬜ NOT STARTED | 1 week |
 | 7. DevOps Agent + Principal Reviewer | ⬜ NOT STARTED | 2-3 weeks |
@@ -369,9 +370,103 @@ Validate the full agent pipeline (Orchestrator → Backend → Frontend → QA) 
 - [ ] Document what manual work was still needed
 - [ ] Write post-mortem with specific improvements needed
 
+### Phase 5.5 Findings (from validation run)
+
+**Date:** 2026-02-07
+**Project:** Booking Management System (5 tasks, 19 files)
+**Result:** All 5 tasks completed successfully, 0 syntax errors, full dependency chain resolved
+
+**Issues Found:**
+1. **Context profile misassignment** — TASK-002 (API endpoints, database-heavy) got `bug-fix` profile (35 tokens, no schema). Complexity detector looks at task description keywords only, not dependency context or task inputs.
+2. **Status update placeholder ID bug** — Orchestrator YAML `status_updates` referenced `TASK-001` instead of resolved UUID. Command executor's status update path doesn't use the same ID mapping as dependency resolution.
+3. **Non-severe bracket warnings** — `page.tsx` had "Unmatched ')'" warning, `route.test.ts` had "Unmatched '}'". TypeScript compiler showed 0 errors, so these are likely false positives in the bracket analyzer.
+4. **No code-level guidance for agents** — Sonnet receives task descriptions but no interface contracts, code patterns, or implementation hints. Works for simple CRUD, will fail on complex tasks.
+
+**Decision:** Add Architect Layer to address finding #4. Fix context profile bug separately.
+
 ### Output
 
 Validation report that determines if Phase 6+ priorities need changing.
+
+---
+
+## Phase 5.6: Architect Layer ⬜ NOT STARTED
+
+**Duration:** 1-2 weeks
+**Status:** NOT STARTED
+**Prerequisite:** Phase 5.5 findings addressed (context profile bug fixed)
+
+### Purpose
+
+Add a per-task technical specification step between orchestrator decomposition and agent execution. The orchestrator decomposes a project into tasks (WHAT to build). The architect layer generates a detailed technical spec for each task (HOW to build it). Sonnet agents then execute against the spec instead of against a vague description.
+
+### Flow Change
+
+**Before:**
+```
+Orchestrator (Opus 4.6) → decompose → task record → BullMQ → Agent (Sonnet 4.5) → code
+```
+
+**After:**
+```
+Orchestrator (Opus 4.6) → decompose → task record → Architect Step (Opus 4.6, per-task) → enriched task record → BullMQ → Agent (Sonnet 4.5) → code
+```
+
+### What the Architect Step Produces (per task)
+
+For each task, a single Opus 4.6 call generates a `technical_spec` field containing:
+
+1. **File structure** — exact files to create with purpose of each
+2. **Interface contracts** — TypeScript interfaces, function signatures, props types
+3. **Code patterns** — specific patterns to follow with code snippets (e.g., "use this Drizzle query pattern")
+4. **Dependency context** — relevant code from completed dependency tasks (read from artifacts)
+5. **Edge cases** — specific edge cases to handle with expected behavior
+6. **Anti-patterns** — what NOT to do (common Sonnet mistakes for this task type)
+7. **Import map** — exact imports the agent should use
+
+### Architecture Decisions
+
+- **NOT a separate agent** — no new queue, no new worker, no new SKILL files
+- **Runs inside orchestrator pipeline** — after task creation, before queue insertion
+- **One Opus call per task** — focused, high-quality specs
+- **Can read dependency artifacts** — architect for TASK-002 sees TASK-001's output
+- **Spec stored in task record** — new `technicalSpec` column in tasks table
+- **Agents receive spec as additional context** — injected into prompt alongside SKILL content
+
+### Model
+
+Claude Opus 4.6 (same as orchestrator — reasoning quality matters here)
+
+### Cost Impact
+
+- ~$0.10-0.15 per task for the architect call
+- For 5-task project: ~$0.50-0.75 additional
+- Expected savings: fewer retries, fewer questions, better first-attempt quality
+- Break-even: if it prevents even 1 retry per project, it pays for itself
+
+### Checklist
+
+- [ ] Add `technicalSpec` text column to tasks table
+- [ ] Create architect prompt template (system prompt + per-task template)
+- [ ] Implement `generateTechSpec()` function in orchestrator pipeline
+- [ ] Load dependency artifacts for spec generation
+- [ ] Inject tech spec into agent prompt (backend-agent.ts, frontend-agent.ts, qa-agent.ts)
+- [ ] Update command executor to call architect step before queuing
+- [ ] Test: simple task → spec should be concise
+- [ ] Test: complex task with dependencies → spec should reference dependency outputs
+- [ ] Test: re-run Booking Management System with architect layer → compare output quality
+- [ ] Token metrics: measure spec generation cost vs retry savings
+
+### Test Plan
+
+**Baseline (1-3):**
+1. Re-run Booking Management System with architect layer — compare code quality
+2. Submit a WebSocket real-time feature — complex, tests spec depth
+3. Submit a multi-tenant auth system — tests cross-cutting concern specs
+
+**Stress (4-5):**
+4. Very large project (15+ tasks) — test spec generation time and cost
+5. Task with 3+ dependencies — test artifact loading for spec generation
 
 ---
 
@@ -740,6 +835,7 @@ Examples:
 | Phase 5 = DevOps, Phase 6 = Orchestrator | Swapped: Orchestrator first (SKILL files ready) |
 | Engineering-only phases | Business ops phases inserted (Scoper, Reporter) after Orchestrator |
 | No validation gate | Phase 5.5 real project validation required before proceeding |
+| Direct orchestrator → agent handoff | Architect layer added between orchestrator and agents (Phase 5.6) |
 | DevOps Agent = Phase 6 | DevOps Agent pushed to Phase 7 (can be done manually initially) |
 
 ### Risk Assessment
@@ -755,4 +851,4 @@ Examples:
 
 ---
 
-*Version 7.0 — Business ops transformation: inserted Phases 5.5, 6, 6.5; DevOps pushed to Phase 7 — 2026-02-07*
+*Version 8.0 — Added Phase 5.6 (Architect Layer) from Phase 5.5 validation findings; Phase 5.5 findings documented — 2026-02-07*
