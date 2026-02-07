@@ -78,16 +78,54 @@ async function getRecentTasks() {
     processingStartedAt: task.processingStartedAt?.toISOString() ?? null,
     project: task.project ? { id: task.project.id, name: task.project.name } : null,
     warnings: task.warnings ?? null,
+    dependsOn: task.dependsOn ?? [],
+    context: task.context ?? null,
   }));
 }
 
+interface StaleTaskWarnings {
+  stalePendingCount: number;
+  stuckRunningCount: number;
+}
+
+function calculateStaleTaskWarnings(recentTasks: Awaited<ReturnType<typeof getRecentTasks>>): StaleTaskWarnings {
+  const now = Date.now();
+  const ONE_HOUR = 60 * 60 * 1000;
+  const SIX_HOURS = 6 * 60 * 60 * 1000;
+
+  let stalePendingCount = 0;
+  let stuckRunningCount = 0;
+
+  for (const task of recentTasks) {
+    // Pending tasks with no dependencies, older than 1 hour
+    if (task.status === "pending") {
+      const age = now - new Date(task.createdAt).getTime();
+      const hasDependencies = task.dependsOn && task.dependsOn.length > 0;
+      if (age > ONE_HOUR && !hasDependencies) {
+        stalePendingCount++;
+      }
+    }
+
+    // Running tasks older than 6 hours
+    if (task.status === "running" && task.processingStartedAt) {
+      const runningTime = now - new Date(task.processingStartedAt).getTime();
+      if (runningTime > SIX_HOURS) {
+        stuckRunningCount++;
+      }
+    }
+  }
+
+  return { stalePendingCount, stuckRunningCount };
+}
+
 async function getWorkerStatuses() {
-  const [backendStatus, frontendStatus, qaStatus] = await Promise.all([
+  const [orchestratorStatus, backendStatus, frontendStatus, qaStatus] = await Promise.all([
+    getWorkerStatus("orchestrator"),
     getWorkerStatus("backend"),
     getWorkerStatus("frontend"),
     getWorkerStatus("qa"),
   ]);
-  return { backend: backendStatus, frontend: frontendStatus, qa: qaStatus };
+  return { orchestrator: orchestratorStatus, backend: backendStatus, frontend: frontendStatus, qa: qaStatus };
 }
 
 async function getProjects() {
@@ -107,12 +145,16 @@ export default async function DashboardPage() {
     getProjects(),
   ]);
 
+  // Calculate stale task warnings
+  const staleWarnings = calculateStaleTaskWarnings(recentTasks);
+
   return (
     <div className="space-y-6">
       <DashboardHeader projects={projectsList} />
 
       {/* Worker Status - pass initial data, no client fetch on mount */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <WorkerStatus workerType="orchestrator" initialStatus={workerStatuses.orchestrator} />
         <WorkerStatus workerType="backend" initialStatus={workerStatuses.backend} />
         <WorkerStatus workerType="frontend" initialStatus={workerStatuses.frontend} />
         <WorkerStatus workerType="qa" initialStatus={workerStatuses.qa} />
@@ -146,6 +188,37 @@ export default async function DashboardPage() {
                   View questions →
                 </Link>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Stale Task Warnings */}
+      {staleWarnings.stalePendingCount > 0 && (
+        <div className="bg-amber-50 border-l-4 border-amber-500 p-4">
+          <div className="flex">
+            <div className="flex-shrink-0 text-amber-500 text-xl">
+              ⚠️
+            </div>
+            <div className="ml-3">
+              <p className="text-sm font-medium text-amber-800">
+                {staleWarnings.stalePendingCount} task{staleWarnings.stalePendingCount > 1 ? 's' : ''} pending over 1 hour — workers may be offline
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {staleWarnings.stuckRunningCount > 0 && (
+        <div className="bg-red-50 border-l-4 border-red-500 p-4">
+          <div className="flex">
+            <div className="flex-shrink-0 text-red-500 text-xl">
+              🔴
+            </div>
+            <div className="ml-3">
+              <p className="text-sm font-medium text-red-800">
+                {staleWarnings.stuckRunningCount} task{staleWarnings.stuckRunningCount > 1 ? 's' : ''} stuck in 'running' for 6+ hours — possible worker crash
+              </p>
             </div>
           </div>
         </div>

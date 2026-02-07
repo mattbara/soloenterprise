@@ -17,6 +17,7 @@ import { parseAgentOutput, validateParsedFiles } from './utils/output-parser';
 import { writeGeneratedFiles } from './utils/file-writer';
 import { validateGeneratedFiles } from './utils/file-validator';
 import { loadSkillsForTask, type TaskComplexity } from './utils/skill-loader';
+import { processWithSyntaxRecovery, type SyntaxError } from './utils/syntax-recovery';
 import { buildQAContext, getEmptyQAContextResult, type QAContextResult } from './utils/qa-context-loader';
 import { buildCachedSystemPrompt, extractCacheMetrics, logCacheMetrics } from './utils/cache-helper';
 import { getSharedRedisConnection, closeSharedRedisConnection } from '../utils/index';
@@ -51,7 +52,18 @@ interface QATokenMetrics {
   estimatedSavingsPercent: number;
 }
 
-function logTokenBaseline(metrics: QATokenMetrics): void {
+async function logTokenBaseline(metrics: QATokenMetrics): Promise<void> {
+  // Save metrics to database for dashboard
+  const { taskId, timestamp, ...tokenMetrics } = metrics;
+  try {
+    await db.update(tasks)
+      .set({ tokenMetrics })
+      .where(eq(tasks.id, taskId));
+  } catch (err) {
+    console.error('[QAAgent] Failed to save token metrics:', err);
+  }
+
+  // Keep console log for debugging
   console.log('TOKEN_BASELINE', JSON.stringify(metrics));
 }
 
@@ -59,7 +71,7 @@ function logTokenBaseline(metrics: QATokenMetrics): void {
 
 // Claude API configuration - QA uses Sonnet for higher quality test generation
 const MODEL = 'claude-sonnet-4-5-20250929';
-const MAX_TOKENS = 16000;
+const MAX_TOKENS = parseInt(process.env.CLAUDE_MAX_TOKENS || '16384', 10);
 const TEMPERATURE = 0;
 
 // Anthropic client
@@ -203,17 +215,20 @@ async function processQATask(job: Job<TaskJobData>): Promise<{
     console.log(`[QAAgent] Loaded layers: ${layers.map(l => l.split('/').pop()).join(', ')}`);
 
     // Load QA-specific context (source files to test, existing patterns, schema)
+    // Also loads generated files from dependency tasks (backend/frontend)
     let qaContext: QAContextResult;
     try {
       // Extract explicit source files from task context if provided
       const explicitSourceFiles = (context.sourceFiles as string[]) || undefined;
-      qaContext = await buildQAContext(description, explicitSourceFiles);
+      // Pass taskId to load artifacts from dependency tasks
+      qaContext = await buildQAContext(description, explicitSourceFiles, taskId);
     } catch (err) {
       console.warn('[QAAgent] Failed to load QA context, continuing without it:', err);
       qaContext = getEmptyQAContextResult();
     }
 
     console.log(`[QAAgent] Source files loaded: ${qaContext.sourceFilesLoaded}`);
+    console.log(`[QAAgent] Dependency artifacts loaded: ${qaContext.dependencyArtifactsLoaded}`);
     console.log(`[QAAgent] Has existing tests: ${qaContext.hasExistingTests}`);
     console.log(`[QAAgent] Context tokens: ~${qaContext.tokens}`);
 
@@ -251,16 +266,25 @@ async function processQATask(job: Job<TaskJobData>): Promise<{
     }
 
     console.log('[QAAgent] Parsing response...');
+    console.log('[QAAgent] Response text length:', responseText.length);
+    console.log('[QAAgent] First 500 chars:', responseText.substring(0, 500));
+    console.log('[QAAgent] Last 500 chars:', responseText.substring(Math.max(0, responseText.length - 500)));
 
     // Parse the response
     const parseResult = parseAgentOutput(responseText);
+
+    console.log('[QAAgent] Parse result:', {
+      filesCount: parseResult.files.length,
+      hasQuestions: parseResult.hasQuestions,
+      filePaths: parseResult.files.map(f => f.path),
+    });
 
     // Extract cache metrics from API response
     const cacheMetrics = extractCacheMetrics(response.usage);
     logCacheMetrics('QAAgent', cacheMetrics);
 
-    // Log token baseline metrics
-    logTokenBaseline({
+    // Log token baseline metrics and save to database
+    await logTokenBaseline({
       taskId,
       timestamp: new Date().toISOString(),
       agentType: 'qa',
@@ -358,25 +382,94 @@ async function processQATask(job: Job<TaskJobData>): Promise<{
       };
     }
 
-    console.log(`[QAAgent] Writing ${parseResult.files.length} files...`);
+    console.log(`[QAAgent] Validating ${parseResult.files.length} files with syntax recovery...`);
 
-    // Write files to disk
-    const writeResult = await writeGeneratedFiles(taskId, parseResult.files, 'qa');
+    // Create validation function for recovery loop
+    const validateFiles = async (files: typeof parseResult.files): Promise<SyntaxError[]> => {
+      const tempWriteResult = await writeGeneratedFiles(taskId, files, 'qa');
+      const validationResult = await validateGeneratedFiles(tempWriteResult.taskDir, tempWriteResult.files);
+      return validationResult.errors.map(e => ({
+        file: e.file,
+        line: e.line,
+        message: e.message,
+      }));
+    };
 
-    // Validate generated files for syntax errors
-    console.log('[QAAgent] Validating generated files...');
-    const validationResult = await validateGeneratedFiles(writeResult.taskDir, writeResult.files);
+    // Create fresh generation function for full retries
+    const generateFresh = async (): Promise<typeof parseResult.files> => {
+      console.log('[QAAgent] Generating fresh response (full retry)...');
+      const retryResponse = await client.messages.create({
+        model: MODEL,
+        max_tokens: MAX_TOKENS,
+        temperature: TEMPERATURE,
+        system: cachedSystem,
+        messages: [{ role: 'user', content: userPrompt }],
+      });
+      const retryText = retryResponse.content.find(c => c.type === 'text');
+      const retryResponseText = retryText?.type === 'text' ? retryText.text : '';
+      const retryParsed = parseAgentOutput(retryResponseText);
+      console.log(`[QAAgent] Fresh generation produced ${retryParsed.files.length} files`);
+      return retryParsed.files;
+    };
 
-    if (!validationResult.valid) {
-      console.warn('[QAAgent] Syntax warnings:', validationResult.errors);
+    // Use recovery loop for syntax errors
+    const recoveryResult = await processWithSyntaxRecovery(
+      client,
+      'QAAgent',
+      parseResult.files,
+      validateFiles,
+      generateFresh
+    );
 
-      // Store warnings on task record for dashboard visibility
+    console.log(`[QAAgent] Recovery complete: success=${recoveryResult.success}, fixLoops=${recoveryResult.attempts.fixLoops}, fullRetries=${recoveryResult.attempts.fullRetries}`);
+
+    if (!recoveryResult.success) {
+      const errorSummary = recoveryResult.errors
+        ?.slice(0, 3)
+        .map(e => `${e.file}:${e.line ?? '?'} - ${e.message}`)
+        .join('; ') ?? 'Unknown syntax errors';
+
+      const existingContext = (context as Record<string, unknown>) ?? {};
       try {
         await db
           .update(tasks)
-          .set({ warnings: validationResult.errors })
+          .set({
+            warnings: recoveryResult.errors,
+            context: {
+              ...existingContext,
+              syntaxRecoveryAttempts: recoveryResult.attempts,
+              finalSyntaxErrors: recoveryResult.errors,
+            },
+          })
           .where(eq(tasks.id, taskId));
-        console.log('[QAAgent] Warnings saved to task record');
+      } catch (err) {
+        console.error('[QAAgent] Failed to save recovery context:', err);
+      }
+
+      await updateTaskStatus(taskId, 'failed', {
+        success: false,
+        error: `Syntax errors in tests after ${recoveryResult.attempts.fixLoops} fix attempts: ${errorSummary}`,
+        outputs: {
+          errors: recoveryResult.errors,
+          recoveryAttempts: recoveryResult.attempts,
+        },
+      });
+
+      return {
+        success: false,
+        error: `Generated tests have syntax errors after recovery attempts`,
+      };
+    }
+
+    // Write final validated files
+    console.log(`[QAAgent] Writing ${recoveryResult.files.length} validated files...`);
+    const writeResult = await writeGeneratedFiles(taskId, recoveryResult.files, 'qa');
+
+    const finalValidation = await validateGeneratedFiles(writeResult.taskDir, writeResult.files);
+    if (!finalValidation.valid) {
+      console.warn('[QAAgent] Non-severe warnings:', finalValidation.errors);
+      try {
+        await db.update(tasks).set({ warnings: finalValidation.errors }).where(eq(tasks.id, taskId));
       } catch (err) {
         console.error('[QAAgent] Failed to save warnings:', err);
       }
@@ -412,18 +505,18 @@ async function processQATask(job: Job<TaskJobData>): Promise<{
     // Update task status
     await updateTaskStatus(taskId, 'completed', {
       success: true,
-      summary: `Generated ${parseResult.files.length} test file(s)`,
+      summary: `Generated ${recoveryResult.files.length} test file(s)`,
       outputs: {
         generatedDir: writeResult.taskDir,
         files: writeResult.files,
         artifactIds,
-        warnings: validationResult.valid ? [] : validationResult.errors,
+        warnings: finalValidation.valid ? [] : finalValidation.errors,
       },
     });
 
     return {
       success: true,
-      summary: `Generated ${parseResult.files.length} test file(s)`,
+      summary: `Generated ${recoveryResult.files.length} test file(s)`,
       artifactIds,
     };
   } catch (error) {

@@ -91,15 +91,13 @@ Required variables (see `.env.example`):
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CLAUDE_MODEL` | `claude-3-5-haiku-latest` | Model for backend agent |
-| `CLAUDE_MAX_TOKENS` | `8192` | Max response tokens |
+| `CLAUDE_MAX_TOKENS` | `16384` | Max response tokens |
 
 **Available Models:**
 | Model | Speed | Quality | Cost | Max Tokens |
 |-------|-------|---------|------|------------|
-| `claude-3-5-haiku-latest` | Fast (~30s) | Good | Cheapest | 8192 |
-| `claude-sonnet-4-5-20250929` | Slow (~2min) | Best | Higher | 16000 |
-
-**Note:** If switching to Sonnet, also update `CLAUDE_MAX_TOKENS=16000` to use full capacity.
+| `claude-3-5-haiku-latest` | Fast (~30s) | Good | Cheapest | 16384 |
+| `claude-sonnet-4-5-20250929` | Slow (~2min) | Best | Higher | 16384 |
 
 ---
 

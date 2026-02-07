@@ -20,19 +20,21 @@
     "worker:echo": "tsx src/worker.ts echo",
     "worker:backend": "tsx src/worker.ts backend",
     "worker:frontend": "tsx src/worker.ts frontend",
-    "worker:qa": "tsx src/worker.ts qa"
+    "worker:qa": "tsx src/worker.ts qa",
+    "worker:orchestrator": "tsx src/worker.ts orchestrator"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@soloenterprise/db": "workspace:*",
     "bullmq": "^5.0.0",
     "dotenv": "^16.4.0",
+    "drizzle-orm": "^0.30.0",
     "ioredis": "^5.3.0",
-    "drizzle-orm": "^0.30.0"
+    "typescript": "^5.3.0",
+    "yaml": "^2.8.2"
   },
   "devDependencies": {
     "tsx": "^4.7.0",
-    "typescript": "^5.3.0",
     "vitest": "^1.0.0"
   }
 }

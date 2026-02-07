@@ -15,6 +15,7 @@ import { parseAgentOutput, validateParsedFiles } from './utils/output-parser';
 import { writeGeneratedFiles } from './utils/file-writer';
 import { validateGeneratedFiles } from './utils/file-validator';
 import { loadSkillsForTask, type TaskComplexity } from './utils/skill-loader';
+import { processWithSyntaxRecovery, type SyntaxError } from './utils/syntax-recovery';
 import { buildContextWithProfile, getEmptyContextResult, type ProfiledContextResult } from './utils/context-loader';
 import type { ContextProfileName } from './utils/context-profiles';
 import { buildCachedSystemPrompt, extractCacheMetrics, logCacheMetrics } from './utils/cache-helper';
@@ -51,16 +52,26 @@ interface TokenMetrics {
   estimatedSavingsPercent: number;
 }
 
-function logTokenBaseline(metrics: TokenMetrics): void {
+async function logTokenBaseline(metrics: TokenMetrics): Promise<void> {
+  // Save metrics to database for dashboard
+  const { taskId, timestamp, ...tokenMetrics } = metrics;
+  try {
+    await db.update(tasks)
+      .set({ tokenMetrics })
+      .where(eq(tasks.id, taskId));
+  } catch (err) {
+    console.error('[BackendAgent] Failed to save token metrics:', err);
+  }
+
+  // Keep console log for debugging
   console.log('TOKEN_BASELINE', JSON.stringify(metrics));
 }
 
 // ============================================================================
 
 // Claude API configuration - configurable via environment variables
-// Haiku max: 8192, Sonnet max: 16000
 const MODEL = process.env.CLAUDE_MODEL || 'claude-3-5-haiku-latest';
-const MAX_TOKENS = parseInt(process.env.CLAUDE_MAX_TOKENS || '8192', 10);
+const MAX_TOKENS = parseInt(process.env.CLAUDE_MAX_TOKENS || '16384', 10);
 const TEMPERATURE = 0;
 
 // Anthropic client
@@ -247,16 +258,25 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
     }
 
     console.log('[BackendAgent] Parsing response...');
+    console.log('[BackendAgent] Response text length:', responseText.length);
+    console.log('[BackendAgent] First 500 chars:', responseText.substring(0, 500));
+    console.log('[BackendAgent] Last 500 chars:', responseText.substring(Math.max(0, responseText.length - 500)));
 
     // Parse the response
     const parseResult = parseAgentOutput(responseText);
+
+    console.log('[BackendAgent] Parse result:', {
+      filesCount: parseResult.files.length,
+      hasQuestions: parseResult.hasQuestions,
+      filePaths: parseResult.files.map(f => f.path),
+    });
 
     // Extract cache metrics from API response
     const cacheMetrics = extractCacheMetrics(response.usage);
     logCacheMetrics('BackendAgent', cacheMetrics);
 
-    // Log token baseline metrics
-    logTokenBaseline({
+    // Log token baseline metrics and save to database
+    await logTokenBaseline({
       taskId,
       timestamp: new Date().toISOString(),
       inputTokens: response.usage?.input_tokens ?? 0,
@@ -355,25 +375,94 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
       };
     }
 
-    console.log(`[BackendAgent] Writing ${parseResult.files.length} files...`);
+    console.log(`[BackendAgent] Validating ${parseResult.files.length} files with syntax recovery...`);
 
-    // Write files to disk
-    const writeResult = await writeGeneratedFiles(taskId, parseResult.files, 'backend');
+    // Create validation function for recovery loop
+    const validateFiles = async (files: typeof parseResult.files): Promise<SyntaxError[]> => {
+      const tempWriteResult = await writeGeneratedFiles(taskId, files, 'backend');
+      const validationResult = await validateGeneratedFiles(tempWriteResult.taskDir, tempWriteResult.files);
+      return validationResult.errors.map(e => ({
+        file: e.file,
+        line: e.line,
+        message: e.message,
+      }));
+    };
 
-    // Validate generated files for syntax errors
-    console.log('[BackendAgent] Validating generated files...');
-    const validationResult = await validateGeneratedFiles(writeResult.taskDir, writeResult.files);
+    // Create fresh generation function for full retries
+    const generateFresh = async (): Promise<typeof parseResult.files> => {
+      console.log('[BackendAgent] Generating fresh response (full retry)...');
+      const retryResponse = await client.messages.create({
+        model: MODEL,
+        max_tokens: MAX_TOKENS,
+        temperature: TEMPERATURE,
+        system: cachedSystem,
+        messages: [{ role: 'user', content: userPrompt }],
+      });
+      const retryText = retryResponse.content.find(c => c.type === 'text');
+      const retryResponseText = retryText?.type === 'text' ? retryText.text : '';
+      const retryParsed = parseAgentOutput(retryResponseText);
+      console.log(`[BackendAgent] Fresh generation produced ${retryParsed.files.length} files`);
+      return retryParsed.files;
+    };
 
-    if (!validationResult.valid) {
-      console.warn('[BackendAgent] Syntax warnings:', validationResult.errors);
+    // Use recovery loop for syntax errors
+    const recoveryResult = await processWithSyntaxRecovery(
+      client,
+      'BackendAgent',
+      parseResult.files,
+      validateFiles,
+      generateFresh
+    );
 
-      // Store warnings on task record for dashboard visibility
+    console.log(`[BackendAgent] Recovery complete: success=${recoveryResult.success}, fixLoops=${recoveryResult.attempts.fixLoops}, fullRetries=${recoveryResult.attempts.fullRetries}`);
+
+    if (!recoveryResult.success) {
+      const errorSummary = recoveryResult.errors
+        ?.slice(0, 3)
+        .map(e => `${e.file}:${e.line ?? '?'} - ${e.message}`)
+        .join('; ') ?? 'Unknown syntax errors';
+
+      const existingContext = (context as Record<string, unknown>) ?? {};
       try {
         await db
           .update(tasks)
-          .set({ warnings: validationResult.errors })
+          .set({
+            warnings: recoveryResult.errors,
+            context: {
+              ...existingContext,
+              syntaxRecoveryAttempts: recoveryResult.attempts,
+              finalSyntaxErrors: recoveryResult.errors,
+            },
+          })
           .where(eq(tasks.id, taskId));
-        console.log('[BackendAgent] Warnings saved to task record');
+      } catch (err) {
+        console.error('[BackendAgent] Failed to save recovery context:', err);
+      }
+
+      await updateTaskStatus(taskId, 'failed', {
+        success: false,
+        error: `Syntax errors after ${recoveryResult.attempts.fixLoops} fix attempts: ${errorSummary}`,
+        outputs: {
+          errors: recoveryResult.errors,
+          recoveryAttempts: recoveryResult.attempts,
+        },
+      });
+
+      return {
+        success: false,
+        error: `Generated code has syntax errors after recovery attempts`,
+      };
+    }
+
+    // Write final validated files
+    console.log(`[BackendAgent] Writing ${recoveryResult.files.length} validated files...`);
+    const writeResult = await writeGeneratedFiles(taskId, recoveryResult.files, 'backend');
+
+    const finalValidation = await validateGeneratedFiles(writeResult.taskDir, writeResult.files);
+    if (!finalValidation.valid) {
+      console.warn('[BackendAgent] Non-severe warnings:', finalValidation.errors);
+      try {
+        await db.update(tasks).set({ warnings: finalValidation.errors }).where(eq(tasks.id, taskId));
       } catch (err) {
         console.error('[BackendAgent] Failed to save warnings:', err);
       }
@@ -409,18 +498,18 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
     // Update task status
     await updateTaskStatus(taskId, 'completed', {
       success: true,
-      summary: `Generated ${parseResult.files.length} file(s)`,
+      summary: `Generated ${recoveryResult.files.length} file(s)`,
       outputs: {
         generatedDir: writeResult.taskDir,
         files: writeResult.files,
         artifactIds,
-        warnings: validationResult.valid ? [] : validationResult.errors,
+        warnings: finalValidation.valid ? [] : finalValidation.errors,
       },
     });
 
     return {
       success: true,
-      summary: `Generated ${parseResult.files.length} file(s)`,
+      summary: `Generated ${recoveryResult.files.length} file(s)`,
       artifactIds,
     };
   } catch (error) {

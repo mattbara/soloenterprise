@@ -3,6 +3,36 @@
 <!-- Token Target: 1,000-1,200 tokens -->
 <!-- Load When: Assigning tasks, decomposing requirements, project kickoff -->
 
+## Project Scoping Workflow
+
+### New Project Flow
+
+```yaml
+command: scope_project
+input:
+  brief_id: string
+
+actions:
+  1. Load client brief from database
+  2. Invoke Project Scoper agent with brief
+  3. Store generated scope
+  4. Queue scope for human review
+  5. WAIT for human approval
+  6. On approval: create project record, generate tasks from scope
+  7. On rejection: archive or return to scoping
+```
+
+### Scope-to-Tasks Conversion
+
+When a scope is approved, convert requirements to tasks:
+- Each REQ-xxx becomes one or more tasks
+- Respect dependency order from scope
+- Assign agent types from scope's agent_types field
+- Group tasks by milestone
+- Set priorities based on dependency chain (blocking tasks = higher priority)
+
+---
+
 ## File Lock Protocol
 
 ### Lock Acquisition Rules
@@ -48,6 +78,7 @@ IF conflict detected:
 
 When decomposing requirements:
 
+0. **Verify scope exists** — never decompose without an approved project scope
 1. **Identify outputs first** - What files will be created/modified?
 2. **Map to agents** - Which specialist owns each output?
 3. **Find dependencies** - What must complete before what?

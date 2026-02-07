@@ -8,6 +8,7 @@
 ## Pre-Flight: Before Writing Code
 
 - [ ] Define agent scope in `SOLOENTERPRISE_PHASES_CURRENT.md`
+- [ ] Determine agent category: `engineering` (writes code) or `business` (writes documents/reports)
 - [ ] Determine what context the agent needs (different from other agents?)
 - [ ] Decide on test plan (baseline tests 1-5, stress tests 6-10)
 
@@ -87,6 +88,43 @@ Orchestrator needs project-level context, not code-level:
 
 Orchestrator uses Claude Opus (`claude-opus-4-5-20251101`) for strategic reasoning.
 Other agents use Sonnet.
+
+---
+
+## Special Case: Business Operations Agents
+
+Business agents (Project Scoper, Client Reporter) differ from engineering agents:
+
+### Differences from Engineering Agents
+
+| Aspect | Engineering Agent | Business Agent |
+|--------|------------------|----------------|
+| Output | Code files in sandbox | Documents (markdown, YAML) |
+| Sandbox | `generated/tasks/{id}/` | `generated/reports/{project-id}/` |
+| Context needed | Code, schema, routes | Project scope, task statuses, client info |
+| Quality gates | Lint, type check, tests | Human review (always) |
+| Model | Sonnet (code generation) | Opus (scoper) or Sonnet (reporter) |
+
+### Context Loader
+
+Business agents need different context than engineering agents:
+
+```typescript
+// Engineering agents
+const context = await buildBackendContext(task, profile);
+
+// Business agents
+const context = await buildProjectContext(projectId);
+// Includes: scope, task statuses, milestones, client info, cost data
+```
+
+### Output Handling
+
+Business agent outputs go to `generated/reports/{project-id}/`:
+- `scope-{date}.md` — project scope documents
+- `weekly-{date}.md` — weekly client reports
+- `milestone-{name}.md` — milestone completion reports
+- `internal-{date}.yaml` — internal metrics (not client-facing)
 
 ---
 
@@ -308,6 +346,9 @@ Probe for weaknesses:
 | Worker script | `packages/core/package.json` |
 | Dashboard dropdown | `src/app/page.tsx` (NewTaskModal) |
 | Worker panel | `src/components/worker-panel.tsx` |
+| Business SKILL files | `skills/{agent-type}/SKILL-{type}-*.md` |
+| Report outputs | `generated/reports/{project-id}/` |
+| Project context loader | `packages/core/src/agents/utils/project-context-loader.ts` |
 
 ---
 
@@ -321,4 +362,4 @@ Probe for weaknesses:
 
 ---
 
-*Version 1.0 — Created during Phase 4 (QA Agent)*
+*Version 2.0 — Added business operations agents section — 2026-02-07*
