@@ -1,8 +1,8 @@
 # SoloEnterprise: Project Phases
 
 **Last Updated:** 2026-02-07
-**Current Phase:** Phase 5 (Orchestrator Agent + Project Management) — Ready to Start
-**Branch:** `phase-5/orchestrator-agent`
+**Current Phase:** Phase 5 (Orchestrator Agent + Project Management) — Testing
+**Branch:** `development` (orchestrator merged)
 
 ---
 
@@ -435,7 +435,49 @@ Before implementation, split `skills/SKILL-devops-engineer.md` (757 lines) into:
 - [ ] Run tests 1-5
 - [ ] Run tests 6-10
 
-### Principal Reviewer (Sub-task)
+### PR Workflow & Code Review Pipeline (Sub-task)
+
+The mechanism by which agent-generated code reaches the real codebase.
+
+#### How It Works
+
+1. **Agents write code** to `packages/core/generated/tasks/{task-id}/` (sandboxed, no git awareness)
+2. **Orchestrator detects milestone completion** — all tasks for a milestone are `completed` or explicitly descoped by human
+3. **Orchestrator emits `create_pull_request` action** with file mappings (sandbox path → real codebase path)
+4. **Command executor handles git operations:**
+   - Creates feature branch from `development`
+   - Assembles files from sandbox to real paths **in dependency order** (task A's files first, then task B's — NOT merged arbitrarily)
+   - Detects file path conflicts between non-dependent tasks → **fail fast, escalate to human** (should not happen if file locks worked, but defensive check)
+   - Commits with structured message (task IDs, agent types, milestone)
+   - Pushes branch and creates PR via GitHub API
+   - Assigns PR to Principal Software Engineer
+5. **`pull_requests` table tracks state** (see SCHEMA_ADDITIONS.md)
+6. **Dashboard shows pending PR notifications** for human
+7. **GitHub webhook receives PR events** (approved, changes_requested, merged)
+8. **Changes requested → new orchestrator task created** with the full review comments pasted in; orchestrator re-decomposes into agent tasks (v1: no clever per-comment routing)
+
+#### Edge Cases
+
+**Partial milestone failure:** A milestone PR is only created when ALL tasks are either `completed` or explicitly descoped by the human. No partial PRs. The existing 3-strike rule escalates failed tasks to human review. The human decides: fix it manually, remove it from scope, or move it to the next milestone. This keeps the PR flow simple and the milestone deliverable clean.
+
+**File path conflicts during assembly:** Agents write to separate sandboxes. If two tasks in the same milestone both wrote to `src/routes/index.ts`, the assembly step has two versions. If the tasks are in a dependency chain, apply in dependency order (later task wins). If the tasks are NOT dependent, this is a file lock failure — fail fast and escalate to human. Do not attempt automatic merging.
+
+#### HARD RULE
+
+**Only the Principal Software Engineer can merge PRs.** No exceptions — not agents, not CI, not the founder unless acting as Principal. This is enforced via GitHub branch protection rules.
+
+#### Checklist
+
+- [ ] Add `create_pull_request` action to orchestrator output parser
+- [ ] Implement PR creation in command executor (branch, commit, push, gh API)
+- [ ] Add `pull_requests` table to database schema
+- [ ] GitHub webhook endpoint for PR events
+- [ ] Dashboard: pending PR list with approve/request-changes actions
+- [ ] Orchestrator: handle `changes_requested` → re-open tasks with feedback
+- [ ] Branch protection rules on `development` branch
+- [ ] Test: milestone completion → PR created → Principal merges
+
+### Principal Reviewer Agent (Sub-task)
 
 **Model:** Claude Opus (critical review)
 
@@ -445,14 +487,26 @@ Before implementation, split `skills/SKILL-devops-engineer.md` (757 lines) into:
 - Performance issues
 - Logic errors
 - Error handling gaps
+- PR-level code review (automated first pass before human Principal)
 
 #### Checklist
 
 - [ ] Create `SKILL-reviewer-*.md` files
 - [ ] Create `reviewer-agent.ts`
 - [ ] Define review checklist
-- [ ] Integrate into merge flow
+- [ ] Integrate into PR review flow (agent reviews first, then human Principal approves/merges)
 - [ ] Test against known-bad code
+
+#### Future: Anthropic Message Batches API
+
+The Batches API allows submitting up to 10,000 async requests with 50% discount on input/output tokens (stacks with prompt caching for up to 95% savings). Results delivered within 24 hours. NOT suitable for the real-time agent pipeline (orchestrator → agent → response), but worth evaluating for bulk non-time-sensitive workloads once we're running multiple concurrent projects:
+
+- **Bulk QA runs:** Independent test validations across a milestone's task outputs
+- **Client Reporter:** Generating multiple milestone/sprint reports simultaneously
+- **Project Scoper:** Parallel scope analysis across multiple modules
+- **Pre-PR code review:** Batch review of all completed task outputs before PR assembly
+
+**When to revisit:** When running 5+ concurrent projects with predictable overnight/batch workloads. Not before Phase 7.
 
 ---
 

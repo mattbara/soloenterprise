@@ -667,12 +667,87 @@ Per your requirement: **Feedback agent notifies, never auto-acts**
 4. **No agent disagreement resolution without human**
 5. **All test data requests go to human**
 6. **All quality gates must pass before promotion**
-7. **No PR merge without passing build gate** ← NEW
-8. **Escalate to human after 3 failed PR attempts** ← NEW
-9. **Prettier auto-fixes, never blocks** ← NEW
+7. **No PR merge without passing build gate**
+8. **Escalate to human after 3 failed PR attempts**
+9. **Prettier auto-fixes, never blocks**
 10. **Every project starts with a scoped brief — no coding without written scope**
 11. **Client reports generated weekly for active projects — not optional**
 12. **Token costs tracked per project — maps to billing**
+13. **Only the Principal Software Engineer can merge PRs — no exceptions** ← HARD RULE
+14. **All agent-generated code reaches the codebase through PRs — never direct commits to `development`**
+
+> **Cost note:** Anthropic's Message Batches API (50% token discount, async 24hr processing) is earmarked for future bulk workloads — not currently integrated as the agent pipeline requires real-time responses. See Phase 7 "Future: Anthropic Message Batches API" in SOLOENTERPRISE_PHASES_CURRENT.md.
+
+---
+
+## PR & Code Review Pipeline
+
+Agent-generated code lives in sandboxes. It reaches the real codebase through a controlled PR flow.
+
+### Flow
+
+```
+Agent completes task → writes to generated/tasks/{id}/
+                                    │
+Orchestrator detects milestone done │
+                                    ▼
+                    ┌───────────────────────────────┐
+                    │  Orchestrator emits            │
+                    │  create_pull_request action    │
+                    └───────────────┬───────────────┘
+                                    │
+                                    ▼
+                    ┌───────────────────────────────┐
+                    │  Command Executor:             │
+                    │  1. Create feature branch      │
+                    │  2. Map sandbox → real paths   │
+                    │  3. Commit files               │
+                    │  4. Push branch                │
+                    │  5. Create PR via GitHub API   │
+                    │  6. Assign to Principal        │
+                    └───────────────┬───────────────┘
+                                    │
+                                    ▼
+                    ┌───────────────────────────────┐
+                    │  Principal Software Engineer   │
+                    │  reviews on GitHub:            │
+                    │  • Approve → merge             │
+                    │  • Request changes → feedback  │
+                    └───────────────┬───────────────┘
+                                    │
+                          ┌─────────┴─────────┐
+                          ▼                   ▼
+                    ┌───────────┐      ┌───────────────┐
+                    │  Merged   │      │  Changes      │
+                    │  ✅       │      │  Requested    │
+                    └───────────┘      └───────┬───────┘
+                                               │
+                                               ▼
+                                  ┌──────────────────────┐
+                                  │  GitHub webhook →    │
+                                  │  update DB →         │
+                                  │  orchestrator re-    │
+                                  │  opens tasks with    │
+                                  │  reviewer feedback   │
+                                  └──────────────────────┘
+```
+
+### Key Points
+
+- **Agents have NO git awareness.** They write files to sandboxed directories, period.
+- **The orchestrator drives the PR lifecycle.** It detects when a milestone's tasks are all `completed` (or explicitly descoped by human), then triggers PR creation. No partial PRs — 3-strike failures escalate to human first.
+- **The command executor handles all git operations.** Branch creation, file assembly from sandboxes **in dependency order**, conflict detection, commit, push, PR creation via GitHub API.
+- **File path conflicts:** If two non-dependent tasks wrote to the same file, the assembly step **fails fast and escalates to human**. If tasks are in a dependency chain, later task's version wins. No automatic merging.
+- **`pull_requests` table** tracks PR state in the database (see SCHEMA_ADDITIONS.md).
+- **Dashboard shows pending PRs** for the human Principal to review.
+- **GitHub webhook** receives PR events (approved, changes_requested, merged) and updates the DB accordingly.
+- **Changes requested (v1):** A single new orchestrator task is created with the full review comments pasted in. The orchestrator re-decomposes into agent tasks. No clever per-comment-to-agent routing — that's fragile and unnecessary for v1.
+
+### HARD RULE
+
+**Only the Principal Software Engineer can merge PRs.** This is enforced via GitHub branch protection rules. Not agents, not CI, not anyone else.
+
+**Implementation Phase:** Phase 7 (DevOps Agent + Principal Reviewer)
 
 ---
 

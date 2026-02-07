@@ -137,6 +137,30 @@ billingStatus: text('billing_status').default('not_started'), // not_started | i
 milestoneId: uuid('milestone_id').references(() => milestones.id),
 ```
 
+### pull_requests
+
+Tracks PRs created by the orchestrator for agent-generated code. Links milestones to GitHub PRs.
+
+```typescript
+export const pullRequests = pgTable('pull_requests', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id').references(() => projects.id).notNull(),
+  milestoneId: uuid('milestone_id').references(() => milestones.id),
+  taskIds: jsonb('task_ids').notNull(),           // string[] — tasks included in this PR
+  githubPrNumber: integer('github_pr_number'),
+  githubPrUrl: text('github_pr_url'),
+  branch: text('branch').notNull(),               // Feature branch name
+  title: text('title').notNull(),
+  description: text('description'),
+  status: text('status').notNull().default('open'), // open | approved | changes_requested | merged | closed
+  reviewerFeedback: text('reviewer_feedback'),     // From Principal when requesting changes
+  filesMapped: jsonb('files_mapped'),              // { sandboxPath: string, realPath: string }[]
+  createdAt: timestamp('created_at').defaultNow(),
+  mergedAt: timestamp('merged_at'),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+```
+
 ## Relationships
 
 ```
@@ -145,6 +169,8 @@ project_briefs 1──1 project_scopes
 project_scopes 1──1 projects (after approval)
 projects 1──∞ milestones
 milestones 1──∞ tasks
+milestones 1──∞ pull_requests
+projects 1──∞ pull_requests
 projects 1──∞ client_reports
 projects 1──∞ cost_tracking
 tasks 1──∞ cost_tracking
