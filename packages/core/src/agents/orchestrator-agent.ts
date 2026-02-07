@@ -3,8 +3,6 @@
  *
  * A BullMQ worker that processes orchestration tasks using Claude API (Opus).
  * Coordinates other agents by decomposing projects, assigning tasks, and reviewing work.
- *
- * NOTE: This is a SKELETON for Phase 5. YAML parsing and command execution will be added later.
  */
 
 import { Worker, Job } from 'bullmq';
@@ -67,7 +65,7 @@ async function logTokenBaseline(metrics: OrchestratorTokenMetrics): Promise<void
 // ============================================================================
 
 // Claude API configuration - Orchestrator uses Opus for high-quality reasoning
-const MODEL = 'claude-opus-4-5-20251101';
+const MODEL = process.env.ORCHESTRATOR_MODEL || 'claude-opus-4-6';
 const MAX_TOKENS = parseInt(process.env.CLAUDE_MAX_TOKENS || '16384', 10);
 const TEMPERATURE = 0;
 
