@@ -60,48 +60,135 @@ const KNOWN_TABLES = [
 ];
 
 /**
- * Selects appropriate context profile based on task description.
+ * Optional signals for more accurate profile selection.
+ * These supplement keyword matching with task metadata.
  */
-export function selectContextProfile(taskDescription: string): ContextProfileName {
+export interface ProfileSelectionOptions {
+  /** Task context/inputs — checked for database-related keywords */
+  taskContext?: Record<string, unknown>;
+  /** Agent types of tasks this task depends on */
+  dependencyAgentTypes?: string[];
+}
+
+/**
+ * Selects appropriate context profile based on task description and optional signals.
+ *
+ * Uses multi-signal collection: gathers evidence for each profile, then picks
+ * based on priority with conflict resolution. Database signals override bug-fix
+ * signals to prevent starving CRUD tasks of schema context.
+ */
+export function selectContextProfile(
+  taskDescription: string,
+  options?: ProfileSelectionOptions
+): ContextProfileName {
   const lower = taskDescription.toLowerCase();
 
-  // Bug fix detection - prioritize this check
-  if (lower.includes('fix') || lower.includes('bug') || lower.includes('error') || lower.includes('patch')) {
-    return 'bug-fix';
+  // Collect signals for each profile category
+  const bugSignals: string[] = [];
+  const dbSignals: string[] = [];
+  const simpleSignals: string[] = [];
+  const fullSignals: string[] = [];
+
+  // --- Bug fix signals (strict: multi-word phrases or clear intent) ---
+  const BUG_PHRASES = [
+    'fix bug', 'bug fix', 'bugfix', 'hotfix', 'broken',
+    'regression', 'not working', "doesn't work", 'does not work',
+  ];
+  for (const phrase of BUG_PHRASES) {
+    if (lower.includes(phrase)) bugSignals.push(phrase);
+  }
+  // "fix the/this/a" implies fixing something broken, not building something new
+  if (/\bfix (the|this|a|an)\b/.test(lower)) bugSignals.push('fix the/this/a');
+  // Standalone "patch" only when not part of "dispatch" etc.
+  if (/\bpatch\b/.test(lower)) bugSignals.push('patch');
+
+  // --- Database/API signals (tasks needing schema + service patterns) ---
+  const DB_KEYWORDS = [
+    'database', 'schema', 'drizzle', 'table', 'query', 'migration',
+    'crud', 'orm', 'sql', 'paginate', 'filter', 'api route',
+    'route handler', 'api endpoint', 'status enum',
+  ];
+  for (const kw of DB_KEYWORDS) {
+    if (lower.includes(kw)) dbSignals.push(kw);
+  }
+  // "REST" combined with API/endpoint/route implies CRUD
+  if (/\brest\b/.test(lower) && /\b(api|endpoint|route)\b/.test(lower)) {
+    dbSignals.push('rest+api/endpoint/route');
+  }
+  // Check known table names
+  const mentionedTables = extractRelevantTables(taskDescription, KNOWN_TABLES);
+  if (mentionedTables.length > 0) dbSignals.push(`tables:${mentionedTables.join(',')}`);
+
+  // Check task context for database signals
+  if (options?.taskContext) {
+    const contextStr = JSON.stringify(options.taskContext).toLowerCase();
+    const CONTEXT_DB_HINTS = ['drizzle', 'schema', 'database', 'table', 'orm', 'sql'];
+    for (const hint of CONTEXT_DB_HINTS) {
+      if (contextStr.includes(hint)) dbSignals.push(`context:${hint}`);
+    }
   }
 
-  // Full feature detection - needs comprehensive context
+  // Dependency signals: if task depends on backend tasks, likely needs schema
+  if (options?.dependencyAgentTypes?.includes('backend')) {
+    dbSignals.push('dep:backend');
+  }
+
+  // --- Simple endpoint signals ---
+  const SIMPLE_KEYWORDS = [
+    'health check', 'healthcheck', 'simple endpoint', 'utility endpoint',
+    'helper endpoint', 'ping endpoint',
+  ];
+  for (const kw of SIMPLE_KEYWORDS) {
+    if (lower.includes(kw)) simpleSignals.push(kw);
+  }
+
+  // --- Full feature signals ---
+  const FULL_KEYWORDS = [
+    'full feature', 'complete feature', 'comprehensive',
+    'admin panel', 'dashboard',
+  ];
+  for (const kw of FULL_KEYWORDS) {
+    if (lower.includes(kw)) fullSignals.push(kw);
+  }
   if (
     (lower.includes('feature') && lower.includes('implement')) ||
-    (lower.includes('create') && lower.includes('system')) ||
-    lower.includes('full feature') ||
-    lower.includes('complete feature') ||
-    lower.includes('comprehensive')
+    (lower.includes('create') && lower.includes('system'))
   ) {
-    return 'full-feature';
+    fullSignals.push('feature+implement or create+system');
   }
 
-  // Database task detection - needs schema but not route examples
-  if (
-    lower.includes('database') ||
-    lower.includes('schema') ||
-    lower.includes('table') ||
-    lower.includes('migration') ||
-    lower.includes('query') ||
-    lower.includes('drizzle') ||
-    lower.includes('orm')
-  ) {
-    return 'database-task';
+  // --- Selection with priority and conflict resolution ---
+  let selected: ContextProfileName;
+  let reason: string;
+
+  if (simpleSignals.length > 0 && dbSignals.length === 0 && fullSignals.length === 0) {
+    // Clearly simple, no competing signals
+    selected = 'simple-endpoint';
+    reason = `Simple signals: [${simpleSignals.join(', ')}]`;
+  } else if (bugSignals.length > 0 && dbSignals.length === 0 && fullSignals.length === 0) {
+    // Bug fix ONLY when no database/full-feature signals compete
+    selected = 'bug-fix';
+    reason = `Bug signals: [${bugSignals.join(', ')}], no competing db/full signals`;
+  } else if (dbSignals.length > 0) {
+    // Database signals present — always provide schema context
+    selected = 'database-task';
+    reason = `Database signals: [${dbSignals.join(', ')}]`;
+  } else if (fullSignals.length > 0) {
+    selected = 'full-feature';
+    reason = `Full feature signals: [${fullSignals.join(', ')}]`;
+  } else {
+    // No clear signals — default to full-feature (safer than starving context)
+    selected = 'full-feature';
+    reason = 'No clear signals, defaulting to full-feature for safety';
   }
 
-  // Check if task mentions specific tables
-  const mentionedTables = extractRelevantTables(taskDescription, KNOWN_TABLES);
-  if (mentionedTables.length > 0) {
-    return 'database-task';
-  }
+  console.log(
+    `[ContextProfiles] Selected "${selected}". Reason: ${reason}. ` +
+    `Signals: bug=[${bugSignals.join(',')}], db=[${dbSignals.join(',')}], ` +
+    `simple=[${simpleSignals.join(',')}], full=[${fullSignals.join(',')}]`
+  );
 
-  // Default to simple endpoint for basic API tasks
-  return 'simple-endpoint';
+  return selected;
 }
 
 /**

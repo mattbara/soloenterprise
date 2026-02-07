@@ -37,7 +37,10 @@
       "Bash(npx vitest run:*)",
       "Bash(git -C /Users/matteobaratella/Projects/PERSONAL_PROJECTS/SoloEnterprise/soloenterprise add:*)",
       "Bash(git commit -m \"$\\(cat <<''EOF''\nfix: question parser accepts nested format \\(Bug #4\\)\n\nAdd tests verifying the parser handles both question formats:\n- Simple: { question: \"string\" }\n- Complex: { summary, details, contradictions } coerced to flat string\n\nThe fix \\(composeQuestionText\\) was already in place. These tests\nconfirm it works for: simple, nested, summary-only, mixed, empty,\nand multiple questions in mixed formats.\n\n6 tests, all passing.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(pgrep:*)",
+      "Bash(source:*)",
+      "Bash(REDIS_URL=\"$REDIS_URL\" pnpm tsx:*)"
     ]
   }
 }

@@ -249,19 +249,27 @@ async function createTasks(
  * Apply status updates to existing tasks.
  *
  * @param parentTaskId - The orchestrator's own task ID (to skip self-referencing updates)
+ * @param idMapping - Placeholder ID → real UUID mapping from task creation pass
  */
 async function applyStatusUpdates(
   statusUpdates: OrchestratorStatusUpdate[],
-  parentTaskId: string
+  parentTaskId: string,
+  idMapping: Map<string, string>
 ): Promise<{ updated: string[]; errors: string[] }> {
   const updated: string[] = [];
   const errors: string[] = [];
 
   for (const update of statusUpdates) {
+    // Resolve placeholder IDs (e.g., "TASK-001") to real UUIDs via idMapping
+    const resolvedId = idMapping.get(update.taskId) || update.taskId;
+    if (resolvedId !== update.taskId) {
+      console.log(`[CommandExecutor] Resolved status update target: ${update.taskId} → ${resolvedId}`);
+    }
+
     // Skip self-referencing status updates — the orchestrator agent code already
     // handles its own task status (completed/failed/waiting_human).
     // Also handle truncated UUIDs (e.g., "b5819951" matching "b5819951-e9d9-4792-...")
-    if (update.taskId === parentTaskId || parentTaskId.startsWith(update.taskId)) {
+    if (resolvedId === parentTaskId || parentTaskId.startsWith(resolvedId)) {
       console.log(`[CommandExecutor] Skipping self-referencing status update for orchestrator task ${update.taskId}`);
       continue;
     }
@@ -269,11 +277,11 @@ async function applyStatusUpdates(
     try {
       // Verify task exists
       const task = await db.query.tasks.findFirst({
-        where: eq(tasks.id, update.taskId),
+        where: eq(tasks.id, resolvedId),
       });
 
       if (!task) {
-        errors.push(`Task not found: ${update.taskId}`);
+        errors.push(`Task not found: ${update.taskId} (resolved: ${resolvedId})`);
         continue;
       }
 
@@ -281,20 +289,20 @@ async function applyStatusUpdates(
       // Note: OrchestratorStatusUpdate has different statuses than what updateTaskStatus accepts
       const validStatuses = ['pending', 'queued', 'running', 'waiting_human', 'blocked', 'completed', 'failed'] as const;
       if (!validStatuses.includes(update.status as any)) {
-        errors.push(`Invalid status for task ${update.taskId}: ${update.status}`);
+        errors.push(`Invalid status for task ${resolvedId}: ${update.status}`);
         continue;
       }
 
       await updateTaskStatus(
-        update.taskId,
+        resolvedId,
         update.status as typeof validStatuses[number],
         update.reason ? { success: update.status === 'completed', summary: update.reason } : undefined
       );
 
-      updated.push(update.taskId);
-      console.log(`[CommandExecutor] Updated task ${update.taskId} status to ${update.status}`);
+      updated.push(resolvedId);
+      console.log(`[CommandExecutor] Updated task ${resolvedId} status to ${update.status}`);
     } catch (err) {
-      const errorMsg = `Failed to update task ${update.taskId}: ${err instanceof Error ? err.message : 'Unknown error'}`;
+      const errorMsg = `Failed to update task ${resolvedId}: ${err instanceof Error ? err.message : 'Unknown error'}`;
       console.error(`[CommandExecutor] ${errorMsg}`);
       errors.push(errorMsg);
     }
@@ -458,7 +466,7 @@ export async function executeOrchestratorCommands(
 
   // 2. Apply status updates (pass parentTaskId to skip self-referencing updates)
   if (parseResult.statusUpdates.length > 0) {
-    const statusResult = await applyStatusUpdates(parseResult.statusUpdates, parentTaskId);
+    const statusResult = await applyStatusUpdates(parseResult.statusUpdates, parentTaskId, idMapping);
     result.statusesUpdated = statusResult.updated;
     result.errors.push(...statusResult.errors);
   }

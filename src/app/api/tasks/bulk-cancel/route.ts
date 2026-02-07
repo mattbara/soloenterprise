@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { tasks } from "@soloenterprise/db/schema";
 import { and, inArray, notInArray } from "drizzle-orm";
+import { removeTaskJobsFromQueues } from "@soloenterprise/core";
 
 export async function POST(request: Request) {
   try {
@@ -28,7 +29,21 @@ export async function POST(request: Request) {
           notInArray(tasks.status, [...nonCancellableStatuses])
         )
       )
-      .returning({ id: tasks.id });
+      .returning({ id: tasks.id, agentType: tasks.agentType });
+
+    // Remove cancelled tasks from BullMQ queues (best effort)
+    try {
+      if (result.length > 0) {
+        const removed = await removeTaskJobsFromQueues(
+          result.map((t) => ({ taskId: t.id, agentType: t.agentType }))
+        );
+        if (removed > 0) {
+          console.log(`[bulk-cancel] Removed ${removed} jobs from queues`);
+        }
+      }
+    } catch (queueError) {
+      console.warn("[bulk-cancel] Could not clean queues:", queueError);
+    }
 
     return NextResponse.json({
       cancelled: result.length,
