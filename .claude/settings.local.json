@@ -30,7 +30,14 @@
       "Bash(timeout 5 pnpm:*)",
       "Bash(pnpm:*)",
       "Bash(npx drizzle-kit:*)",
-      "mcp__ide__getDiagnostics"
+      "mcp__ide__getDiagnostics",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfeat\\(orchestrator\\): update to Opus 4.6 model, track .env.example\n\n- Update orchestrator model from claude-opus-4-5-20251101 to claude-opus-4-6\n- Read model from ORCHESTRATOR_MODEL env var with fallback\n- Remove stale SKELETON comment\n- Add per-agent model config to .env.example\n- Fix .gitignore to track .env.example \\(was caught by .env* glob\\)\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfix\\(orchestrator\\): parser and executor fixes from baseline tests 1-5\n\nParser fixes:\n- Add request_clarification to valid action types\n- Add business_logic, architectural to question categories\n- Add waiting_human to valid task statuses\n- Default file lock action to ''acquire'' when omitted\n- Accept locked_by as alias for task_id in file locks\n- Handle files[] array format in file locks \\(expand to multiple locks\\)\n\nExecutor fixes:\n- Skip self-referencing status updates \\(orchestrator updating its own task\\)\n- Handle truncated UUID matching for self-reference detection\n\nAlso adds test script for orchestrator baseline tests \\(1-5\\).\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(npx vitest run:*)",
+      "Bash(git -C /Users/matteobaratella/Projects/PERSONAL_PROJECTS/SoloEnterprise/soloenterprise add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfix: question parser accepts nested format \\(Bug #4\\)\n\nAdd tests verifying the parser handles both question formats:\n- Simple: { question: \"string\" }\n- Complex: { summary, details, contradictions } coerced to flat string\n\nThe fix \\(composeQuestionText\\) was already in place. These tests\nconfirm it works for: simple, nested, summary-only, mixed, empty,\nand multiple questions in mixed formats.\n\n6 tests, all passing.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git commit:*)"
     ]
   }
 }

@@ -239,20 +239,21 @@ export function detectOrchestratorAction(description: string): OrchestratorActio
     return 'kickoff';
   }
 
+  if (lower.includes('decompose') || lower.includes('break down') || lower.includes('plan') || lower.includes('build a complete') || lower.includes('build a full')) {
+    return 'decompose';
+  }
+
   if (lower.includes('promote') || lower.includes('deploy') || lower.includes('release')) {
     return 'promote';
   }
 
-  if (lower.includes('review') || lower.includes('complete') || lower.includes('verify') || lower.includes('gate')) {
+  if (lower.includes('review') || lower.includes('verify') || lower.includes('gate') ||
+      lower.includes('complete task') || lower.includes('mark complete') || lower.includes('mark as complete')) {
     return 'review';
   }
 
   if (lower.includes('question') || lower.includes('answer') || lower.includes('decision')) {
     return 'question';
-  }
-
-  if (lower.includes('decompose') || lower.includes('break down') || lower.includes('plan')) {
-    return 'decompose';
   }
 
   // Default to assign

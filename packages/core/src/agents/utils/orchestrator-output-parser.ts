@@ -32,7 +32,9 @@ export type OrchestratorActionType =
   | 'reassign_task'            // Moving task to different agent
   | 'cancel_task'              // Canceling a task
   | 'unblock_task'             // Manually unblocking a task
-  | 'retry_task';              // Retrying a failed task
+  | 'retry_task'               // Retrying a failed task
+  | 'escalate_contradictions'  // Contradictory requirements detected
+  | 'failure_recovery_review'; // Reviewing and recovering from failures
 
 export interface OrchestratorTaskDefinition {
   id?: string;
@@ -101,6 +103,8 @@ const VALID_ACTIONS: OrchestratorActionType[] = [
   'cancel_task',
   'unblock_task',
   'retry_task',
+  'escalate_contradictions',
+  'failure_recovery_review',
 ];
 
 function isValidAgent(value: unknown): value is AgentType {
@@ -275,7 +279,70 @@ function parseTaskDefinition(raw: unknown, index: number): OrchestratorTaskDefin
 }
 
 /**
+ * Compose a question string from nested/complex question formats.
+ *
+ * The orchestrator may use various formats:
+ * - Simple: { question: "What auth method?" }
+ * - Complex: { summary: "...", details: "...", contradictions: [...] }
+ * - Mixed: { question: "...", contradictions: [...] }
+ *
+ * This function normalizes them all into a single string.
+ */
+function composeQuestionText(obj: Record<string, unknown>): string | null {
+  // Prefer explicit question field
+  if (typeof obj.question === 'string' && obj.question.trim()) {
+    return obj.question.trim();
+  }
+
+  // Build from summary + details + contradictions
+  const parts: string[] = [];
+
+  if (typeof obj.summary === 'string' && obj.summary.trim()) {
+    parts.push(obj.summary.trim());
+  }
+
+  if (typeof obj.title === 'string' && obj.title.trim()) {
+    parts.push(obj.title.trim());
+  }
+
+  if (typeof obj.details === 'string' && obj.details.trim()) {
+    parts.push(obj.details.trim());
+  }
+
+  // Handle contradictions array (from Test 8 format)
+  if (Array.isArray(obj.contradictions)) {
+    for (const c of obj.contradictions) {
+      if (c && typeof c === 'object') {
+        const contradiction = c as Record<string, unknown>;
+        const cTitle = contradiction.title ?? contradiction.id ?? '';
+        const cConflict = contradiction.conflict ?? contradiction.description ?? '';
+        const cRec = contradiction.recommendation ?? '';
+        if (cTitle || cConflict) {
+          parts.push(`[${cTitle}] ${cConflict}${cRec ? ` Recommendation: ${cRec}` : ''}`);
+        }
+      }
+    }
+  }
+
+  // Handle response_format if present (tells human how to answer)
+  if (typeof obj.response_format === 'string' && obj.response_format.trim()) {
+    parts.push(obj.response_format.trim());
+  }
+
+  if (parts.length === 0) {
+    return null;
+  }
+
+  return parts.join('\n\n');
+}
+
+/**
  * Parse a question from raw YAML object.
+ *
+ * Handles multiple formats:
+ * - Standard: { question: "string", category, priority }
+ * - Complex: { summary: "string", details: "string", contradictions: [...] }
+ * - Mixed: any combination of the above
  */
 function parseQuestion(raw: unknown, index: number): OrchestratorQuestion | null {
   if (!raw || typeof raw !== 'object') {
@@ -285,9 +352,10 @@ function parseQuestion(raw: unknown, index: number): OrchestratorQuestion | null
 
   const obj = raw as Record<string, unknown>;
 
-  // Validate required fields
-  if (typeof obj.question !== 'string' || !obj.question.trim()) {
-    console.warn(`[OrchestratorParser] Question at index ${index} missing required 'question' field`);
+  // Compose question text from whatever fields are available
+  const questionText = composeQuestionText(obj);
+  if (!questionText) {
+    console.warn(`[OrchestratorParser] Question at index ${index} has no parseable question content (tried: question, summary, details, contradictions)`);
     return null;
   }
 
@@ -296,7 +364,15 @@ function parseQuestion(raw: unknown, index: number): OrchestratorQuestion | null
   if (isValidQuestionCategory(obj.category)) {
     category = obj.category;
   } else if (obj.category !== undefined) {
-    console.warn(`[OrchestratorParser] Question at index ${index} has invalid category '${obj.category}', defaulting to 'technical'`);
+    // Map common non-standard categories
+    const categoryStr = String(obj.category).toLowerCase();
+    if (categoryStr.includes('conflict') || categoryStr.includes('contradiction')) {
+      category = 'architectural';
+    } else if (categoryStr.includes('business')) {
+      category = 'business_logic';
+    } else {
+      console.warn(`[OrchestratorParser] Question at index ${index} has invalid category '${obj.category}', defaulting to 'technical'`);
+    }
   }
 
   // Use default priority if not specified or invalid
@@ -308,7 +384,7 @@ function parseQuestion(raw: unknown, index: number): OrchestratorQuestion | null
   }
 
   const question: OrchestratorQuestion = {
-    question: obj.question.trim(),
+    question: questionText,
     category,
     priority,
   };
@@ -419,6 +495,51 @@ function parseFileLock(raw: unknown, index: number): OrchestratorFileLock | null
 }
 
 // ============================================================================
+// YAML Pre-processing
+// ============================================================================
+
+/**
+ * Strip informational sections from YAML that the parser doesn't use.
+ *
+ * The orchestrator often includes an `analysis:` section with free-form text
+ * that contains colons in prose (e.g., "TASK-001 (backend: webhook endpoint)")
+ * which breaks YAML parsing. Since the parser only extracts `action`, `tasks`,
+ * `questions`, `status_updates`, `file_locks`, and `milestone_progress`,
+ * stripping `analysis` and `summary` top-level keys is safe.
+ *
+ * Also strips `milestone_progress` since it's informational only.
+ */
+function stripInformationalSections(yamlContent: string): string {
+  const lines = yamlContent.split('\n');
+  const result: string[] = [];
+  let skipping = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trimStart();
+
+    // Detect top-level informational keys (no leading whitespace, or minimal)
+    const isTopLevel = line === trimmed || (line.length - trimmed.length === 0);
+
+    if (isTopLevel && /^(analysis|milestone_progress|summary)\s*:/.test(trimmed)) {
+      skipping = true;
+      continue;
+    }
+
+    // Stop skipping when we hit the next top-level key
+    if (skipping && isTopLevel && trimmed.length > 0 && /^\S+\s*:/.test(trimmed)) {
+      skipping = false;
+    }
+
+    if (!skipping) {
+      result.push(line);
+    }
+  }
+
+  return result.join('\n');
+}
+
+// ============================================================================
 // Main Parser
 // ============================================================================
 
@@ -451,10 +572,13 @@ export function parseOrchestratorOutput(responseText: string): OrchestratorParse
 
   result.rawYaml = yamlContent;
 
+  // Pre-process: strip informational sections that may contain unquoted colons
+  const cleanedYaml = stripInformationalSections(yamlContent);
+
   // Parse YAML
   let parsed: unknown;
   try {
-    parsed = parseYaml(yamlContent);
+    parsed = parseYaml(cleanedYaml);
   } catch (err) {
     result.error = `YAML parse error: ${err instanceof Error ? err.message : 'Unknown error'}`;
     return result;
@@ -520,7 +644,7 @@ export function parseOrchestratorOutput(responseText: string): OrchestratorParse
       if (Array.isArray(raw.files) && !raw.path) {
         for (const file of raw.files) {
           if (typeof file === 'string' && file.trim()) {
-            const expanded = { ...raw, path: file };
+            const expanded: Record<string, unknown> = { ...raw, path: file };
             delete expanded.files;
             const lock = parseFileLock(expanded, i);
             if (lock) result.fileLocks.push(lock);

@@ -11,7 +11,7 @@
 
 import { db } from '@soloenterprise/db';
 import { tasks, projects } from '@soloenterprise/db/schema';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, and, inArray, like } from 'drizzle-orm';
 import { updateTaskStatus } from '../../services/task-service';
 import { acquireLocks, releaseLocks } from '../../locks/file-lock-manager';
 import { enqueueTask } from '../../queue/task-queue';
@@ -147,6 +147,41 @@ async function createTasks(
       const resolvedId = idMapping.get(dep);
       if (resolvedId) {
         resolvedDeps.push(resolvedId);
+        continue;
+      }
+
+      // Not in idMapping — check if it's an existing task UUID or UUID prefix
+      const uuidFull = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const uuidPrefix = /^[0-9a-f]{7,}$/i;
+
+      if (uuidFull.test(dep)) {
+        // Full UUID — verify it exists
+        const existing = await db.query.tasks.findFirst({
+          where: and(eq(tasks.id, dep), eq(tasks.projectId, projectId)),
+          columns: { id: true },
+        });
+        if (existing) {
+          resolvedDeps.push(dep);
+          console.log(`[CommandExecutor] Resolved existing task dependency: ${dep}`);
+        } else {
+          unresolvedDeps.push(dep);
+        }
+      } else if (uuidPrefix.test(dep)) {
+        // Truncated UUID prefix — search by LIKE
+        const matches = await db.query.tasks.findMany({
+          where: and(like(tasks.id, `${dep}%`), eq(tasks.projectId, projectId)),
+          columns: { id: true },
+          limit: 2,
+        });
+        if (matches.length === 1) {
+          resolvedDeps.push(matches[0].id);
+          console.log(`[CommandExecutor] Resolved truncated UUID "${dep}" → ${matches[0].id}`);
+        } else if (matches.length > 1) {
+          console.warn(`[CommandExecutor] Ambiguous UUID prefix "${dep}" matches ${matches.length} tasks, skipping`);
+          unresolvedDeps.push(dep);
+        } else {
+          unresolvedDeps.push(dep);
+        }
       } else {
         unresolvedDeps.push(dep);
       }
