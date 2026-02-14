@@ -123,8 +123,8 @@ describe('selectContextProfile', () => {
   // full-feature
   // ==========================================================================
 
-  it('selects full-feature for "Build admin panel with table, form, filters"', () => {
-    expect(selectContextProfile('Build admin panel with table, form, filters')).toBe(
+  it('selects full-feature for "Build admin panel with charts, forms, and navigation"', () => {
+    expect(selectContextProfile('Build admin panel with charts, forms, and navigation')).toBe(
       'full-feature'
     );
   });
@@ -139,6 +139,42 @@ describe('selectContextProfile', () => {
 
   it('defaults to full-feature when no clear signals', () => {
     expect(selectContextProfile('Do something with the application')).toBe('full-feature');
+  });
+
+  // ==========================================================================
+  // Agent-type awareness (frontend should NOT trigger database-task for UI words)
+  // ==========================================================================
+
+  it('does NOT select database-task for frontend agent with "table" in description', () => {
+    expect(
+      selectContextProfile('Build bookings table component with status badges', {
+        agentType: 'frontend',
+      })
+    ).not.toBe('database-task');
+  });
+
+  it('does NOT select database-task for frontend agent with "filter" in description', () => {
+    expect(
+      selectContextProfile('Build filter controls component', {
+        agentType: 'frontend',
+      })
+    ).not.toBe('database-task');
+  });
+
+  it('still selects database-task for frontend agent with strong DB keywords like "schema"', () => {
+    expect(
+      selectContextProfile('Create shared types from database schema', {
+        agentType: 'frontend',
+      })
+    ).toBe('database-task');
+  });
+
+  it('still selects database-task for backend agent with "table" in description', () => {
+    expect(
+      selectContextProfile('Add indexes to bookings table', {
+        agentType: 'backend',
+      })
+    ).toBe('database-task');
   });
 
   // ==========================================================================

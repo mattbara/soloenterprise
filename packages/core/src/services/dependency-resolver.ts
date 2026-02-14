@@ -9,6 +9,7 @@ import { db } from '@soloenterprise/db';
 import { tasks } from '@soloenterprise/db/schema';
 import { eq, inArray } from 'drizzle-orm';
 import { enqueueTask } from '../queue/task-queue';
+import { generateTechSpec } from '../agents/utils/architect-spec-generator';
 
 /**
  * Check and queue tasks that were waiting on the completed task.
@@ -65,6 +66,16 @@ export async function resolveCompletedDependency(completedTaskId: string): Promi
 
       if (allDepsCompleted) {
         console.log(`[DependencyResolver] All ${deps.length} dependencies met for task ${task.id}, queuing...`);
+
+        // Generate architect tech spec before queuing (dependencies just resolved)
+        try {
+          const specResult = await generateTechSpec(task.id);
+          if (specResult) {
+            console.log(`[DependencyResolver] Tech spec generated for ${task.id}: ~${specResult.tokens} tokens`);
+          }
+        } catch (err) {
+          console.warn(`[DependencyResolver] Tech spec generation failed for ${task.id}:`, err);
+        }
 
         try {
           await enqueueTask(task.id, task.agentType, task.priority);
@@ -195,6 +206,16 @@ export async function unblockDependentTasks(completedTaskId: string): Promise<vo
             },
           })
           .where(eq(tasks.id, task.id));
+
+        // Generate architect tech spec before queuing (dependencies just resolved)
+        try {
+          const specResult = await generateTechSpec(task.id);
+          if (specResult) {
+            console.log(`[DependencyResolver] Tech spec generated for ${task.id}: ~${specResult.tokens} tokens`);
+          }
+        } catch (err) {
+          console.warn(`[DependencyResolver] Tech spec generation failed for ${task.id}:`, err);
+        }
 
         await enqueueTask(task.id, task.agentType, task.priority);
         console.log(`[DependencyResolver] Unblocked and queued task ${task.id} ("${task.name}")`);

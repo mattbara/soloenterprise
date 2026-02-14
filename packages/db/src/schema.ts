@@ -216,6 +216,11 @@ export const tasks = pgTable('tasks', {
     cacheHitPercent?: number;
     estimatedSavingsPercent?: number;
   }>(),
+
+  // Technical spec (architect layer output)
+  technicalSpec: text('technical_spec'),
+  techSpecGeneratedAt: timestamp('tech_spec_generated_at', { withTimezone: true }),
+  techSpecTokens: integer('tech_spec_tokens'),
 }, (table) => ({
   projectIdx: index('tasks_project_idx').on(table.projectId),
   statusIdx: index('tasks_status_idx').on(table.status),

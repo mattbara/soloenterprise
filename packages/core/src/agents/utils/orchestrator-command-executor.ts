@@ -21,6 +21,7 @@ import type {
   OrchestratorStatusUpdate,
   OrchestratorFileLock,
 } from './orchestrator-output-parser';
+import { generateTechSpec } from './architect-spec-generator';
 
 // ============================================================================
 // Types
@@ -229,6 +230,16 @@ async function createTasks(
         .join(', ');
       console.log(`[CommandExecutor] Task ${realTaskId} blocked by dependencies: [${resolvedDeps}] - staying 'pending'`);
     } else {
+      // Generate architect tech spec (inline, before queuing)
+      try {
+        const specResult = await generateTechSpec(realTaskId);
+        if (specResult) {
+          console.log(`[CommandExecutor] Tech spec generated for ${realTaskId}: ~${specResult.tokens} tokens`);
+        }
+      } catch (err) {
+        console.warn(`[CommandExecutor] Tech spec generation failed for ${realTaskId}, queuing without spec:`, err);
+      }
+
       try {
         await enqueueTask(realTaskId, taskDef.agent, taskDef.priority);
         console.log(`[CommandExecutor] Queued task ${realTaskId} to ${taskDef.agent}-tasks queue (no dependencies)`);
