@@ -10,7 +10,7 @@
  */
 
 import { db } from '@soloenterprise/db';
-import { tasks, projects } from '@soloenterprise/db/schema';
+import { tasks, projects, questions } from '@soloenterprise/db/schema';
 import { eq, and, inArray, like } from 'drizzle-orm';
 import { updateTaskStatus } from '../../services/task-service';
 import { acquireLocks, releaseLocks } from '../../locks/file-lock-manager';
@@ -23,6 +23,32 @@ import type {
 } from './orchestrator-output-parser';
 import { generateTechSpec } from './architect-spec-generator';
 import { TaskLogger } from '../../utils/task-logger';
+
+// ============================================================================
+// Agent Availability Guard
+// ============================================================================
+
+/**
+ * Agents that have active workers and can process tasks.
+ * Tasks targeting agents NOT in this list will be rejected and converted
+ * to human questions to prevent dead tasks sitting in queues forever.
+ *
+ * Update this list when new agents are implemented.
+ */
+const AVAILABLE_AGENTS = ['backend', 'frontend', 'qa'] as const;
+type AvailableAgent = typeof AVAILABLE_AGENTS[number];
+
+function isAgentAvailable(agent: string): agent is AvailableAgent {
+  return (AVAILABLE_AGENTS as readonly string[]).includes(agent);
+}
+
+interface RejectedTask {
+  id?: string;
+  name: string;
+  agent: string;
+  description: string;
+  dependedOnBy: string[]; // placeholder IDs of tasks that depended on this one
+}
 
 // ============================================================================
 // Types
@@ -84,9 +110,70 @@ async function createTasks(
   logger.log('CommandExecutor', `Creating ${taskDefs.length} tasks with two-pass dependency resolution...`);
 
   // =========================================================================
+  // PRE-PASS: Filter out tasks targeting unavailable agents
+  // =========================================================================
+  const rejectedTasks: RejectedTask[] = [];
+  const rejectedPlaceholderIds = new Set<string>();
+
+  const validTaskDefs = taskDefs.filter(taskDef => {
+    if (!isAgentAvailable(taskDef.agent)) {
+      const placeholderId = taskDef.id ?? taskDef.name;
+      rejectedPlaceholderIds.add(placeholderId);
+
+      // Find which other tasks depended on this one
+      const dependedOnBy = taskDefs
+        .filter(t => t.dependencies?.includes(placeholderId))
+        .map(t => t.id ?? t.name);
+
+      rejectedTasks.push({
+        id: taskDef.id,
+        name: taskDef.name,
+        agent: taskDef.agent,
+        description: taskDef.description,
+        dependedOnBy,
+      });
+
+      logger.warn(
+        'CommandExecutor',
+        `REJECTED task "${taskDef.name}" — agent "${taskDef.agent}" is not available. ` +
+        `Available agents: ${AVAILABLE_AGENTS.join(', ')}. ` +
+        `This task will be converted to a human question.`
+      );
+
+      return false;
+    }
+    return true;
+  });
+
+  // Strip rejected task IDs from remaining tasks' dependency arrays
+  if (rejectedPlaceholderIds.size > 0) {
+    for (const taskDef of validTaskDefs) {
+      if (taskDef.dependencies && taskDef.dependencies.length > 0) {
+        const originalLen = taskDef.dependencies.length;
+        taskDef.dependencies = taskDef.dependencies.filter(
+          dep => !rejectedPlaceholderIds.has(dep)
+        );
+        if (taskDef.dependencies.length < originalLen) {
+          logger.log(
+            'CommandExecutor',
+            `Removed ${originalLen - taskDef.dependencies.length} rejected dependency(ies) from task "${taskDef.name}"`
+          );
+        }
+      }
+    }
+  }
+
+  if (validTaskDefs.length < taskDefs.length) {
+    logger.log(
+      'CommandExecutor',
+      `Pre-pass complete: ${rejectedTasks.length} task(s) rejected, ${validTaskDefs.length} task(s) proceeding`
+    );
+  }
+
+  // =========================================================================
   // PASS 1: Create all tasks WITHOUT dependencies (empty dependsOn)
   // =========================================================================
-  for (const taskDef of taskDefs) {
+  for (const taskDef of validTaskDefs) {
     try {
       const [task] = await db
         .insert(tasks)
@@ -127,7 +214,7 @@ async function createTasks(
   // =========================================================================
   // PASS 2: Update tasks with resolved dependency UUIDs
   // =========================================================================
-  for (const taskDef of taskDefs) {
+  for (const taskDef of validTaskDefs) {
     const placeholderId = taskDef.id ?? taskDef.name;
     const realTaskId = idMapping.get(placeholderId);
 
@@ -215,7 +302,7 @@ async function createTasks(
   // =========================================================================
   // PASS 3: Queue tasks that have no dependencies
   // =========================================================================
-  for (const taskDef of taskDefs) {
+  for (const taskDef of validTaskDefs) {
     const placeholderId = taskDef.id ?? taskDef.name;
     const realTaskId = idMapping.get(placeholderId);
 
@@ -243,11 +330,48 @@ async function createTasks(
       }
 
       try {
-        await enqueueTask(realTaskId, taskDef.agent, taskDef.priority);
+        // Safe cast: pre-pass guard already filtered out unavailable agents
+        await enqueueTask(realTaskId, taskDef.agent as Parameters<typeof enqueueTask>[1], taskDef.priority);
         logger.log('CommandExecutor', `Queued task ${realTaskId} to ${taskDef.agent}-tasks queue (no dependencies)`);
       } catch (err) {
         logger.error('CommandExecutor', `Failed to queue task ${realTaskId}: ${err instanceof Error ? err.message : String(err)}`);
       }
+    }
+  }
+
+  // =========================================================================
+  // POST-PASS: Create human question for rejected tasks (unavailable agents)
+  // =========================================================================
+  if (rejectedTasks.length > 0) {
+    const unavailableAgents = [...new Set(rejectedTasks.map(t => t.agent))];
+    const questionLines = rejectedTasks.map(t => {
+      let line = `- **${t.name}** (would need \`${t.agent}\` agent): ${t.description}`;
+      if (t.dependedOnBy.length > 0) {
+        line += `\n  _Note: tasks [${t.dependedOnBy.join(', ')}] depended on this — their dependency has been removed._`;
+      }
+      return line;
+    });
+
+    try {
+      await db.insert(questions).values({
+        projectId,
+        taskId: parentTaskId,
+        question: `${rejectedTasks.length} task(s) require agent(s) that are not yet implemented: ${unavailableAgents.join(', ')}.\n\nThe following work needs manual handling or should be deferred:\n${questionLines.join('\n')}`,
+        context: `Rejected during task decomposition. Available agents: ${AVAILABLE_AGENTS.join(', ')}.`,
+        askedByAgent: 'orchestrator',
+        status: 'pending',
+        priority: 'important',
+        isBlocking: false,
+      });
+
+      logger.log(
+        'CommandExecutor',
+        `Created human question for ${rejectedTasks.length} task(s) targeting unavailable agents: ${unavailableAgents.join(', ')}`
+      );
+    } catch (err) {
+      const errorMsg = `Failed to create human question for rejected tasks: ${err instanceof Error ? err.message : 'Unknown error'}`;
+      logger.error('CommandExecutor', errorMsg);
+      errors.push(errorMsg);
     }
   }
 

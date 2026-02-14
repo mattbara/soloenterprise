@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Modal } from "./Modal";
 import { Button } from "./Button";
 
@@ -25,6 +25,9 @@ interface RequirementsModalProps {
   projects: Project[]; // Server-provided, no client fetch needed
 }
 
+const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB per file
+const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+
 export function RequirementsModal({
   isOpen,
   onClose,
@@ -35,9 +38,13 @@ export function RequirementsModal({
   const [agentType, setAgentType] = useState<AgentType>("backend");
   const [title, setTitle] = useState<string>("");
   const [requirements, setRequirements] = useState<string>("");
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [previews, setPreviews] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [taskResult, setTaskResult] = useState<TaskResult | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Auto-select first project when modal opens if only one exists
   useEffect(() => {
@@ -53,10 +60,52 @@ export function RequirementsModal({
       setAgentType("backend");
       setTitle("");
       setRequirements("");
+      setSelectedFiles([]);
+      setPreviews([]);
       setError(null);
+      setUploadProgress(null);
       setTaskResult(null);
     }
   }, [isOpen]);
+
+  // Generate previews when files change
+  useEffect(() => {
+    const urls = selectedFiles.map((file) => URL.createObjectURL(file));
+    setPreviews(urls);
+    return () => urls.forEach((url) => URL.revokeObjectURL(url));
+  }, [selectedFiles]);
+
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+
+    // Validate count
+    // No artificial cap — upload as many as needed
+
+    // Validate each file
+    for (const file of files) {
+      if (!ALLOWED_TYPES.includes(file.type)) {
+        setError(`"${file.name}" is not a supported image type. Use PNG, JPEG, WebP, or GIF.`);
+        return;
+      }
+      if (file.size > MAX_FILE_SIZE) {
+        setError(`"${file.name}" exceeds 2MB limit.`);
+        return;
+      }
+    }
+
+    setError(null);
+    setSelectedFiles((prev) => [...prev, ...files]);
+
+    // Reset input so same file can be re-selected
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  }
+
+  function removeFile(index: number) {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -81,6 +130,7 @@ export function RequirementsModal({
     setIsLoading(true);
 
     try {
+      // 1. Create task first (need taskId for image upload)
       const response = await fetch("/api/tasks/create", {
         method: "POST",
         headers: {
@@ -100,12 +150,39 @@ export function RequirementsModal({
       }
 
       const result: TaskResult = await response.json();
+
+      // 2. Upload images if any
+      if (selectedFiles.length > 0) {
+        setUploadProgress(`Uploading ${selectedFiles.length} image(s)...`);
+
+        const formData = new FormData();
+        formData.append("taskId", result.taskId);
+        for (const file of selectedFiles) {
+          formData.append("files", file);
+        }
+
+        const uploadResponse = await fetch("/api/tasks/upload-images", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!uploadResponse.ok) {
+          const data = await uploadResponse.json();
+          // Task was created but upload failed — warn but don't fail
+          console.error("Image upload failed:", data.error);
+          setUploadProgress(null);
+        } else {
+          setUploadProgress(null);
+        }
+      }
+
       setTaskResult(result);
       onSuccess(); // This calls router.refresh() in parent
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
       setIsLoading(false);
+      setUploadProgress(null);
     }
   }
 
@@ -150,6 +227,12 @@ export function RequirementsModal({
                 Queued
               </span>
             </div>
+            {selectedFiles.length > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Images:</span>
+                <span className="text-gray-900">{selectedFiles.length} attached</span>
+              </div>
+            )}
           </div>
 
           {/* What Happens Next */}
@@ -157,6 +240,9 @@ export function RequirementsModal({
             <h5 className="text-sm font-medium text-gray-900 mb-2">What happens next?</h5>
             <ol className="text-sm text-gray-600 space-y-2 list-decimal list-inside">
               <li>The {taskResult.agentType} worker will pick up this task</li>
+              {selectedFiles.length > 0 && (
+                <li>Visual requirements will be extracted from your images</li>
+              )}
               <li>Claude AI will analyze your requirements</li>
               <li>If clarification is needed, you&apos;ll be asked questions</li>
               <li>Generated code will appear in the artifacts</li>
@@ -198,6 +284,13 @@ export function RequirementsModal({
         {error && (
           <div className="rounded-md bg-red-50 p-3">
             <p className="text-sm text-red-700">{error}</p>
+          </div>
+        )}
+
+        {/* Upload Progress */}
+        {uploadProgress && (
+          <div className="rounded-md bg-blue-50 p-3">
+            <p className="text-sm text-blue-700">{uploadProgress}</p>
           </div>
         )}
 
@@ -299,6 +392,56 @@ export function RequirementsModal({
           />
         </div>
 
+        {/* Image Upload */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700">
+            Reference Images (optional)
+          </label>
+          <p className="mt-1 text-xs text-gray-500">
+            Attach mockups, wireframes, or screenshots. Visual requirements will be extracted automatically.
+          </p>
+
+          {/* Preview thumbnails */}
+          {previews.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {previews.map((url, i) => (
+                <div key={i} className="relative group">
+                  <img
+                    src={url}
+                    alt={selectedFiles[i]?.name ?? "preview"}
+                    className="h-20 w-20 rounded-md object-cover border border-gray-200"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeFile(i)}
+                    disabled={isLoading}
+                    className="absolute -top-1.5 -right-1.5 rounded-full bg-red-500 text-white w-5 h-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity disabled:cursor-not-allowed"
+                    aria-label={`Remove ${selectedFiles[i]?.name}`}
+                  >
+                    x
+                  </button>
+                  <p className="text-[10px] text-gray-400 truncate w-20 mt-0.5">
+                    {selectedFiles[i]?.name}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* File input */}
+          <div className="mt-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                onChange={handleFileSelect}
+                disabled={isLoading}
+                className="block w-full text-sm text-gray-500 file:mr-4 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              />
+            </div>
+        </div>
+
         {/* Action Buttons */}
         <div className="flex justify-end space-x-3 pt-4 border-t">
           <Button
@@ -315,7 +458,9 @@ export function RequirementsModal({
             isLoading={isLoading}
             disabled={!selectedProjectId || !title.trim() || !requirements.trim()}
           >
-            Create Task
+            {selectedFiles.length > 0
+              ? `Create Task (${selectedFiles.length} image${selectedFiles.length > 1 ? "s" : ""})`
+              : "Create Task"}
           </Button>
         </div>
       </form>

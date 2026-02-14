@@ -3,6 +3,11 @@
  *
  * Selectively loads component examples and patterns based on task type.
  * Separate from backend context profiles for clean separation of concerns.
+ *
+ * Uses a 3-pass selection system (same as backend context-profiles.ts):
+ *   Pass 1: Override keywords — short-circuit to a forced profile
+ *   Pass 2: Positive keyword matching — existing sequential check logic
+ *   Pass 3: Negative signal demotion — cancel false-positive matches
  */
 
 export interface FrontendContextConfig {
@@ -66,22 +71,112 @@ export const FRONTEND_CONTEXT_PROFILES: Record<FrontendContextProfileName, Front
   },
 };
 
+// ============================================================
+// OVERRIDE KEYWORDS — checked FIRST, short-circuit all other matching
+// ============================================================
+
+interface FrontendProfileOverride {
+  keywords: string[];
+  profile: FrontendContextProfileName;
+  description: string;
+}
+
+export const FRONTEND_PROFILE_OVERRIDES: FrontendProfileOverride[] = [
+  // === FORCE SIMPLE-COMPONENT (component libraries / design systems) ===
+  {
+    keywords: [
+      'component library', 'design system', 'shared components',
+      'ui library', 'ui kit', 'reusable components', 'base components',
+      'primitive components', 'common components',
+    ],
+    profile: 'simple-component',
+    description: 'Component libraries build primitives, not stateful features',
+  },
+  // === FORCE SIMPLE-COMPONENT (config/tooling) ===
+  {
+    keywords: [
+      'tailwind config', 'theme config', 'storybook',
+      'configuration file', 'config setup',
+    ],
+    profile: 'simple-component',
+    description: 'Config/tooling tasks never need full component context',
+  },
+  // === FORCE SIMPLE-COMPONENT (scaffolding) ===
+  {
+    keywords: [
+      'scaffolding', 'scaffold', 'project setup', 'base configuration',
+      'boilerplate', 'project structure', 'folder structure', 'directory structure',
+    ],
+    profile: 'simple-component',
+    description: 'Scaffolding tasks are always simple',
+  },
+  // === FORCE BUG-FIX ===
+  {
+    keywords: ['hotfix', 'regression', 'revert'],
+    profile: 'bug-fix',
+    description: 'Hotfixes, regressions, and reverts are always bug-fix profile',
+  },
+];
+
+// ============================================================
+// NEGATIVE KEYWORDS — demote signals that would otherwise match
+// ============================================================
+
+export const FRONTEND_NEGATIVE_SIGNALS: Partial<Record<FrontendContextProfileName, string[]>> = {
+  'stateful-component': [
+    'library', 'design system', 'reusable', 'shared', 'primitive',
+    'kit', 'base component',
+  ],
+  'api-consumer': [
+    'library', 'design system', 'reusable', 'shared', 'primitive',
+    'kit', 'base component',
+  ],
+  'full-feature': [
+    'single', 'simple', 'utility', 'helper', 'hook',
+    'library', 'design system',
+  ],
+};
+
+/**
+ * Word-boundary keyword match for frontend profiles.
+ */
+function matchesFrontendWord(text: string, keyword: string): boolean {
+  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`\\b${escaped}\\b`, 'i').test(text);
+}
+
 /**
  * Selects appropriate frontend context profile based on task description.
  *
- * Order matters! More specific patterns are checked first:
- * 1. API consumer - tasks mentioning fetch/api/query are almost never bug fixes
- * 2. Form component - explicit form/validation work
- * 3. Bug fix - requires explicit bug-fix language (not just "error")
- * 4. Full feature - complete page/feature implementations
- * 5. Stateful component - interactive UI elements
- * 6. Simple component - default fallback
+ * Uses a 3-pass system:
+ *   Pass 1: Override keywords — short-circuit (e.g. "component library" → simple-component)
+ *   Pass 2: Positive keyword matching — sequential priority checks
+ *   Pass 3: Negative signal demotion — cancel false-positive matches
  */
 export function selectFrontendContextProfile(taskDescription: string): FrontendContextProfileName {
   const lower = taskDescription.toLowerCase();
 
+  // ==============================
+  // PASS 1: Check overrides (short-circuit)
+  // ==============================
+  for (const override of FRONTEND_PROFILE_OVERRIDES) {
+    const matchedKeyword = override.keywords.find(kw => matchesFrontendWord(lower, kw));
+    if (matchedKeyword) {
+      console.log(
+        `[FrontendProfiles] Override: "${override.description}" → ${override.profile} ` +
+        `(keyword: "${matchedKeyword}") for: "${taskDescription.substring(0, 80)}"`
+      );
+      return override.profile;
+    }
+  }
+
+  // ==============================
+  // PASS 2: Positive keyword matching (existing priority logic)
+  // ==============================
+  let selected: FrontendContextProfileName;
+  let positiveKeyword = '';
+
   // API consumer detection - check FIRST (high priority)
-  // Tasks mentioning fetch/api/query need data fetching patterns, not bug-fix context
   if (
     lower.includes('fetch') ||
     lower.includes('tanstack') ||
@@ -90,22 +185,21 @@ export function selectFrontendContextProfile(taskDescription: string): FrontendC
     lower.includes('usemutation') ||
     (lower.includes('api') && (lower.includes('call') || lower.includes('endpoint') || lower.includes('request') || lower.includes('from')))
   ) {
-    return 'api-consumer';
+    selected = 'api-consumer';
+    positiveKeyword = 'fetch/tanstack/api';
   }
-
   // Form detection - check before bug-fix
-  if (
+  else if (
     lower.includes('form') ||
     lower.includes('validation') ||
     lower.includes('submit') ||
     lower.includes('input field')
   ) {
-    return 'form-component';
+    selected = 'form-component';
+    positiveKeyword = 'form/validation/submit';
   }
-
-  // Bug fix detection - be MORE SPECIFIC
-  // Require explicit bug-fix language, not just "error" (which appears in "error state", "error handling")
-  if (
+  // Bug fix detection
+  else if (
     lower.includes('fix bug') ||
     lower.includes('bug fix') ||
     lower.includes('bugfix') ||
@@ -117,23 +211,22 @@ export function selectFrontendContextProfile(taskDescription: string): FrontendC
     lower.includes('patch') ||
     (lower.includes('bug') && !lower.includes('debug'))
   ) {
-    return 'bug-fix';
+    selected = 'bug-fix';
+    positiveKeyword = 'fix/bug/broken';
   }
-
   // Full feature detection
-  if (
+  else if (
     (lower.includes('feature') && lower.includes('implement')) ||
     lower.includes('full feature') ||
     lower.includes('complete feature') ||
     (lower.includes('page') && lower.includes('create')) ||
     (lower.includes('screen') && lower.includes('create'))
   ) {
-    return 'full-feature';
+    selected = 'full-feature';
+    positiveKeyword = 'feature+implement/page+create';
   }
-
   // Stateful component detection
-  // Note: "state" alone is too broad (matches "error state"), require more specific patterns
-  if (
+  else if (
     lower.includes('usestate') ||
     lower.includes('useeffect') ||
     lower.includes('interactive') ||
@@ -144,21 +237,47 @@ export function selectFrontendContextProfile(taskDescription: string): FrontendC
     lower.includes('expand') ||
     lower.includes('collapse')
   ) {
-    return 'stateful-component';
+    selected = 'stateful-component';
+    positiveKeyword = 'useState/interactive/modal';
   }
-
-  // Check for general data loading patterns (fallback to api-consumer)
-  if (
+  // General data loading patterns (fallback to api-consumer)
+  else if (
     lower.includes('loading') ||
     lower.includes('data') ||
     lower.includes('query') ||
     lower.includes('mutation')
   ) {
-    return 'api-consumer';
+    selected = 'api-consumer';
+    positiveKeyword = 'loading/data/query';
+  }
+  // Default to simple component
+  else {
+    selected = 'simple-component';
   }
 
-  // Default to simple component
-  return 'simple-component';
+  // ==============================
+  // PASS 3: Check negative signals (demotion)
+  // ==============================
+  const negatives = FRONTEND_NEGATIVE_SIGNALS[selected];
+  if (negatives) {
+    const matchedNeg = negatives.find(neg => matchesFrontendWord(lower, neg));
+    if (matchedNeg) {
+      const demotedFrom = selected;
+      selected = 'simple-component';
+      console.log(
+        `[FrontendProfiles] Negative signal demoted "${demotedFrom}" → "simple-component" ` +
+        `(positive: "${positiveKeyword}", negative: "${matchedNeg}") ` +
+        `for: "${taskDescription.substring(0, 80)}"`
+      );
+      return selected;
+    }
+  }
+
+  console.log(
+    `[FrontendProfiles] Selected "${selected}" ` +
+    `(keyword: "${positiveKeyword || 'none (default)'}") for: "${taskDescription.substring(0, 80)}"`
+  );
+  return selected;
 }
 
 export function getFrontendContextConfig(profile: FrontendContextProfileName): FrontendContextConfig {

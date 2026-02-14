@@ -16,6 +16,7 @@ import { buildCachedSystemPrompt, extractCacheMetrics, logCacheMetrics } from '.
 import { buildOrchestratorContext, getEmptyOrchestratorContextResult, type OrchestratorContextResult } from './utils/orchestrator-context-loader';
 import { parseOrchestratorOutput, type OrchestratorParseResult } from './utils/orchestrator-output-parser';
 import { executeOrchestratorCommands, type ExecutionResult } from './utils/orchestrator-command-executor';
+import { extractImageRequirements } from './utils/image-requirement-extractor';
 import { getSharedRedisConnection, closeSharedRedisConnection } from '../utils/index';
 import { TaskLogger } from '../utils/task-logger';
 
@@ -190,8 +191,21 @@ async function processOrchestratorTask(job: Job<TaskJobData>): Promise<{
 
     logger.log('OrchestratorAgent', `Context: ${orchestratorContext.activeTaskCount} active, ${orchestratorContext.blockedTaskCount} blocked, ${orchestratorContext.pendingQuestionCount} questions, ${orchestratorContext.lockedFileCount} locks, ~${orchestratorContext.tokens} tokens`);
 
-    // Build user prompt
-    const userPrompt = buildPrompt(name, description, context);
+    // Image requirement extraction (runs only if images attached)
+    let imageReqBlock = '';
+    try {
+      const imageResult = await extractImageRequirements(taskId);
+      if (imageResult) {
+        imageReqBlock = `\n\n## VISUAL REQUIREMENTS (extracted from attached images)\n\n${imageResult.requirements}\n`;
+        logger.log('OrchestratorAgent', `Image requirements extracted: ~${imageResult.tokens} tokens`);
+      }
+    } catch (err) {
+      logger.warn('OrchestratorAgent', `Image extraction failed, continuing without: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    // Build user prompt with enriched description
+    const enrichedDescription = description + imageReqBlock;
+    const userPrompt = buildPrompt(name, enrichedDescription, context);
 
     logger.log('OrchestratorAgent', 'Calling Claude API (Opus)...');
 

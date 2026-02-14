@@ -59,7 +59,7 @@ async function getPendingQuestions() {
 async function getRecentTasks() {
   const dbTasks = await db.query.tasks.findMany({
     where: or(eq(tasks.archived, false), isNull(tasks.archived)), // Filter out archived tasks (include null as not archived)
-    limit: 10,
+    limit: 50,
     orderBy: [desc(tasks.createdAt)],
     with: {
       project: true,
@@ -81,6 +81,9 @@ async function getRecentTasks() {
     warnings: task.warnings ?? null,
     dependsOn: task.dependsOn ?? [],
     context: task.context ?? null,
+    imageAttachments: task.imageAttachments ?? null,
+    imageRequirements: task.imageRequirements ?? null,
+    imageRequirementsTokens: task.imageRequirementsTokens ?? null,
   }));
 }
 

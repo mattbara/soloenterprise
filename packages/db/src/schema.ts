@@ -95,6 +95,16 @@ export const environmentEnum = pgEnum('environment', [
 ]);
 
 // ============================================================================
+// SHARED TYPES
+// ============================================================================
+
+export interface ImageAttachment {
+  url: string;        // local file path: generated/uploads/{taskId}/{filename}
+  mimeType: string;   // image/png, image/jpeg, image/webp, image/gif
+  name: string;       // original filename (sanitized)
+}
+
+// ============================================================================
 // PROJECTS
 // ============================================================================
 
@@ -221,6 +231,12 @@ export const tasks = pgTable('tasks', {
   technicalSpec: text('technical_spec'),
   techSpecGeneratedAt: timestamp('tech_spec_generated_at', { withTimezone: true }),
   techSpecTokens: integer('tech_spec_tokens'),
+
+  // Image attachments and extracted requirements (Phase 5.7)
+  imageAttachments: jsonb('image_attachments').$type<ImageAttachment[]>(),
+  imageRequirements: text('image_requirements'),
+  imageRequirementsGeneratedAt: timestamp('image_requirements_generated_at', { withTimezone: true }),
+  imageRequirementsTokens: integer('image_requirements_tokens'),
 }, (table) => ({
   projectIdx: index('tasks_project_idx').on(table.projectId),
   statusIdx: index('tasks_status_idx').on(table.status),

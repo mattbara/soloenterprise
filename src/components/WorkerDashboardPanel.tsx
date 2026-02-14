@@ -127,16 +127,15 @@ export function WorkerDashboardPanel({ workerStatuses, stats }: WorkerDashboardP
     setBulkActionInProgress(true);
     setError(null);
     try {
-      for (const type of stoppedWorkers) {
-        const response = await fetch("/api/workers", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type }),
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || `Failed to start ${type}`);
-        setStatuses((prev) => ({ ...prev, [type]: data }));
-      }
+      const response = await fetch("/api/workers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "all" }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Failed to start workers");
+      // Response is a map of worker type → status
+      setStatuses((prev) => ({ ...prev, ...data }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start workers");
     } finally {

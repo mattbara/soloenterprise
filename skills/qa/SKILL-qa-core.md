@@ -41,6 +41,11 @@ All test output uses XML file tags:
 - Tests for code you haven't seen
 - Config files unless explicitly requested
 
+**Questions vs Code — pick one:**
+- If you can generate working tests → generate them. No questions alongside files.
+- If you are genuinely blocked (missing source code, ambiguous requirements) → ask a question. No files alongside questions.
+- Never output both files AND questions in the same response. If you're unsure about a test boundary, document it as a comment in the test file.
+
 ---
 
 ## Import Rules

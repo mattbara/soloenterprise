@@ -16,6 +16,9 @@ const VALID_WORKER_TYPES: WorkerType[] = [
   "feedback",
 ];
 
+// Types that can be passed to the POST endpoint (includes "all")
+type StartType = WorkerType | "all";
+
 /**
  * GET /api/workers
  * Returns status of all workers or a specific worker type.
@@ -56,7 +59,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { type } = body as { type: WorkerType };
+    const { type } = body as { type: StartType };
 
     if (!type) {
       return NextResponse.json(
@@ -65,14 +68,42 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!VALID_WORKER_TYPES.includes(type)) {
+    if (type !== "all" && !VALID_WORKER_TYPES.includes(type)) {
       return NextResponse.json(
         { error: `Invalid worker type: ${type}` },
         { status: 400 }
       );
     }
 
-    // Check if worker is already running
+    if (type === "all") {
+      // Start all workers in a single process (same as `pnpm worker` from terminal)
+      const child = spawn("pnpm", ["worker"], {
+        detached: true,
+        stdio: "ignore",
+        cwd: process.cwd(),
+        env: { ...process.env },
+      });
+      child.unref();
+
+      console.log(`[API] Started all workers in single process with PID ${child.pid}`);
+
+      const now = Date.now();
+      const statuses: Record<string, object> = {};
+      for (const wt of VALID_WORKER_TYPES) {
+        statuses[wt] = {
+          type: wt,
+          status: "running",
+          pid: child.pid,
+          lastHeartbeat: null,
+          lastTaskTime: null,
+          startedAt: now,
+        };
+      }
+
+      return NextResponse.json(statuses, { status: 201 });
+    }
+
+    // Individual worker start
     const status = await getWorkerStatus(type);
     if (status.status === "running") {
       return NextResponse.json(
@@ -81,24 +112,16 @@ export async function POST(request: Request) {
       );
     }
 
-    // Spawn the worker process
-    // Use pnpm to run the worker script
     const child = spawn("pnpm", [`worker:${type}`], {
       detached: true,
       stdio: "ignore",
       cwd: process.cwd(),
-      env: {
-        ...process.env,
-        // Pass through env vars that the worker needs
-      },
+      env: { ...process.env },
     });
-
-    // Unref to allow parent to exit independently
     child.unref();
 
     console.log(`[API] Started worker ${type} with PID ${child.pid}`);
 
-    // Return full status object so client doesn't need to re-fetch
     return NextResponse.json(
       {
         type,

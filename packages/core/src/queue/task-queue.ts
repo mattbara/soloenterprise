@@ -22,8 +22,8 @@ const QUEUE_NAMES = {
   backend: 'backend-tasks',
   frontend: 'frontend-tasks',
   qa: 'qa-tasks',
-  devops: 'devops-tasks',
-  feedback: 'feedback-tasks',
+  devops: 'devops-tasks',       // Phase 7 — NO ACTIVE WORKER (guard in CommandExecutor)
+  feedback: 'feedback-tasks',   // NO ACTIVE WORKER (guard in CommandExecutor)
 } as const;
 
 type AgentType = keyof typeof QUEUE_NAMES;

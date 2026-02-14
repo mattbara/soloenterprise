@@ -18,6 +18,7 @@
 | 5. Orchestrator Agent + Project Management | ✅ COMPLETE | 2-3 weeks |
 | 5.5 Real Project Validation | ✅ COMPLETE | 1 day |
 | 5.6 Architect Layer | ✅ COMPLETE | 1-2 weeks |
+| 5.7 Image Requirement Extractor | 🔶 IN PROGRESS (uncommitted) | 1 week |
 | 6. Project Scoper Agent | ⬜ NOT STARTED | 1-2 weeks |
 | 6.5 Client Reporter Agent | ⬜ NOT STARTED | 1 week |
 | 7. DevOps Agent + Principal Reviewer | ⬜ NOT STARTED | 2-3 weeks |
@@ -500,6 +501,77 @@ Claude Opus 4.6 (same as orchestrator — reasoning quality matters here)
 
 ---
 
+## Phase 5.7: Image Requirement Extractor 🔶 IN PROGRESS
+
+**Duration:** 1 week
+**Status:** IN PROGRESS — implementation complete, uncommitted on feature branch
+**Branch:** `phase-5/image-reading-new-requirements` (uncommitted changes)
+**Prerequisite:** Phase 5.6 ✅
+
+### Purpose
+
+Allow users to attach reference images (mockups, wireframes, screenshots) to tasks. A Claude Vision call extracts structured visual requirements from the images, which are injected into the orchestrator's decomposition prompt. Agents receive concrete UI specs instead of vague descriptions like "make it look modern."
+
+### Flow
+
+```
+User attaches images → Upload API (resize + validate) → stored in generated/uploads/{taskId}/
+→ Orchestrator calls extractImageRequirements() → Claude Vision → structured markdown
+→ Appended to task description → Opus decomposes with visual context
+```
+
+### What Was Built
+
+| Component | Location | Lines |
+|-----------|----------|-------|
+| Image Requirement Extractor | `packages/core/src/agents/utils/image-requirement-extractor.ts` | 278 |
+| Upload Images API (POST + DELETE) | `src/app/api/tasks/upload-images/route.ts` | 242 |
+| Image Serving API | `src/app/api/tasks/images/[taskId]/[filename]/route.ts` | 59 |
+| DB Schema (4 columns) | `packages/db/src/schema.ts` — `imageAttachments`, `imageRequirements`, `imageRequirementsGeneratedAt`, `imageRequirementsTokens` | 4 |
+| Orchestrator Integration | `packages/core/src/agents/orchestrator-agent.ts` (lines 194-204) | ~10 |
+| RequirementsModal (upload flow) | `src/components/RequirementsModal.tsx` | ~50 |
+| RecentTasks (thumbnails + requirements display) | `src/components/RecentTasks.tsx` | ~60 |
+
+### Architecture Decisions
+
+- Uses Claude Sonnet 4.5 (vision quality sufficient, cheaper than Opus)
+- Sharp resizing to max 1568px (Claude's optimal image size)
+- Magic byte validation (PNG, JPEG, WebP, GIF only — no MIME trust)
+- 2MB max per file, 20 images max per task
+- Structured markdown output: Layout, Components, Styling, Data Display, Interactive Elements, Responsive Notes
+- Idempotent: skips if `imageRequirements` already populated
+- Graceful degradation: if Vision API fails, task proceeds without visual context
+- Images stored locally at `generated/uploads/{taskId}/` (sandboxed)
+- Path traversal protection on image serving route
+
+### Also Completed: Context Profile 3-Pass System
+
+Major improvement to `context-profiles.ts` (354 lines) — fixes false positives from Phase 5.5:
+
+1. **Pass 1 (Override):** `PROFILE_OVERRIDES` — short-circuit keywords (scaffolding → `full-feature`, hotfix → `bug-fix`)
+2. **Pass 2 (Signals):** Existing keyword matching with frontend-aware filtering (skips ambiguous DB keywords like `table`, `filter`, `query` for frontend agents)
+3. **Pass 3 (Demotion):** `NEGATIVE_SIGNALS` — cancels false positives (e.g., component library task won't get `stateful-component`)
+
+Tests: 132 profile tests + 48 frontend profile tests.
+
+### Checklist
+
+- [x] Upload API with magic byte validation + Sharp resize
+- [x] Image serving API with path traversal protection
+- [x] `extractImageRequirements()` with Claude Vision
+- [x] DB schema columns (4 new columns + ImageAttachment interface)
+- [x] Orchestrator integration (inject visual requirements into decomposition)
+- [x] UI: RequirementsModal upload flow
+- [x] UI: RecentTasks thumbnails + extracted requirements display
+- [x] Context profile 3-pass system (PROFILE_OVERRIDES, NEGATIVE_SIGNALS)
+- [x] 132 + 48 context profile tests
+- [ ] Commit and push to feature branch
+- [ ] Unit tests for image-requirement-extractor
+- [ ] Integration tests for upload/serve APIs
+- [ ] Merge to development via PR
+
+---
+
 ## Phase 6: Project Scoper Agent
 
 **Duration:** 1-2 weeks
@@ -849,7 +921,8 @@ Examples:
 - phase-1/context-profiles (done)
 - phase-3/frontend-agent (done)
 - phase-4/qa-agent (done)
-- phase-5/orchestrator-agent-part-3 (current — architect layer)
+- phase-5/orchestrator-agent-part-3 (done — architect layer)
+- phase-5/image-reading-new-requirements (current — image extractor, uncommitted)
 ```
 
 ### What Changed From Original Plan
@@ -881,4 +954,4 @@ Examples:
 
 ---
 
-*Version 10.0 — Phase 5.6 marked COMPLETE: Architect Layer tested and validated (4/4 tests pass, 2 bugs fixed, Notifications System 5/5 tasks, ~34k tokens, 100% cache hit) — 2026-02-14*
+*Version 11.0 — Phase 5.7 (Image Requirement Extractor) documented as IN PROGRESS; context profile 3-pass system documented; handoff prepared for Phase 6 — 2026-02-14*
