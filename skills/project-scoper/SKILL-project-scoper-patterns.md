@@ -8,7 +8,7 @@
 project_scope:
   project_name: string
   client: string
-  brief_id: string
+  brief_id: string              # MUST be the exact UUID provided in the brief context — never invent one
   summary: string               # 2-3 sentence overview
 
   requirements:
@@ -66,12 +66,56 @@ project_scope:
 - Add 10% buffer for human review and feedback cycles
 - Add 15% buffer for integration issues between agents
 
+### Cross-Cutting Concerns (Do NOT Create Separate REQs)
+
+Some requirements are constraints or foundational steps that apply across multiple components. Do NOT create separate REQ entries for these. Instead, embed them within the requirements they affect.
+
+**Never create standalone REQs for:**
+- Responsive/mobile layout → add as constraint/assumption on every frontend REQ
+- Brand colors/theming → add as constraint/assumption on every frontend REQ
+- Accessibility standards → add as constraint/assumption on every frontend REQ
+- Database schema design → this is the first sub-task of the first backend REQ, not a separate REQ
+- Error handling patterns → add as constraint on backend REQs
+- Logging/monitoring → add as constraint on backend REQs
+- Code style/linting → not a task at all
+- API structure/conventions → add as assumption on backend REQs
+
+**How to handle them:**
+- Mention in the `assumptions` field of affected REQs (e.g., "Mobile responsive using Tailwind breakpoints")
+- If they add significant effort, increase `estimated_tasks` on the affected REQs rather than creating a new REQ
+- Reference in the project summary or client document as a global constraint
+- Database schema design should be listed as a deliverable in the first milestone, not as a standalone requirement
+
+**Example — WRONG:**
+```yaml
+- id: REQ-006
+  description: "Database schema design for all entities"
+  category: backend
+  complexity: simple
+  estimated_tasks: 2
+```
+
+**Example — RIGHT:**
+```yaml
+- id: REQ-001
+  description: "User authentication with email/password login, registration, and password reset"
+  category: fullstack
+  complexity: standard
+  estimated_tasks: 5  # Includes schema design for users table as first task
+  assumptions:
+    - "Database schema for users table designed as first backend sub-task"
+    - "Mobile responsive using Tailwind breakpoints (sm, md, lg)"
+    - "Brand colors applied via Tailwind theme config"
+```
+
 ### Red Flags in Briefs
 - "Simple" or "just" preceding complex requirements
 - No mention of auth/security for user-facing apps
 - "Like [competitor] but better" with no specifics
 - Timeline mentioned before requirements
 - Multiple stakeholders with no clear decision maker
+- "No tests" or "no documentation" on existing code — this is a major risk multiplier, not a footnote. Flag as top-level project risk and add discovery/audit milestone.
+- "Developer left" or "no handover" — treat all scope estimates as low-confidence until codebase is reviewed
 
 ## Scoping Patterns
 
@@ -85,11 +129,57 @@ project_scope:
 7. Add infrastructure if deployment needed
 
 ### Pattern: Existing Codebase Modification
-1. List files/modules that need changing
-2. Assess: is existing code well-structured or needs refactoring first?
-3. If messy: add "refactor first" tasks, flag risk
-4. Map changes to specific agents
-5. Higher QA allocation (regression risk)
+
+This pattern applies when the client has existing code being modified, migrated, or extended.
+
+**Step 1: Assess codebase health (BEFORE estimating anything)**
+Flag the following as project-level risks if mentioned or implied in the brief:
+- No existing tests → HIGH regression risk, add 30-40% buffer to estimates
+- No documentation → reverse-engineering required, add blocking question for repo access
+- Single developer / developer left → no knowledge transfer, treat ALL estimates as low-confidence
+- "It's a mess" / tech debt signals → add explicit "technical discovery" phase in first milestone
+- Old framework or outdated dependencies → migration complexity often underestimated
+
+**Step 2: Require codebase access as BLOCKING**
+If you don't have access to the existing repo, database schema, or API structure:
+- Add a BLOCKING gap question requesting access
+- Set confidence to `low` until access is provided
+- Note in the summary that all estimates are preliminary pending codebase review
+
+**Step 3: Add technical discovery milestone**
+For any legacy codebase modification, the FIRST milestone must be:
+- Audit existing code structure, dependencies, and test coverage
+- Document current API endpoints and database schema
+- Identify refactoring required before new features can be added safely
+- This milestone produces a "go/no-go" recommendation — scope may change after discovery
+
+**Step 4: Increase QA allocation**
+- No existing tests = you're building the ENTIRE test foundation, not just testing new features
+- Add explicit QA tasks for: regression test suite for existing functionality + new feature tests
+- Flag in estimates: "QA effort is higher than typical due to no existing test coverage"
+- In `estimates`, if no tests exist, increase `risk_level` by one tier (low→medium, medium→high)
+
+**Step 5: Flag scope uncertainty**
+- Legacy modifications have inherently unpredictable scope
+- Set `confidence` to `low` or `medium` (never `high`) for legacy projects
+- Add a top-level risk: "Scope estimates may change significantly after technical discovery phase"
+
+### Pattern: Non-English Brief Detection
+
+If the brief title OR content is primarily in a language other than English, this is a BLOCKING issue that must be resolved before work begins.
+
+The scoper MAY produce a full provisional scope from translated content, but MUST:
+1. Identify the detected language in the summary (e.g., "Brief submitted in French")
+2. Mark the summary with "PROVISIONAL SCOPE — pending client confirmation of translated requirements. Do not begin work until translation is verified."
+3. The FIRST gap question must be a blocking translation confirmation that includes a complete English summary of all requirements understood from the brief
+4. Set `confidence` to `low` (translation uncertainty affects all estimates)
+5. Set `risk_level` to minimum `high` (language barrier is inherent risk)
+6. All output must remain in English
+
+**The scoper MUST NOT:**
+- Set confidence above `low` for translated briefs
+- Treat the scope as confirmed before translation verification
+- Produce output in the brief's language
 
 ### Pattern: Integration/API Project
 1. List external systems to integrate with

@@ -437,10 +437,10 @@ export function RecentTasks({ tasks }: RecentTasksProps) {
                   <td className="px-6 py-4 whitespace-nowrap text-xs font-mono text-gray-500">
                     {task.id.slice(0, 8)}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                  <td className="px-6 py-4 text-sm font-medium text-gray-900 max-w-[300px] break-words">
                     {task.name}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <td className="px-6 py-4 text-sm text-gray-500 max-w-[300px] break-words">
                     {task.project?.name || "—"}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">

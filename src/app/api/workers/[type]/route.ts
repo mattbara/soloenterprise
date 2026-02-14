@@ -13,6 +13,7 @@ const VALID_WORKER_TYPES: WorkerType[] = [
   "qa",
   "devops",
   "feedback",
+  "scoper",
 ];
 
 interface RouteParams {

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "./Button";
+import { WorkerLogModal } from "./WorkerLogModal";
 
 async function clearBrowserCache() {
   try {
@@ -36,7 +37,7 @@ function formatDuration(seconds: number): string {
   return `${hours}h ${minutes}m`;
 }
 
-type WorkerType = "orchestrator" | "backend" | "frontend" | "qa";
+type WorkerType = "orchestrator" | "backend" | "frontend" | "qa" | "scoper";
 
 interface WorkerStatusData {
   type: string;
@@ -61,7 +62,7 @@ interface WorkerDashboardPanelProps {
   stats: Stats;
 }
 
-const WORKER_TYPES: WorkerType[] = ["orchestrator", "backend", "frontend", "qa"];
+const WORKER_TYPES: WorkerType[] = ["orchestrator", "backend", "frontend", "qa", "scoper"];
 
 const STAT_ROWS: { key: keyof Stats; label: string; color: string }[] = [
   { key: "projects", label: "Projects", color: "bg-blue-500" },
@@ -79,9 +80,11 @@ export function WorkerDashboardPanel({ workerStatuses, stats }: WorkerDashboardP
     backend: false,
     frontend: false,
     qa: false,
+    scoper: false,
   });
   const [bulkActionInProgress, setBulkActionInProgress] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [logsWorker, setLogsWorker] = useState<WorkerType | null>(null);
 
   const now = Date.now();
 
@@ -179,6 +182,7 @@ export function WorkerDashboardPanel({ workerStatuses, stats }: WorkerDashboardP
                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">PID</th>
                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Uptime</th>
                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Idle</th>
+                <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Logs</th>
                 <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Action</th>
               </tr>
             </thead>
@@ -216,6 +220,17 @@ export function WorkerDashboardPanel({ workerStatuses, stats }: WorkerDashboardP
                     </td>
                     <td className="px-4 py-2 text-sm text-gray-500">
                       {isRunning && idle !== null ? formatDuration(idle) : "\u2014"}
+                    </td>
+                    <td className="px-4 py-2 text-center">
+                      <button
+                        onClick={() => setLogsWorker(type)}
+                        className="p-1.5 text-purple-500 hover:text-purple-700 hover:bg-purple-50 rounded transition-colors inline-flex items-center"
+                        title={`View ${type} worker logs`}
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                      </button>
                     </td>
                     <td className="px-4 py-2 text-right">
                       {isRunning ? (
@@ -302,6 +317,14 @@ export function WorkerDashboardPanel({ workerStatuses, stats }: WorkerDashboardP
           </tbody>
         </table>
       </div>
+
+      {/* Worker Log Modal */}
+      {logsWorker && (
+        <WorkerLogModal
+          workerType={logsWorker}
+          onClose={() => setLogsWorker(null)}
+        />
+      )}
     </div>
   );
 }

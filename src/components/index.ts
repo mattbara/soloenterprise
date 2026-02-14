@@ -12,3 +12,4 @@ export { RefreshButton } from "./RefreshButton";
 export { ErrorsTable } from "./ErrorsTable";
 export { FixPromptModal } from "./FixPromptModal";
 export { NavErrorsLink } from "./NavErrorsLink";
+export { MetricsDashboard } from "./MetricsDashboard";

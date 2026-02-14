@@ -123,13 +123,14 @@ function calculateStaleTaskWarnings(recentTasks: Awaited<ReturnType<typeof getRe
 }
 
 async function getWorkerStatuses() {
-  const [orchestratorStatus, backendStatus, frontendStatus, qaStatus] = await Promise.all([
+  const [orchestratorStatus, backendStatus, frontendStatus, qaStatus, scoperStatus] = await Promise.all([
     getWorkerStatus("orchestrator"),
     getWorkerStatus("backend"),
     getWorkerStatus("frontend"),
     getWorkerStatus("qa"),
+    getWorkerStatus("scoper"),
   ]);
-  return { orchestrator: orchestratorStatus, backend: backendStatus, frontend: frontendStatus, qa: qaStatus };
+  return { orchestrator: orchestratorStatus, backend: backendStatus, frontend: frontendStatus, qa: qaStatus, scoper: scoperStatus };
 }
 
 async function getProjects() {
