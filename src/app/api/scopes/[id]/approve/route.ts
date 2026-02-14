@@ -4,11 +4,9 @@ import { projectScopes } from "@soloenterprise/db/schema";
 import { eq } from "drizzle-orm";
 
 /**
- * POST /api/scopes/:id/approve — Approve a scope
+ * POST /api/scopes/:id/approve — Approve or reject a scope
  *
- * Body: { approvedBy: string }
- *
- * Transitions scope status from 'draft' to 'approved'.
+ * Body: { action: 'approve' | 'reject', approvedBy?: string }
  */
 export async function POST(
   request: Request,
@@ -17,11 +15,18 @@ export async function POST(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { approvedBy } = body;
+    const { action, approvedBy } = body;
 
-    if (!approvedBy || typeof approvedBy !== "string" || !approvedBy.trim()) {
+    if (action !== "approve" && action !== "reject") {
       return NextResponse.json(
-        { error: "approvedBy is required" },
+        { error: "action must be 'approve' or 'reject'" },
+        { status: 400 }
+      );
+    }
+
+    if (action === "approve" && (!approvedBy || typeof approvedBy !== "string" || !approvedBy.trim())) {
+      return NextResponse.json(
+        { error: "approvedBy is required for approval" },
         { status: 400 }
       );
     }
@@ -38,20 +43,22 @@ export async function POST(
       );
     }
 
-    if (scope.status === "approved") {
+    if (scope.status === "approved" || scope.status === "rejected") {
       return NextResponse.json(
-        { error: "Scope is already approved" },
+        { error: `Scope is already ${scope.status}` },
         { status: 409 }
       );
     }
 
-    // Update scope status to approved
+    const newStatus = action === "approve" ? "approved" : "rejected";
+
     const [updated] = await db
       .update(projectScopes)
       .set({
-        status: "approved",
-        approvedBy: approvedBy.trim(),
-        approvedAt: new Date(),
+        status: newStatus,
+        ...(action === "approve"
+          ? { approvedBy: approvedBy.trim(), approvedAt: new Date() }
+          : {}),
         updatedAt: new Date(),
       })
       .where(eq(projectScopes.id, id))
@@ -59,9 +66,9 @@ export async function POST(
 
     return NextResponse.json(updated);
   } catch (error) {
-    console.error("Failed to approve scope:", error);
+    console.error("Failed to update scope:", error);
     return NextResponse.json(
-      { error: "Failed to approve scope" },
+      { error: "Failed to update scope" },
       { status: 500 }
     );
   }

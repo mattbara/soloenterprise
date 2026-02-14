@@ -82,6 +82,20 @@ export default async function RootLayout({
                     >
                       Questions
                     </Link>
+                    <Link
+                      href="/briefs"
+                      prefetch={false}
+                      className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
+                    >
+                      Briefs
+                    </Link>
+                    <Link
+                      href="/metrics"
+                      prefetch={false}
+                      className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
+                    >
+                      Metrics
+                    </Link>
                     <NavErrorsLink
                       errorCount={errorCounts.errors}
                       warningCount={errorCounts.warnings}

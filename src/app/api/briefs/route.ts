@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projectBriefs, projects, tasks } from "@soloenterprise/db/schema";
+import { projectBriefs, projects, tasks, clients } from "@soloenterprise/db/schema";
 import { desc } from "drizzle-orm";
 
 /**
@@ -38,7 +38,20 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { title, content, clientId } = body;
+    const { title, content, clientId: providedClientId, clientName, contactEmail } = body;
+
+    // Resolve or create client
+    let clientId = providedClientId || null;
+    if (!clientId && clientName && typeof clientName === "string" && clientName.trim()) {
+      const [newClient] = await db
+        .insert(clients)
+        .values({
+          name: clientName.trim(),
+          contactEmail: contactEmail?.trim() || null,
+        })
+        .returning();
+      clientId = newClient.id;
+    }
 
     if (!title || typeof title !== "string" || !title.trim()) {
       return NextResponse.json(
