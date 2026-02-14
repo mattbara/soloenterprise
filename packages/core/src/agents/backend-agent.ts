@@ -50,6 +50,9 @@ interface TokenMetrics {
   cacheReadInputTokens: number;
   cacheHitPercent: number;
   estimatedSavingsPercent: number;
+  // Architect spec metrics
+  techSpecTokens: number;
+  hasTechSpec: boolean;
 }
 
 async function logTokenBaseline(metrics: TokenMetrics): Promise<void> {
@@ -225,7 +228,21 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
 
     // Build user prompt (task-specific, not cached)
     // Note: codebase context is now in the cached system prompt
-    const userPrompt = buildPrompt(name, description, context);
+    // Load tech spec from architect layer (if generated)
+    const taskRecord = await db.query.tasks.findFirst({
+      where: eq(tasks.id, taskId),
+      columns: { technicalSpec: true, techSpecTokens: true },
+    });
+
+    let techSpecBlock = '';
+    if (taskRecord?.technicalSpec) {
+      techSpecBlock = `\n\n## TECHNICAL SPECIFICATION (from Architect)\n\nFollow this spec precisely. It was written by a senior architect who reviewed the full project context.\nIf the spec lists existing dependency files, import from them directly. Do NOT create new files that duplicate existing dependency outputs.\n\n${taskRecord.technicalSpec}\n`;
+      console.log(`[BackendAgent] Tech spec available: ~${taskRecord.technicalSpec.length} chars`);
+    } else {
+      console.log('[BackendAgent] No tech spec for this task');
+    }
+
+    const userPrompt = buildPrompt(name, description, context) + techSpecBlock;
 
     console.log('[BackendAgent] Calling Claude API...');
 
@@ -299,40 +316,64 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
       cacheReadInputTokens: cacheMetrics.cacheReadInputTokens,
       cacheHitPercent: cacheMetrics.cacheHitPercent,
       estimatedSavingsPercent: cacheMetrics.estimatedSavingsPercent,
+      // Architect spec metrics
+      techSpecTokens: taskRecord?.techSpecTokens ?? 0,
+      hasTechSpec: !!taskRecord?.technicalSpec,
     });
 
-    // Handle questions if present
+    // Handle questions — only block pipeline if agent produced NO files
     if (parseResult.hasQuestions && parseResult.questionsContent) {
-      console.log('[BackendAgent] Task has questions, creating question record...');
+      if (parseResult.files.length === 0) {
+        // No files = real blocker, agent couldn't proceed
+        console.log('[BackendAgent] Task has questions and no files - blocking for human input...');
 
-      // Get task to find project ID
-      const task = await getTask(taskId);
-      if (!task) {
-        throw new Error(`Task not found: ${taskId}`);
+        const task = await getTask(taskId);
+        if (!task) {
+          throw new Error(`Task not found: ${taskId}`);
+        }
+
+        await db.insert(questions).values({
+          projectId: task.projectId,
+          taskId,
+          question: parseResult.questionsContent,
+          context: `Task: ${name}\n\nDescription: ${description}`,
+          askedByAgent: 'backend',
+          status: 'pending',
+          priority: 'blocking',
+          isBlocking: true,
+        });
+
+        await updateTaskStatus(taskId, 'waiting_human', {
+          success: false,
+          summary: 'Task requires human input - questions pending',
+        });
+
+        return {
+          success: false,
+          summary: 'Task requires human input - questions pending',
+        };
+      } else {
+        // Files generated = task is done, questions are informational
+        console.log(`[BackendAgent] Questions detected but ${parseResult.files.length} files generated - saving as informational, continuing...`);
+        try {
+          const task = await getTask(taskId);
+          if (task) {
+            await db.insert(questions).values({
+              projectId: task.projectId,
+              taskId,
+              question: parseResult.questionsContent,
+              context: `Task: ${name}\n\nDescription: ${description}`,
+              askedByAgent: 'backend',
+              status: 'pending',
+              priority: 'informational',
+              isBlocking: false,
+            });
+          }
+        } catch (err) {
+          console.warn('[BackendAgent] Failed to save informational question:', err);
+        }
+        // Continue to file processing below
       }
-
-      // Create question record
-      await db.insert(questions).values({
-        projectId: task.projectId,
-        taskId,
-        question: parseResult.questionsContent,
-        context: `Task: ${name}\n\nDescription: ${description}`,
-        askedByAgent: 'backend',
-        status: 'pending',
-        priority: 'blocking',
-        isBlocking: true,
-      });
-
-      // Update task status to waiting_human
-      await updateTaskStatus(taskId, 'waiting_human', {
-        success: false,
-        summary: 'Task requires human input - questions pending',
-      });
-
-      return {
-        success: false,
-        summary: 'Task requires human input - questions pending',
-      };
     }
 
     // Validate parsed files

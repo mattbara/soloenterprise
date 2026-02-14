@@ -217,3 +217,9 @@ cp packages/core/generated/tasks/{task-id}/src/file.ts src/file.ts
 6. Principal merges or requests changes
 
 **This applies to everyone and everything: agents, developers, CI/CD, Claude Code. No shortcuts.**
+
+### 9. Architect Layer Required for Complex Tasks
+
+Tasks with complexity profile `database-task` or `full-feature` MUST have a technical spec generated before agent execution. Tasks with `simple-endpoint` or `bug-fix` profiles MAY skip the architect step to save cost and time.
+
+The architect step is NOT optional for tasks with dependencies — if a task depends on other tasks, the architect MUST read dependency artifacts to generate an informed spec.

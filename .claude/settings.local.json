@@ -40,7 +40,10 @@
       "Bash(git commit:*)",
       "Bash(pgrep:*)",
       "Bash(source:*)",
-      "Bash(REDIS_URL=\"$REDIS_URL\" pnpm tsx:*)"
+      "Bash(REDIS_URL=\"$REDIS_URL\" pnpm tsx:*)",
+      "Bash(./node_modules/.bin/vitest run:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run build:*)"
     ]
   }
 }

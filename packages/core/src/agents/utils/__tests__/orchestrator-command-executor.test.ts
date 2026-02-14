@@ -84,6 +84,10 @@ vi.mock('../../../queue/task-queue', () => ({
   enqueueTask: mocks.enqueueTask,
 }));
 
+vi.mock('../architect-spec-generator', () => ({
+  generateTechSpec: vi.fn().mockResolvedValue(null),
+}));
+
 // ---------------------------------------------------------------------------
 // Import after mocks
 // ---------------------------------------------------------------------------
@@ -362,5 +366,174 @@ describe('Bug #5: Cross-session dependency resolution', () => {
     expect(capturedDepsUpdates).toHaveLength(0);
     // Still succeeds (warnings, not errors)
     expect(result.success).toBe(true);
+  });
+});
+
+// ============================================================================
+// Bug #6: Status update placeholder ID resolution
+// ============================================================================
+
+describe('Bug #6: Status update placeholder ID resolution', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    capturedDepsUpdates.length = 0;
+
+    // Project always exists
+    mocks.projectFindFirst.mockResolvedValue({ id: PROJECT_ID });
+
+    // Default: enqueue succeeds
+    mocks.enqueueTask.mockResolvedValue(undefined);
+  });
+
+  it('resolves placeholder ID in status update via idMapping', async () => {
+    const CREATED_UUID = 'aaaaaaaa-1111-2222-3333-444444444444';
+
+    // Task creation returns a known UUID
+    mocks.insertReturning.mockResolvedValueOnce([{ id: CREATED_UUID, name: 'Backend Task' }]);
+
+    // Status update DB lookup — the resolved UUID should be used, not "TASK-001"
+    mocks.taskFindFirst.mockResolvedValueOnce({ id: CREATED_UUID });
+
+    // updateTaskStatus succeeds
+    mocks.updateTaskStatus.mockResolvedValueOnce(undefined);
+
+    const parseResult: OrchestratorParseResult = {
+      success: true,
+      action: 'decompose_and_assign',
+      tasks: [
+        {
+          id: 'TASK-001',
+          name: 'Backend Task',
+          description: 'Build something',
+          agent: 'backend',
+          priority: 'medium',
+          dependencies: [],
+        },
+      ],
+      questions: [],
+      statusUpdates: [
+        {
+          taskId: 'TASK-001', // Placeholder — must be resolved to CREATED_UUID
+          status: 'running',
+          reason: 'Starting work',
+        },
+      ],
+      fileLocks: [],
+    };
+
+    const result = await executeOrchestratorCommands(PROJECT_ID, PARENT_TASK_ID, parseResult);
+
+    expect(result.tasksCreated).toHaveLength(1);
+    // Status update should have succeeded with the resolved UUID
+    expect(result.statusesUpdated).toHaveLength(1);
+    expect(result.statusesUpdated[0]).toBe(CREATED_UUID);
+    // updateTaskStatus was called with the resolved UUID, not the placeholder
+    expect(mocks.updateTaskStatus).toHaveBeenCalledWith(
+      CREATED_UUID,
+      'running',
+      { success: false, summary: 'Starting work' }
+    );
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('passes through real UUIDs in status updates unchanged', async () => {
+    const EXISTING_UUID = 'bbbbbbbb-1111-2222-3333-444444444444';
+
+    // No tasks to create — just status updates
+    // DB lookup for the UUID
+    mocks.taskFindFirst.mockResolvedValueOnce({ id: EXISTING_UUID });
+
+    // updateTaskStatus succeeds
+    mocks.updateTaskStatus.mockResolvedValueOnce(undefined);
+
+    const parseResult: OrchestratorParseResult = {
+      success: true,
+      action: 'decompose_and_assign',
+      tasks: [],
+      questions: [],
+      statusUpdates: [
+        {
+          taskId: EXISTING_UUID, // Already a UUID — should pass through
+          status: 'completed',
+          reason: 'Done',
+        },
+      ],
+      fileLocks: [],
+    };
+
+    const result = await executeOrchestratorCommands(PROJECT_ID, PARENT_TASK_ID, parseResult);
+
+    expect(result.statusesUpdated).toHaveLength(1);
+    expect(result.statusesUpdated[0]).toBe(EXISTING_UUID);
+    expect(mocks.updateTaskStatus).toHaveBeenCalledWith(
+      EXISTING_UUID,
+      'completed',
+      { success: true, summary: 'Done' }
+    );
+  });
+
+  it('reports error when placeholder ID has no mapping and is not a valid UUID', async () => {
+    // No tasks created, so idMapping is empty
+    // taskFindFirst returns null for the unmapped placeholder
+    mocks.taskFindFirst.mockResolvedValueOnce(null);
+
+    const parseResult: OrchestratorParseResult = {
+      success: true,
+      action: 'decompose_and_assign',
+      tasks: [],
+      questions: [],
+      statusUpdates: [
+        {
+          taskId: 'TASK-999', // No mapping, not a UUID
+          status: 'completed',
+          reason: 'Done',
+        },
+      ],
+      fileLocks: [],
+    };
+
+    const result = await executeOrchestratorCommands(PROJECT_ID, PARENT_TASK_ID, parseResult);
+
+    expect(result.statusesUpdated).toHaveLength(0);
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors[0]).toContain('Task not found');
+    expect(result.errors[0]).toContain('TASK-999');
+  });
+
+  it('skips self-referencing status updates after ID resolution', async () => {
+    // Create a task whose placeholder maps to parentTaskId (edge case)
+    mocks.insertReturning.mockResolvedValueOnce([{ id: PARENT_TASK_ID, name: 'Self Task' }]);
+
+    const parseResult: OrchestratorParseResult = {
+      success: true,
+      action: 'decompose_and_assign',
+      tasks: [
+        {
+          id: 'TASK-SELF',
+          name: 'Self Task',
+          description: 'Will resolve to parent',
+          agent: 'backend',
+          priority: 'medium',
+          dependencies: [],
+        },
+      ],
+      questions: [],
+      statusUpdates: [
+        {
+          taskId: 'TASK-SELF', // Maps to PARENT_TASK_ID — should be skipped
+          status: 'completed',
+          reason: 'Done',
+        },
+      ],
+      fileLocks: [],
+    };
+
+    const result = await executeOrchestratorCommands(PROJECT_ID, PARENT_TASK_ID, parseResult);
+
+    // Status update was skipped (self-referencing)
+    expect(result.statusesUpdated).toHaveLength(0);
+    expect(mocks.updateTaskStatus).not.toHaveBeenCalled();
+    // No error — skipping self-reference is expected behavior
+    expect(result.errors).toHaveLength(0);
   });
 });

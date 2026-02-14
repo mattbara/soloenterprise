@@ -48,6 +48,15 @@ export const CONTEXT_PROFILES: Record<ContextProfileName, ContextConfig> = {
   },
 };
 
+/**
+ * Word-boundary keyword match. Prevents substring false positives
+ * like "orm" matching "forms" or "table" matching "comfortable".
+ */
+function matchesWord(text: string, keyword: string): boolean {
+  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`\\b${escaped}\\b`, 'i').test(text);
+}
+
 // Known table names from the schema for matching
 const KNOWN_TABLES = [
   'projects',
@@ -68,6 +77,8 @@ export interface ProfileSelectionOptions {
   taskContext?: Record<string, unknown>;
   /** Agent types of tasks this task depends on */
   dependencyAgentTypes?: string[];
+  /** Agent type executing this task — used to filter ambiguous keywords */
+  agentType?: string;
 }
 
 /**
@@ -95,7 +106,7 @@ export function selectContextProfile(
     'regression', 'not working', "doesn't work", 'does not work',
   ];
   for (const phrase of BUG_PHRASES) {
-    if (lower.includes(phrase)) bugSignals.push(phrase);
+    if (matchesWord(lower, phrase)) bugSignals.push(phrase);
   }
   // "fix the/this/a" implies fixing something broken, not building something new
   if (/\bfix (the|this|a|an)\b/.test(lower)) bugSignals.push('fix the/this/a');
@@ -103,13 +114,18 @@ export function selectContextProfile(
   if (/\bpatch\b/.test(lower)) bugSignals.push('patch');
 
   // --- Database/API signals (tasks needing schema + service patterns) ---
+  // Keywords that are ambiguous for frontend agents (e.g. "table" = HTML table, "filter" = UI filter)
+  const FRONTEND_AMBIGUOUS_KEYWORDS = new Set(['table', 'filter', 'query', 'paginate']);
+  const isFrontend = options?.agentType === 'frontend';
+
   const DB_KEYWORDS = [
     'database', 'schema', 'drizzle', 'table', 'query', 'migration',
     'crud', 'orm', 'sql', 'paginate', 'filter', 'api route',
     'route handler', 'api endpoint', 'status enum',
   ];
   for (const kw of DB_KEYWORDS) {
-    if (lower.includes(kw)) dbSignals.push(kw);
+    if (isFrontend && FRONTEND_AMBIGUOUS_KEYWORDS.has(kw)) continue;
+    if (matchesWord(lower, kw)) dbSignals.push(kw);
   }
   // "REST" combined with API/endpoint/route implies CRUD
   if (/\brest\b/.test(lower) && /\b(api|endpoint|route)\b/.test(lower)) {
@@ -124,7 +140,7 @@ export function selectContextProfile(
     const contextStr = JSON.stringify(options.taskContext).toLowerCase();
     const CONTEXT_DB_HINTS = ['drizzle', 'schema', 'database', 'table', 'orm', 'sql'];
     for (const hint of CONTEXT_DB_HINTS) {
-      if (contextStr.includes(hint)) dbSignals.push(`context:${hint}`);
+      if (matchesWord(contextStr, hint)) dbSignals.push(`context:${hint}`);
     }
   }
 
@@ -139,7 +155,7 @@ export function selectContextProfile(
     'helper endpoint', 'ping endpoint',
   ];
   for (const kw of SIMPLE_KEYWORDS) {
-    if (lower.includes(kw)) simpleSignals.push(kw);
+    if (matchesWord(lower, kw)) simpleSignals.push(kw);
   }
 
   // --- Full feature signals ---
@@ -148,7 +164,7 @@ export function selectContextProfile(
     'admin panel', 'dashboard',
   ];
   for (const kw of FULL_KEYWORDS) {
-    if (lower.includes(kw)) fullSignals.push(kw);
+    if (matchesWord(lower, kw)) fullSignals.push(kw);
   }
   if (
     (lower.includes('feature') && lower.includes('implement')) ||
