@@ -54,7 +54,8 @@
       "Bash(kill:*)",
       "Bash(lsof:*)",
       "Bash(for path in / /dashboard /forecasts /alerts /locations)",
-      "Bash(do echo -n \"$path: \")"
+      "Bash(do echo -n \"$path: \")",
+      "Bash(git push:*)"
     ]
   }
 }

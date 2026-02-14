@@ -954,4 +954,4 @@ Examples:
 
 ---
 
-*Version 10.0 — Phase 5.6 marked COMPLETE: Architect Layer tested and validated (4/4 tests pass, 2 bugs fixed, Notifications System 5/5 tasks, ~34k tokens, 100% cache hit) — 2026-02-14*
+*Version 11.0 — Phase 5.7 (Image Requirement Extractor) documented as IN PROGRESS; context profile 3-pass system documented; handoff prepared for Phase 6 — 2026-02-14*
