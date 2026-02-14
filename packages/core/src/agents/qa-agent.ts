@@ -21,6 +21,7 @@ import { processWithSyntaxRecovery, type SyntaxError } from './utils/syntax-reco
 import { buildQAContext, getEmptyQAContextResult, type QAContextResult } from './utils/qa-context-loader';
 import { buildCachedSystemPrompt, extractCacheMetrics, logCacheMetrics } from './utils/cache-helper';
 import { getSharedRedisConnection, closeSharedRedisConnection } from '../utils/index';
+import { TaskLogger } from '../utils/task-logger';
 
 const QUEUE_NAME = 'qa-tasks';
 
@@ -204,8 +205,9 @@ async function processQATask(job: Job<TaskJobData>): Promise<{
   error?: string;
 }> {
   const { taskId, projectId, name, description, context } = job.data;
+  const logger = new TaskLogger(taskId);
 
-  console.log(`[QAAgent] Processing task ${taskId}: ${name}`);
+  logger.log('QAAgent', `Processing task ${taskId}: ${name}`);
 
   // Update status to running
   await updateTaskStatus(taskId, 'running');
@@ -214,8 +216,8 @@ async function processQATask(job: Job<TaskJobData>): Promise<{
     // Load SKILL layers based on task complexity
     const { content: skillContent, complexity, layers, tokens: skillTokens } = await loadSkillsForTask('qa', description);
 
-    console.log(`[QAAgent] Task complexity: simple=${complexity.simple}, database=${complexity.database}, newPattern=${complexity.newPattern}`);
-    console.log(`[QAAgent] Loaded layers: ${layers.map(l => l.split('/').pop()).join(', ')}`);
+    logger.log('QAAgent', `Task complexity: simple=${complexity.simple}, database=${complexity.database}, newPattern=${complexity.newPattern}`);
+    logger.log('QAAgent', `Loaded layers: ${layers.map(l => l.split('/').pop()).join(', ')}`);
 
     // Load QA-specific context (source files to test, existing patterns, schema)
     // Also loads generated files from dependency tasks (backend/frontend)
@@ -226,14 +228,14 @@ async function processQATask(job: Job<TaskJobData>): Promise<{
       // Pass taskId to load artifacts from dependency tasks
       qaContext = await buildQAContext(description, explicitSourceFiles, taskId);
     } catch (err) {
-      console.warn('[QAAgent] Failed to load QA context, continuing without it:', err);
+      logger.warn('QAAgent', 'Failed to load QA context, continuing without it: ' + err);
       qaContext = getEmptyQAContextResult();
     }
 
-    console.log(`[QAAgent] Source files loaded: ${qaContext.sourceFilesLoaded}`);
-    console.log(`[QAAgent] Dependency artifacts loaded: ${qaContext.dependencyArtifactsLoaded}`);
-    console.log(`[QAAgent] Has existing tests: ${qaContext.hasExistingTests}`);
-    console.log(`[QAAgent] Context tokens: ~${qaContext.tokens}`);
+    logger.log('QAAgent', `Source files loaded: ${qaContext.sourceFilesLoaded}`);
+    logger.log('QAAgent', `Dependency artifacts loaded: ${qaContext.dependencyArtifactsLoaded}`);
+    logger.log('QAAgent', `Has existing tests: ${qaContext.hasExistingTests}`);
+    logger.log('QAAgent', `Context tokens: ~${qaContext.tokens}`);
 
     // Load tech spec from architect layer (if generated)
     const taskRecord = await db.query.tasks.findFirst({
@@ -244,15 +246,15 @@ async function processQATask(job: Job<TaskJobData>): Promise<{
     let techSpecBlock = '';
     if (taskRecord?.technicalSpec) {
       techSpecBlock = `\n\n## TECHNICAL SPECIFICATION (from Architect)\n\nFollow this spec precisely. It was written by a senior architect who reviewed the full project context.\nIf the spec lists existing dependency files, import from them directly. Do NOT create new files that duplicate existing dependency outputs.\n\n${taskRecord.technicalSpec}\n`;
-      console.log(`[QAAgent] Tech spec available: ~${taskRecord.technicalSpec.length} chars`);
+      logger.log('QAAgent', `Tech spec available: ~${taskRecord.technicalSpec.length} chars`);
     } else {
-      console.log('[QAAgent] No tech spec for this task');
+      logger.log('QAAgent', 'No tech spec for this task');
     }
 
     // Build user prompt (task-specific, not cached)
     const userPrompt = buildPrompt(name, description, context) + techSpecBlock;
 
-    console.log('[QAAgent] Calling Claude API...');
+    logger.log('QAAgent', 'Calling Claude API...');
 
     // Build cached system prompt for cost optimization
     // SKILL files are cached (static across tasks)
@@ -282,19 +284,19 @@ async function processQATask(job: Job<TaskJobData>): Promise<{
       throw new Error('No text response from Claude');
     }
 
-    console.log('[QAAgent] Parsing response...');
-    console.log('[QAAgent] Response text length:', responseText.length);
-    console.log('[QAAgent] First 500 chars:', responseText.substring(0, 500));
-    console.log('[QAAgent] Last 500 chars:', responseText.substring(Math.max(0, responseText.length - 500)));
+    logger.log('QAAgent', 'Parsing response...');
+    logger.log('QAAgent', 'Response text length: ' + responseText.length);
+    logger.log('QAAgent', 'First 500 chars: ' + responseText.substring(0, 500));
+    logger.log('QAAgent', 'Last 500 chars: ' + responseText.substring(Math.max(0, responseText.length - 500)));
 
     // Parse the response
     const parseResult = parseAgentOutput(responseText);
 
-    console.log('[QAAgent] Parse result:', {
+    logger.log('QAAgent', 'Parse result: ' + JSON.stringify({
       filesCount: parseResult.files.length,
       hasQuestions: parseResult.hasQuestions,
       filePaths: parseResult.files.map(f => f.path),
-    });
+    }));
 
     // Extract cache metrics from API response
     const cacheMetrics = extractCacheMetrics(response.usage);
@@ -332,7 +334,7 @@ async function processQATask(job: Job<TaskJobData>): Promise<{
     if (parseResult.hasQuestions && parseResult.questionsContent) {
       if (parseResult.files.length === 0) {
         // No files = real blocker, agent couldn't proceed
-        console.log('[QAAgent] Task has questions and no files - blocking for human input...');
+        logger.log('QAAgent', 'Task has questions and no files - blocking for human input...');
 
         const task = await getTask(taskId);
         if (!task) {
@@ -361,7 +363,7 @@ async function processQATask(job: Job<TaskJobData>): Promise<{
         };
       } else {
         // Files generated = task is done, questions are informational
-        console.log(`[QAAgent] Questions detected but ${parseResult.files.length} files generated - saving as informational, continuing...`);
+        logger.log('QAAgent', `Questions detected but ${parseResult.files.length} files generated - saving as informational, continuing...`);
         try {
           const task = await getTask(taskId);
           if (task) {
@@ -377,7 +379,7 @@ async function processQATask(job: Job<TaskJobData>): Promise<{
             });
           }
         } catch (err) {
-          console.warn('[QAAgent] Failed to save informational question:', err);
+          logger.warn('QAAgent', 'Failed to save informational question: ' + err);
         }
         // Continue to file processing below
       }
@@ -386,11 +388,11 @@ async function processQATask(job: Job<TaskJobData>): Promise<{
     // Validate parsed files
     const validation = validateParsedFiles(parseResult.files);
     if (!validation.valid) {
-      console.warn('[QAAgent] File validation warnings:', validation.errors);
+      logger.warn('QAAgent', 'File validation warnings: ' + JSON.stringify(validation.errors));
     }
 
     if (parseResult.files.length === 0) {
-      console.log('[QAAgent] No files generated - requesting clarification from user');
+      logger.log('QAAgent', 'No files generated - requesting clarification from user');
 
       // Get task to find project ID
       const task = await getTask(taskId);
@@ -423,7 +425,7 @@ async function processQATask(job: Job<TaskJobData>): Promise<{
       };
     }
 
-    console.log(`[QAAgent] Validating ${parseResult.files.length} files with syntax recovery...`);
+    logger.log('QAAgent', `Validating ${parseResult.files.length} files with syntax recovery...`);
 
     // Create validation function for recovery loop
     const validateFiles = async (files: typeof parseResult.files): Promise<SyntaxError[]> => {
@@ -438,7 +440,7 @@ async function processQATask(job: Job<TaskJobData>): Promise<{
 
     // Create fresh generation function for full retries
     const generateFresh = async (): Promise<typeof parseResult.files> => {
-      console.log('[QAAgent] Generating fresh response (full retry)...');
+      logger.log('QAAgent', 'Generating fresh response (full retry)...');
       const retryResponse = await client.messages.create({
         model: MODEL,
         max_tokens: MAX_TOKENS,
@@ -449,7 +451,7 @@ async function processQATask(job: Job<TaskJobData>): Promise<{
       const retryText = retryResponse.content.find(c => c.type === 'text');
       const retryResponseText = retryText?.type === 'text' ? retryText.text : '';
       const retryParsed = parseAgentOutput(retryResponseText);
-      console.log(`[QAAgent] Fresh generation produced ${retryParsed.files.length} files`);
+      logger.log('QAAgent', `Fresh generation produced ${retryParsed.files.length} files`);
       return retryParsed.files;
     };
 
@@ -462,7 +464,7 @@ async function processQATask(job: Job<TaskJobData>): Promise<{
       generateFresh
     );
 
-    console.log(`[QAAgent] Recovery complete: success=${recoveryResult.success}, fixLoops=${recoveryResult.attempts.fixLoops}, fullRetries=${recoveryResult.attempts.fullRetries}`);
+    logger.log('QAAgent', `Recovery complete: success=${recoveryResult.success}, fixLoops=${recoveryResult.attempts.fixLoops}, fullRetries=${recoveryResult.attempts.fullRetries}`);
 
     if (!recoveryResult.success) {
       const errorSummary = recoveryResult.errors
@@ -484,7 +486,7 @@ async function processQATask(job: Job<TaskJobData>): Promise<{
           })
           .where(eq(tasks.id, taskId));
       } catch (err) {
-        console.error('[QAAgent] Failed to save recovery context:', err);
+        logger.error('QAAgent', 'Failed to save recovery context: ' + err);
       }
 
       await updateTaskStatus(taskId, 'failed', {
@@ -503,20 +505,20 @@ async function processQATask(job: Job<TaskJobData>): Promise<{
     }
 
     // Write final validated files
-    console.log(`[QAAgent] Writing ${recoveryResult.files.length} validated files...`);
+    logger.log('QAAgent', `Writing ${recoveryResult.files.length} validated files...`);
     const writeResult = await writeGeneratedFiles(taskId, recoveryResult.files, 'qa');
 
     const finalValidation = await validateGeneratedFiles(writeResult.taskDir, writeResult.files);
     if (!finalValidation.valid) {
-      console.warn('[QAAgent] Non-severe warnings:', finalValidation.errors);
+      logger.warn('QAAgent', 'Non-severe warnings: ' + JSON.stringify(finalValidation.errors));
       try {
         await db.update(tasks).set({ warnings: finalValidation.errors }).where(eq(tasks.id, taskId));
       } catch (err) {
-        console.error('[QAAgent] Failed to save warnings:', err);
+        logger.error('QAAgent', 'Failed to save warnings: ' + err);
       }
     }
 
-    console.log('[QAAgent] Creating artifact records...');
+    logger.log('QAAgent', 'Creating artifact records...');
 
     // Create artifact records
     const artifactIds: string[] = [];
@@ -541,7 +543,7 @@ async function processQATask(job: Job<TaskJobData>): Promise<{
       artifactIds.push(artifact.id);
     }
 
-    console.log(`[QAAgent] Task ${taskId} completed successfully`);
+    logger.log('QAAgent', `Task ${taskId} completed successfully`);
 
     // Update task status
     await updateTaskStatus(taskId, 'completed', {
@@ -562,7 +564,7 @@ async function processQATask(job: Job<TaskJobData>): Promise<{
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error(`[QAAgent] Task ${taskId} failed:`, errorMessage);
+    logger.error('QAAgent', `Task ${taskId} failed: ${errorMessage}`);
 
     // Update task status to failed
     await updateTaskStatus(taskId, 'failed', {

@@ -151,8 +151,9 @@ export function selectContextProfile(
 
   // --- Simple endpoint signals ---
   const SIMPLE_KEYWORDS = [
-    'health check', 'healthcheck', 'simple endpoint', 'utility endpoint',
-    'helper endpoint', 'ping endpoint',
+    'health check', 'healthcheck', 'health endpoint', 'simple endpoint',
+    'utility endpoint', 'helper endpoint', 'ping endpoint', 'ping',
+    'readiness', 'liveness', 'status endpoint',
   ];
   for (const kw of SIMPLE_KEYWORDS) {
     if (matchesWord(lower, kw)) simpleSignals.push(kw);
@@ -177,10 +178,17 @@ export function selectContextProfile(
   let selected: ContextProfileName;
   let reason: string;
 
-  if (simpleSignals.length > 0 && dbSignals.length === 0 && fullSignals.length === 0) {
-    // Clearly simple, no competing signals
+  // Weak DB signals — generic web keywords that indicate "this is an API task" but
+  // say nothing about needing database context. When these are the ONLY DB signals
+  // present, they should NOT override simple-endpoint classification.
+  const WEAK_DB_SIGNALS = new Set(['api route', 'route handler', 'api endpoint']);
+  const hasOnlyWeakDbSignals = dbSignals.length > 0 && dbSignals.every(s => WEAK_DB_SIGNALS.has(s));
+
+  if (simpleSignals.length > 0 && (dbSignals.length === 0 || hasOnlyWeakDbSignals) && fullSignals.length === 0) {
+    // Simple endpoint — wins even if weak DB signals like "api route" are present,
+    // since a health/ping endpoint with "api route" in the description doesn't need schema.
     selected = 'simple-endpoint';
-    reason = `Simple signals: [${simpleSignals.join(', ')}]`;
+    reason = `Simple signals: [${simpleSignals.join(', ')}]${hasOnlyWeakDbSignals ? ` (weak DB signals ignored: [${dbSignals.join(', ')}])` : ''}`;
   } else if (bugSignals.length > 0 && dbSignals.length === 0 && fullSignals.length === 0) {
     // Bug fix ONLY when no database/full-feature signals compete
     selected = 'bug-fix';

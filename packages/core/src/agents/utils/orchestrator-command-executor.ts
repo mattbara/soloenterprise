@@ -22,6 +22,7 @@ import type {
   OrchestratorFileLock,
 } from './orchestrator-output-parser';
 import { generateTechSpec } from './architect-spec-generator';
+import { TaskLogger } from '../../utils/task-logger';
 
 // ============================================================================
 // Types
@@ -63,6 +64,7 @@ async function createTasks(
   parentTaskId: string,
   taskDefs: OrchestratorTaskDefinition[]
 ): Promise<{ created: string[]; errors: string[]; idMapping: Map<string, string> }> {
+  const logger = new TaskLogger(parentTaskId);
   const created: string[] = [];
   const errors: string[] = [];
 
@@ -79,7 +81,7 @@ async function createTasks(
     return { created, errors, idMapping };
   }
 
-  console.log(`[CommandExecutor] Creating ${taskDefs.length} tasks with two-pass dependency resolution...`);
+  logger.log('CommandExecutor', `Creating ${taskDefs.length} tasks with two-pass dependency resolution...`);
 
   // =========================================================================
   // PASS 1: Create all tasks WITHOUT dependencies (empty dependsOn)
@@ -107,20 +109,20 @@ async function createTasks(
       // Build ID mapping: placeholder ID → real UUID
       if (taskDef.id) {
         idMapping.set(taskDef.id, task.id);
-        console.log(`[CommandExecutor] Created task ${task.id}: "${task.name}" (placeholder: ${taskDef.id})`);
+        logger.log('CommandExecutor', `Created task ${task.id}: "${task.name}" (placeholder: ${taskDef.id})`);
       } else {
         // If no placeholder ID, use the task name as a fallback mapping key
         idMapping.set(taskDef.name, task.id);
-        console.log(`[CommandExecutor] Created task ${task.id}: "${task.name}" (no placeholder ID)`);
+        logger.log('CommandExecutor', `Created task ${task.id}: "${task.name}" (no placeholder ID)`);
       }
     } catch (err) {
       const errorMsg = `Failed to create task "${taskDef.name}": ${err instanceof Error ? err.message : 'Unknown error'}`;
-      console.error(`[CommandExecutor] ${errorMsg}`);
+      logger.error('CommandExecutor', errorMsg);
       errors.push(errorMsg);
     }
   }
 
-  console.log(`[CommandExecutor] Pass 1 complete: ${created.length} tasks created, ID mapping has ${idMapping.size} entries`);
+  logger.log('CommandExecutor', `Pass 1 complete: ${created.length} tasks created, ID mapping has ${idMapping.size} entries`);
 
   // =========================================================================
   // PASS 2: Update tasks with resolved dependency UUIDs
@@ -163,7 +165,7 @@ async function createTasks(
         });
         if (existing) {
           resolvedDeps.push(dep);
-          console.log(`[CommandExecutor] Resolved existing task dependency: ${dep}`);
+          logger.log('CommandExecutor', `Resolved existing task dependency: ${dep}`);
         } else {
           unresolvedDeps.push(dep);
         }
@@ -176,9 +178,9 @@ async function createTasks(
         });
         if (matches.length === 1) {
           resolvedDeps.push(matches[0].id);
-          console.log(`[CommandExecutor] Resolved truncated UUID "${dep}" → ${matches[0].id}`);
+          logger.log('CommandExecutor', `Resolved truncated UUID "${dep}" → ${matches[0].id}`);
         } else if (matches.length > 1) {
-          console.warn(`[CommandExecutor] Ambiguous UUID prefix "${dep}" matches ${matches.length} tasks, skipping`);
+          logger.warn('CommandExecutor', `Ambiguous UUID prefix "${dep}" matches ${matches.length} tasks, skipping`);
           unresolvedDeps.push(dep);
         } else {
           unresolvedDeps.push(dep);
@@ -189,7 +191,7 @@ async function createTasks(
     }
 
     if (unresolvedDeps.length > 0) {
-      console.warn(`[CommandExecutor] Task "${taskDef.name}" has unresolved dependencies: [${unresolvedDeps.join(', ')}]`);
+      logger.warn('CommandExecutor', `Task "${taskDef.name}" has unresolved dependencies: [${unresolvedDeps.join(', ')}]`);
     }
 
     if (resolvedDeps.length > 0) {
@@ -199,16 +201,16 @@ async function createTasks(
           .set({ dependsOn: resolvedDeps })
           .where(eq(tasks.id, realTaskId));
 
-        console.log(`[CommandExecutor] Updated task ${realTaskId} with resolved dependencies: [${resolvedDeps.join(', ')}]`);
+        logger.log('CommandExecutor', `Updated task ${realTaskId} with resolved dependencies: [${resolvedDeps.join(', ')}]`);
       } catch (err) {
         const errorMsg = `Failed to update dependencies for task "${taskDef.name}": ${err instanceof Error ? err.message : 'Unknown error'}`;
-        console.error(`[CommandExecutor] ${errorMsg}`);
+        logger.error('CommandExecutor', errorMsg);
         errors.push(errorMsg);
       }
     }
   }
 
-  console.log(`[CommandExecutor] Pass 2 complete: dependencies resolved`);
+  logger.log('CommandExecutor', 'Pass 2 complete: dependencies resolved');
 
   // =========================================================================
   // PASS 3: Queue tasks that have no dependencies
@@ -228,23 +230,23 @@ async function createTasks(
       const resolvedDeps = placeholderDeps
         .map(dep => idMapping.get(dep) ?? dep)
         .join(', ');
-      console.log(`[CommandExecutor] Task ${realTaskId} blocked by dependencies: [${resolvedDeps}] - staying 'pending'`);
+      logger.log('CommandExecutor', `Task ${realTaskId} blocked by dependencies: [${resolvedDeps}] - staying 'pending'`);
     } else {
       // Generate architect tech spec (inline, before queuing)
       try {
         const specResult = await generateTechSpec(realTaskId);
         if (specResult) {
-          console.log(`[CommandExecutor] Tech spec generated for ${realTaskId}: ~${specResult.tokens} tokens`);
+          logger.log('CommandExecutor', `Tech spec generated for ${realTaskId}: ~${specResult.tokens} tokens`);
         }
       } catch (err) {
-        console.warn(`[CommandExecutor] Tech spec generation failed for ${realTaskId}, queuing without spec:`, err);
+        logger.warn('CommandExecutor', `Tech spec generation failed for ${realTaskId}, queuing without spec: ${err instanceof Error ? err.message : String(err)}`);
       }
 
       try {
         await enqueueTask(realTaskId, taskDef.agent, taskDef.priority);
-        console.log(`[CommandExecutor] Queued task ${realTaskId} to ${taskDef.agent}-tasks queue (no dependencies)`);
+        logger.log('CommandExecutor', `Queued task ${realTaskId} to ${taskDef.agent}-tasks queue (no dependencies)`);
       } catch (err) {
-        console.error(`[CommandExecutor] Failed to queue task ${realTaskId}:`, err);
+        logger.error('CommandExecutor', `Failed to queue task ${realTaskId}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
   }
@@ -267,6 +269,7 @@ async function applyStatusUpdates(
   parentTaskId: string,
   idMapping: Map<string, string>
 ): Promise<{ updated: string[]; errors: string[] }> {
+  const logger = new TaskLogger(parentTaskId);
   const updated: string[] = [];
   const errors: string[] = [];
 
@@ -274,14 +277,14 @@ async function applyStatusUpdates(
     // Resolve placeholder IDs (e.g., "TASK-001") to real UUIDs via idMapping
     const resolvedId = idMapping.get(update.taskId) || update.taskId;
     if (resolvedId !== update.taskId) {
-      console.log(`[CommandExecutor] Resolved status update target: ${update.taskId} → ${resolvedId}`);
+      logger.log('CommandExecutor', `Resolved status update target: ${update.taskId} → ${resolvedId}`);
     }
 
     // Skip self-referencing status updates — the orchestrator agent code already
     // handles its own task status (completed/failed/waiting_human).
     // Also handle truncated UUIDs (e.g., "b5819951" matching "b5819951-e9d9-4792-...")
     if (resolvedId === parentTaskId || parentTaskId.startsWith(resolvedId)) {
-      console.log(`[CommandExecutor] Skipping self-referencing status update for orchestrator task ${update.taskId}`);
+      logger.log('CommandExecutor', `Skipping self-referencing status update for orchestrator task ${update.taskId}`);
       continue;
     }
 
@@ -304,6 +307,29 @@ async function applyStatusUpdates(
         continue;
       }
 
+      // Guard: do not downgrade a task that has already reached a higher-precedence status.
+      // This prevents race conditions where a backend agent completes a task before
+      // the command executor processes a stale status_update (e.g. completed → queued).
+      const STATUS_PRECEDENCE: Record<string, number> = {
+        'pending': 0,
+        'queued': 1,
+        'running': 2,
+        'waiting_human': 2,
+        'blocked': 1,
+        'completed': 3,
+        'failed': 3,
+      };
+      const currentPrecedence = STATUS_PRECEDENCE[task.status] ?? 0;
+      const newPrecedence = STATUS_PRECEDENCE[update.status] ?? 0;
+
+      if (currentPrecedence >= newPrecedence && task.status !== update.status) {
+        logger.warn(
+          'CommandExecutor',
+          `Skipping status update for ${resolvedId}: already '${task.status}' (precedence ${currentPrecedence}), not downgrading to '${update.status}' (precedence ${newPrecedence})`
+        );
+        continue;
+      }
+
       await updateTaskStatus(
         resolvedId,
         update.status as typeof validStatuses[number],
@@ -311,10 +337,10 @@ async function applyStatusUpdates(
       );
 
       updated.push(resolvedId);
-      console.log(`[CommandExecutor] Updated task ${resolvedId} status to ${update.status}`);
+      logger.log('CommandExecutor', `Updated task ${resolvedId} status to ${update.status}`);
     } catch (err) {
       const errorMsg = `Failed to update task ${resolvedId}: ${err instanceof Error ? err.message : 'Unknown error'}`;
-      console.error(`[CommandExecutor] ${errorMsg}`);
+      logger.error('CommandExecutor', errorMsg);
       errors.push(errorMsg);
     }
   }
@@ -334,8 +360,10 @@ async function applyStatusUpdates(
 async function processFileLocks(
   fileLockOps: OrchestratorFileLock[],
   idMapping: Map<string, string>,
+  parentTaskId: string,
   defaultBranch: string = 'main'
 ): Promise<{ acquired: string[]; released: string[]; errors: string[] }> {
+  const logger = new TaskLogger(parentTaskId);
   const acquired: string[] = [];
   const released: string[] = [];
   const errors: string[] = [];
@@ -372,14 +400,14 @@ async function processFileLocks(
       const count = await releaseLocks(realTaskId);
       if (count > 0) {
         released.push(op.path);
-        console.log(`[CommandExecutor] Released lock on ${op.path} for task ${realTaskId}`);
+        logger.log('CommandExecutor', `Released lock on ${op.path} for task ${realTaskId}`);
       } else {
         // Not an error - lock may have already been released or expired
-        console.log(`[CommandExecutor] No lock found to release for ${op.path} (task ${realTaskId})`);
+        logger.log('CommandExecutor', `No lock found to release for ${op.path} (task ${realTaskId})`);
       }
     } catch (err) {
       const errorMsg = `Failed to release lock ${op.path}: ${err instanceof Error ? err.message : 'Unknown error'}`;
-      console.error(`[CommandExecutor] ${errorMsg}`);
+      logger.error('CommandExecutor', errorMsg);
       errors.push(errorMsg);
     }
   }
@@ -412,18 +440,18 @@ async function processFileLocks(
 
       if (result.success) {
         acquired.push(op.path);
-        console.log(`[CommandExecutor] Acquired lock on ${op.path} for task ${realTaskId}`);
+        logger.log('CommandExecutor', `Acquired lock on ${op.path} for task ${realTaskId}`);
       } else {
         // Lock conflict
         const conflictInfo = result.conflicts
           .map(c => `${c.filePath} (held by ${c.heldByTaskId})`)
           .join(', ');
         errors.push(`Lock conflict for ${op.path}: ${conflictInfo}`);
-        console.warn(`[CommandExecutor] Lock conflict: ${conflictInfo}`);
+        logger.warn('CommandExecutor', `Lock conflict: ${conflictInfo}`);
       }
     } catch (err) {
       const errorMsg = `Failed to acquire lock ${op.path}: ${err instanceof Error ? err.message : 'Unknown error'}`;
-      console.error(`[CommandExecutor] ${errorMsg}`);
+      logger.error('CommandExecutor', errorMsg);
       errors.push(errorMsg);
     }
   }
@@ -445,6 +473,7 @@ export async function executeOrchestratorCommands(
   parentTaskId: string,
   parseResult: OrchestratorParseResult
 ): Promise<ExecutionResult> {
+  const logger = new TaskLogger(parentTaskId);
   const result: ExecutionResult = {
     success: true,
     tasksCreated: [],
@@ -456,13 +485,13 @@ export async function executeOrchestratorCommands(
 
   // Skip if parse failed
   if (!parseResult.success) {
-    console.warn('[CommandExecutor] Skipping execution - parse was not successful');
+    logger.warn('CommandExecutor', 'Skipping execution - parse was not successful');
     result.success = false;
     result.errors.push('Parse result was not successful');
     return result;
   }
 
-  console.log(`[CommandExecutor] Executing commands: ${parseResult.tasks.length} tasks, ${parseResult.statusUpdates.length} status updates, ${parseResult.fileLocks.length} file locks`);
+  logger.log('CommandExecutor', `Executing commands: ${parseResult.tasks.length} tasks, ${parseResult.statusUpdates.length} status updates, ${parseResult.fileLocks.length} file locks`);
 
   // ID mapping from placeholder IDs (e.g., "TASK-001") to real UUIDs
   let idMapping = new Map<string, string>();
@@ -484,7 +513,7 @@ export async function executeOrchestratorCommands(
 
   // 3. Process file locks (using ID mapping to resolve placeholder task IDs)
   if (parseResult.fileLocks.length > 0) {
-    const lockResult = await processFileLocks(parseResult.fileLocks, idMapping);
+    const lockResult = await processFileLocks(parseResult.fileLocks, idMapping, parentTaskId);
     result.locksAcquired = lockResult.acquired;
     result.locksReleased = lockResult.released;
     result.errors.push(...lockResult.errors);
@@ -493,7 +522,7 @@ export async function executeOrchestratorCommands(
   // Determine overall success (allow partial success)
   result.success = result.errors.length === 0;
 
-  console.log(`[CommandExecutor] Execution complete: ${result.tasksCreated.length} tasks created, ${result.statusesUpdated.length} statuses updated, ${result.locksAcquired.length} locks acquired, ${result.locksReleased.length} locks released, ${result.errors.length} errors`);
+  logger.log('CommandExecutor', `Execution complete: ${result.tasksCreated.length} tasks created, ${result.statusesUpdated.length} statuses updated, ${result.locksAcquired.length} locks acquired, ${result.locksReleased.length} locks released, ${result.errors.length} errors`);
 
   return result;
 }

@@ -10,6 +10,7 @@ import { tasks } from '@soloenterprise/db/schema';
 import { eq, inArray } from 'drizzle-orm';
 import { enqueueTask } from '../queue/task-queue';
 import { generateTechSpec } from '../agents/utils/architect-spec-generator';
+import { TaskLogger } from '../utils/task-logger';
 
 /**
  * Check and queue tasks that were waiting on the completed task.
@@ -22,7 +23,8 @@ import { generateTechSpec } from '../agents/utils/architect-spec-generator';
  * 4. If all deps are met, queue the task
  */
 export async function resolveCompletedDependency(completedTaskId: string): Promise<void> {
-  console.log(`[DependencyResolver] Checking tasks blocked by ${completedTaskId}`);
+  const logger = new TaskLogger(completedTaskId);
+  logger.log('DependencyResolver',` Checking tasks blocked by ${completedTaskId}`);
 
   try {
     // Find all pending tasks that might be waiting on dependencies
@@ -31,11 +33,11 @@ export async function resolveCompletedDependency(completedTaskId: string): Promi
     });
 
     if (pendingTasks.length === 0) {
-      console.log('[DependencyResolver] No pending tasks found');
+      logger.log('DependencyResolver', 'No pending tasks found');
       return;
     }
 
-    console.log(`[DependencyResolver] Found ${pendingTasks.length} pending task(s) to check`);
+    logger.log('DependencyResolver',` Found ${pendingTasks.length} pending task(s) to check`);
 
     let queuedCount = 0;
 
@@ -52,7 +54,7 @@ export async function resolveCompletedDependency(completedTaskId: string): Promi
         continue;
       }
 
-      console.log(`[DependencyResolver] Task ${task.id} ("${task.name}") depends on completed task ${completedTaskId}`);
+      logger.log('DependencyResolver',` Task ${task.id} ("${task.name}") depends on completed task ${completedTaskId}`);
 
       // Check if ALL dependencies are now completed
       const depStatuses = await db.query.tasks.findMany({
@@ -65,24 +67,24 @@ export async function resolveCompletedDependency(completedTaskId: string): Promi
       const allDepsCompleted = completedDeps.length === deps.length;
 
       if (allDepsCompleted) {
-        console.log(`[DependencyResolver] All ${deps.length} dependencies met for task ${task.id}, queuing...`);
+        logger.log('DependencyResolver',` All ${deps.length} dependencies met for task ${task.id}, queuing...`);
 
         // Generate architect tech spec before queuing (dependencies just resolved)
         try {
           const specResult = await generateTechSpec(task.id);
           if (specResult) {
-            console.log(`[DependencyResolver] Tech spec generated for ${task.id}: ~${specResult.tokens} tokens`);
+            logger.log('DependencyResolver',` Tech spec generated for ${task.id}: ~${specResult.tokens} tokens`);
           }
         } catch (err) {
-          console.warn(`[DependencyResolver] Tech spec generation failed for ${task.id}:`, err);
+          logger.warn('DependencyResolver',` Tech spec generation failed for ${task.id}: ${err instanceof Error ? err.message : String(err)}`);
         }
 
         try {
           await enqueueTask(task.id, task.agentType, task.priority);
           queuedCount++;
-          console.log(`[DependencyResolver] Queued task ${task.id} to ${task.agentType}-tasks queue`);
+          logger.log('DependencyResolver',` Queued task ${task.id} to ${task.agentType}-tasks queue`);
         } catch (err) {
-          console.error(`[DependencyResolver] Failed to queue task ${task.id}:`, err);
+          logger.error('DependencyResolver',` Failed to queue task ${task.id}: ${err instanceof Error ? err.message : String(err)}`);
         }
       } else {
         // Show which dependencies are still pending
@@ -90,19 +92,19 @@ export async function resolveCompletedDependency(completedTaskId: string): Promi
           const found = depStatuses.find(d => d.id === depId);
           return !found || found.status !== 'completed';
         });
-        console.log(
-          `[DependencyResolver] Task ${task.id} still waiting on ${stillPending.length} dep(s): [${stillPending.slice(0, 3).join(', ')}${stillPending.length > 3 ? '...' : ''}]`
+        logger.log('DependencyResolver',
+          `Task ${task.id} still waiting on ${stillPending.length} dep(s): [${stillPending.slice(0, 3).join(', ')}${stillPending.length > 3 ? '...' : ''}]`
         );
       }
     }
 
     if (queuedCount > 0) {
-      console.log(`[DependencyResolver] Queued ${queuedCount} task(s) that were waiting on ${completedTaskId}`);
+      logger.log('DependencyResolver',` Queued ${queuedCount} task(s) that were waiting on ${completedTaskId}`);
     } else {
-      console.log(`[DependencyResolver] No tasks became unblocked by ${completedTaskId}`);
+      logger.log('DependencyResolver',` No tasks became unblocked by ${completedTaskId}`);
     }
   } catch (error) {
-    console.error('[DependencyResolver] Error resolving dependencies:', error);
+    logger.error('DependencyResolver',` Error resolving dependencies: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -111,7 +113,8 @@ export async function resolveCompletedDependency(completedTaskId: string): Promi
  * This prevents them from waiting forever for a task that will never complete.
  */
 export async function handleFailedDependency(failedTaskId: string): Promise<void> {
-  console.log(`[DependencyResolver] Handling failed task ${failedTaskId}`);
+  const logger = new TaskLogger(failedTaskId);
+  logger.log('DependencyResolver',` Handling failed task ${failedTaskId}`);
 
   try {
     // Find all pending tasks that depend on this failed task
@@ -141,15 +144,15 @@ export async function handleFailedDependency(failedTaskId: string): Promise<void
         })
         .where(eq(tasks.id, task.id));
 
-      console.log(`[DependencyResolver] Blocked task ${task.id} ("${task.name}") - depends on failed task`);
+      logger.log('DependencyResolver',` Blocked task ${task.id} ("${task.name}") - depends on failed task`);
       blockedCount++;
     }
 
     if (blockedCount > 0) {
-      console.log(`[DependencyResolver] Blocked ${blockedCount} task(s) due to failed dependency ${failedTaskId}`);
+      logger.log('DependencyResolver',` Blocked ${blockedCount} task(s) due to failed dependency ${failedTaskId}`);
     }
   } catch (error) {
-    console.error('[DependencyResolver] Error handling failed dependency:', error);
+    logger.error('DependencyResolver',` Error handling failed dependency: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -158,7 +161,8 @@ export async function handleFailedDependency(failedTaskId: string): Promise<void
  * unblock tasks that were waiting on it.
  */
 export async function unblockDependentTasks(completedTaskId: string): Promise<void> {
-  console.log(`[DependencyResolver] Checking for blocked tasks to unblock after ${completedTaskId} completed`);
+  const logger = new TaskLogger(completedTaskId);
+  logger.log('DependencyResolver',` Checking for blocked tasks to unblock after ${completedTaskId} completed`);
 
   try {
     // Find blocked tasks that were blocked by this specific task
@@ -211,22 +215,22 @@ export async function unblockDependentTasks(completedTaskId: string): Promise<vo
         try {
           const specResult = await generateTechSpec(task.id);
           if (specResult) {
-            console.log(`[DependencyResolver] Tech spec generated for ${task.id}: ~${specResult.tokens} tokens`);
+            logger.log('DependencyResolver',` Tech spec generated for ${task.id}: ~${specResult.tokens} tokens`);
           }
         } catch (err) {
-          console.warn(`[DependencyResolver] Tech spec generation failed for ${task.id}:`, err);
+          logger.warn('DependencyResolver',` Tech spec generation failed for ${task.id}: ${err instanceof Error ? err.message : String(err)}`);
         }
 
         await enqueueTask(task.id, task.agentType, task.priority);
-        console.log(`[DependencyResolver] Unblocked and queued task ${task.id} ("${task.name}")`);
+        logger.log('DependencyResolver',` Unblocked and queued task ${task.id} ("${task.name}")`);
         unblockedCount++;
       }
     }
 
     if (unblockedCount > 0) {
-      console.log(`[DependencyResolver] Unblocked ${unblockedCount} task(s) after ${completedTaskId} completed`);
+      logger.log('DependencyResolver',` Unblocked ${unblockedCount} task(s) after ${completedTaskId} completed`);
     }
   } catch (error) {
-    console.error('[DependencyResolver] Error unblocking dependent tasks:', error);
+    logger.error('DependencyResolver',` Error unblocking dependent tasks: ${error instanceof Error ? error.message : String(error)}`);
   }
 }

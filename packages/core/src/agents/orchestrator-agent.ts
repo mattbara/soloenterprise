@@ -17,6 +17,7 @@ import { buildOrchestratorContext, getEmptyOrchestratorContextResult, type Orche
 import { parseOrchestratorOutput, type OrchestratorParseResult } from './utils/orchestrator-output-parser';
 import { executeOrchestratorCommands, type ExecutionResult } from './utils/orchestrator-command-executor';
 import { getSharedRedisConnection, closeSharedRedisConnection } from '../utils/index';
+import { TaskLogger } from '../utils/task-logger';
 
 const QUEUE_NAME = 'orchestrator-tasks';
 
@@ -164,8 +165,9 @@ async function processOrchestratorTask(job: Job<TaskJobData>): Promise<{
   error?: string;
 }> {
   const { taskId, projectId, name, description, context } = job.data;
+  const logger = new TaskLogger(taskId);
 
-  console.log(`[OrchestratorAgent] Processing task ${taskId}: ${name}`);
+  logger.log('OrchestratorAgent', `Processing task ${taskId}: ${name}`);
 
   // Update status to running
   await updateTaskStatus(taskId, 'running');
@@ -174,24 +176,24 @@ async function processOrchestratorTask(job: Job<TaskJobData>): Promise<{
     // Load SKILL layers based on detected action
     const { content: skillContent, action, layers, tokens: skillTokens } = await loadSkillsForOrchestrator(description);
 
-    console.log(`[OrchestratorAgent] Detected action: ${action}`);
-    console.log(`[OrchestratorAgent] Loaded layers: ${layers.map(l => l.split('/').pop()).join(', ')}`);
+    logger.log('OrchestratorAgent', `Detected action: ${action}`);
+    logger.log('OrchestratorAgent', `Loaded layers: ${layers.map(l => l.split('/').pop()).join(', ')}`);
 
     // Load orchestrator-specific context (project state, tasks, locks, questions)
     let orchestratorContext: OrchestratorContextResult;
     try {
       orchestratorContext = await buildOrchestratorContext(projectId);
     } catch (err) {
-      console.warn('[OrchestratorAgent] Failed to load orchestrator context, continuing without it:', err);
+      logger.warn('OrchestratorAgent', `Failed to load orchestrator context, continuing without it: ${err}`);
       orchestratorContext = getEmptyOrchestratorContextResult();
     }
 
-    console.log(`[OrchestratorAgent] Context: ${orchestratorContext.activeTaskCount} active, ${orchestratorContext.blockedTaskCount} blocked, ${orchestratorContext.pendingQuestionCount} questions, ${orchestratorContext.lockedFileCount} locks, ~${orchestratorContext.tokens} tokens`);
+    logger.log('OrchestratorAgent', `Context: ${orchestratorContext.activeTaskCount} active, ${orchestratorContext.blockedTaskCount} blocked, ${orchestratorContext.pendingQuestionCount} questions, ${orchestratorContext.lockedFileCount} locks, ~${orchestratorContext.tokens} tokens`);
 
     // Build user prompt
     const userPrompt = buildPrompt(name, description, context);
 
-    console.log('[OrchestratorAgent] Calling Claude API (Opus)...');
+    logger.log('OrchestratorAgent', 'Calling Claude API (Opus)...');
 
     // Build cached system prompt with orchestrator context
     const cachedSystem = buildCachedSystemPrompt(skillContent, orchestratorContext.content);
@@ -215,7 +217,7 @@ async function processOrchestratorTask(job: Job<TaskJobData>): Promise<{
     stream.on('text', () => {
       chunksReceived++;
       if (chunksReceived % 20 === 0) {
-        console.log(`[OrchestratorAgent] Streaming... ${chunksReceived} chunks received`);
+        logger.log('OrchestratorAgent', `Streaming... ${chunksReceived} chunks received`);
       }
     });
 
@@ -229,10 +231,7 @@ async function processOrchestratorTask(job: Job<TaskJobData>): Promise<{
       throw new Error('No text response from Claude');
     }
 
-    console.log('[OrchestratorAgent] Raw response received:');
-    console.log('---');
-    console.log(responseText);
-    console.log('---');
+    logger.log('OrchestratorAgent', 'Raw response:\n' + responseText);
 
     // Extract cache metrics from API response
     const cacheMetrics = extractCacheMetrics(response.usage);
@@ -266,10 +265,10 @@ async function processOrchestratorTask(job: Job<TaskJobData>): Promise<{
     const parseResult = parseOrchestratorOutput(responseText);
 
     if (!parseResult.success) {
-      console.warn('[OrchestratorAgent] Failed to parse response:', parseResult.error);
+      logger.warn('OrchestratorAgent', `Failed to parse response: ${parseResult.error}`);
       // Don't fail the task — store raw response for debugging
     } else {
-      console.log(`[OrchestratorAgent] Parsed: action=${parseResult.action}, tasks=${parseResult.tasks.length}, questions=${parseResult.questions.length}`);
+      logger.log('OrchestratorAgent', `Parsed: action=${parseResult.action}, tasks=${parseResult.tasks.length}, questions=${parseResult.questions.length}`);
     }
 
     // Execute orchestrator commands (create tasks, update statuses, manage locks)
@@ -277,21 +276,21 @@ async function processOrchestratorTask(job: Job<TaskJobData>): Promise<{
     let executionResult: ExecutionResult | null = null;
 
     if (parseResult.success && (parseResult.tasks.length > 0 || parseResult.statusUpdates.length > 0 || parseResult.fileLocks.length > 0)) {
-      console.log('[OrchestratorAgent] Executing commands...');
+      logger.log('OrchestratorAgent', 'Executing commands...');
       executionResult = await executeOrchestratorCommands(projectId, taskId, parseResult);
 
       if (executionResult.errors.length > 0) {
-        console.warn('[OrchestratorAgent] Execution had errors:', executionResult.errors);
+        logger.warn('OrchestratorAgent', `Execution had errors: ${JSON.stringify(executionResult.errors)}`);
       }
 
-      console.log(`[OrchestratorAgent] Execution complete: ${executionResult.tasksCreated.length} tasks created, ${executionResult.statusesUpdated.length} statuses updated, ${executionResult.locksAcquired.length} locks acquired, ${executionResult.locksReleased.length} locks released`);
+      logger.log('OrchestratorAgent', `Execution complete: ${executionResult.tasksCreated.length} tasks created, ${executionResult.statusesUpdated.length} statuses updated, ${executionResult.locksAcquired.length} locks acquired, ${executionResult.locksReleased.length} locks released`);
     }
 
     // Check if orchestrator needs human input (has questions in parsed output)
     const hasQuestions = parseResult.success && parseResult.questions.length > 0;
 
     if (hasQuestions) {
-      console.log(`[OrchestratorAgent] Response contains ${parseResult.questions.length} question(s), creating question records...`);
+      logger.log('OrchestratorAgent', `Response contains ${parseResult.questions.length} question(s), creating question records...`);
 
       // Create question records from parsed questions
       for (const q of parseResult.questions) {
@@ -325,7 +324,7 @@ async function processOrchestratorTask(job: Job<TaskJobData>): Promise<{
       };
     }
 
-    console.log(`[OrchestratorAgent] Task ${taskId} completed successfully`);
+    logger.log('OrchestratorAgent', `Task ${taskId} completed successfully`);
 
     // Build summary based on what was actually executed
     const summary = executionResult
@@ -361,7 +360,7 @@ async function processOrchestratorTask(job: Job<TaskJobData>): Promise<{
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error(`[OrchestratorAgent] Task ${taskId} failed:`, errorMessage);
+    logger.error('OrchestratorAgent', `Task ${taskId} failed: ${errorMessage}`);
 
     // Update task status to failed
     await updateTaskStatus(taskId, 'failed', {

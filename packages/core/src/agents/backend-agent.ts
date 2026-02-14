@@ -20,6 +20,7 @@ import { buildContextWithProfile, getEmptyContextResult, type ProfiledContextRes
 import type { ContextProfileName } from './utils/context-profiles';
 import { buildCachedSystemPrompt, extractCacheMetrics, logCacheMetrics } from './utils/cache-helper';
 import { getSharedRedisConnection, closeSharedRedisConnection } from '../utils/index';
+import { TaskLogger } from '../utils/task-logger';
 
 const QUEUE_NAME = 'backend-tasks';
 
@@ -200,8 +201,9 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
   error?: string;
 }> {
   const { taskId, projectId, name, description, context } = job.data;
+  const logger = new TaskLogger(taskId);
 
-  console.log(`[BackendAgent] Processing task ${taskId}: ${name}`);
+  logger.log('BackendAgent', `Processing task ${taskId}: ${name}`);
 
   // Update status to running
   await updateTaskStatus(taskId, 'running');
@@ -210,21 +212,21 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
     // Load SKILL layers based on task complexity
     const { content: skillContent, complexity, layers, tokens: skillTokens } = await loadSkillsForTask('backend', description);
 
-    console.log(`[BackendAgent] Task complexity: simple=${complexity.simple}, database=${complexity.database}, newPattern=${complexity.newPattern}`);
-    console.log(`[BackendAgent] Loaded layers: ${layers.map(l => l.split('/').pop()).join(', ')}`);
+    logger.log('BackendAgent', `Task complexity: simple=${complexity.simple}, database=${complexity.database}, newPattern=${complexity.newPattern}`);
+    logger.log('BackendAgent', `Loaded layers: ${layers.map(l => l.split('/').pop()).join(', ')}`);
 
     // Load codebase context with profile-based selection
     let codebaseContext: ProfiledContextResult;
     try {
       codebaseContext = await buildContextWithProfile(description);
     } catch (err) {
-      console.warn('[BackendAgent] Failed to load codebase context, continuing without it:', err);
+      logger.warn('BackendAgent', 'Failed to load codebase context, continuing without it: ' + err);
       codebaseContext = getEmptyContextResult('simple-endpoint');
     }
 
-    console.log(`[BackendAgent] Context profile: ${codebaseContext.profile}`);
-    console.log(`[BackendAgent] Schema included: ${codebaseContext.schemaIncluded}, Tables: ${codebaseContext.tablesLoaded}`);
-    console.log(`[BackendAgent] Context tokens: ~${codebaseContext.tokens}`);
+    logger.log('BackendAgent', `Context profile: ${codebaseContext.profile}`);
+    logger.log('BackendAgent', `Schema included: ${codebaseContext.schemaIncluded}, Tables: ${codebaseContext.tablesLoaded}`);
+    logger.log('BackendAgent', `Context tokens: ~${codebaseContext.tokens}`);
 
     // Build user prompt (task-specific, not cached)
     // Note: codebase context is now in the cached system prompt
@@ -237,14 +239,14 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
     let techSpecBlock = '';
     if (taskRecord?.technicalSpec) {
       techSpecBlock = `\n\n## TECHNICAL SPECIFICATION (from Architect)\n\nFollow this spec precisely. It was written by a senior architect who reviewed the full project context.\nIf the spec lists existing dependency files, import from them directly. Do NOT create new files that duplicate existing dependency outputs.\n\n${taskRecord.technicalSpec}\n`;
-      console.log(`[BackendAgent] Tech spec available: ~${taskRecord.technicalSpec.length} chars`);
+      logger.log('BackendAgent', `Tech spec available: ~${taskRecord.technicalSpec.length} chars`);
     } else {
-      console.log('[BackendAgent] No tech spec for this task');
+      logger.log('BackendAgent', 'No tech spec for this task');
     }
 
     const userPrompt = buildPrompt(name, description, context) + techSpecBlock;
 
-    console.log('[BackendAgent] Calling Claude API...');
+    logger.log('BackendAgent', 'Calling Claude API...');
 
     // Build cached system prompt for cost optimization
     // SKILL files are cached (static across tasks, ~1800-2100 tokens)
@@ -274,19 +276,19 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
       throw new Error('No text response from Claude');
     }
 
-    console.log('[BackendAgent] Parsing response...');
-    console.log('[BackendAgent] Response text length:', responseText.length);
-    console.log('[BackendAgent] First 500 chars:', responseText.substring(0, 500));
-    console.log('[BackendAgent] Last 500 chars:', responseText.substring(Math.max(0, responseText.length - 500)));
+    logger.log('BackendAgent', 'Parsing response...');
+    logger.log('BackendAgent', 'Response text length: ' + responseText.length);
+    logger.log('BackendAgent', 'First 500 chars: ' + responseText.substring(0, 500));
+    logger.log('BackendAgent', 'Last 500 chars: ' + responseText.substring(Math.max(0, responseText.length - 500)));
 
     // Parse the response
     const parseResult = parseAgentOutput(responseText);
 
-    console.log('[BackendAgent] Parse result:', {
+    logger.log('BackendAgent', 'Parse result: ' + JSON.stringify({
       filesCount: parseResult.files.length,
       hasQuestions: parseResult.hasQuestions,
       filePaths: parseResult.files.map(f => f.path),
-    });
+    }));
 
     // Extract cache metrics from API response
     const cacheMetrics = extractCacheMetrics(response.usage);
@@ -325,7 +327,7 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
     if (parseResult.hasQuestions && parseResult.questionsContent) {
       if (parseResult.files.length === 0) {
         // No files = real blocker, agent couldn't proceed
-        console.log('[BackendAgent] Task has questions and no files - blocking for human input...');
+        logger.log('BackendAgent', 'Task has questions and no files - blocking for human input...');
 
         const task = await getTask(taskId);
         if (!task) {
@@ -354,7 +356,7 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
         };
       } else {
         // Files generated = task is done, questions are informational
-        console.log(`[BackendAgent] Questions detected but ${parseResult.files.length} files generated - saving as informational, continuing...`);
+        logger.log('BackendAgent', `Questions detected but ${parseResult.files.length} files generated - saving as informational, continuing...`);
         try {
           const task = await getTask(taskId);
           if (task) {
@@ -370,7 +372,7 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
             });
           }
         } catch (err) {
-          console.warn('[BackendAgent] Failed to save informational question:', err);
+          logger.warn('BackendAgent', 'Failed to save informational question: ' + err);
         }
         // Continue to file processing below
       }
@@ -379,11 +381,11 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
     // Validate parsed files
     const validation = validateParsedFiles(parseResult.files);
     if (!validation.valid) {
-      console.warn('[BackendAgent] File validation warnings:', validation.errors);
+      logger.warn('BackendAgent', 'File validation warnings: ' + JSON.stringify(validation.errors));
     }
 
     if (parseResult.files.length === 0) {
-      console.log('[BackendAgent] No files generated - requesting clarification from user');
+      logger.log('BackendAgent', 'No files generated - requesting clarification from user');
 
       // Get task to find project ID
       const task = await getTask(taskId);
@@ -416,7 +418,7 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
       };
     }
 
-    console.log(`[BackendAgent] Validating ${parseResult.files.length} files with syntax recovery...`);
+    logger.log('BackendAgent', `Validating ${parseResult.files.length} files with syntax recovery...`);
 
     // Create validation function for recovery loop
     const validateFiles = async (files: typeof parseResult.files): Promise<SyntaxError[]> => {
@@ -431,7 +433,7 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
 
     // Create fresh generation function for full retries
     const generateFresh = async (): Promise<typeof parseResult.files> => {
-      console.log('[BackendAgent] Generating fresh response (full retry)...');
+      logger.log('BackendAgent', 'Generating fresh response (full retry)...');
       const retryResponse = await client.messages.create({
         model: MODEL,
         max_tokens: MAX_TOKENS,
@@ -442,7 +444,7 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
       const retryText = retryResponse.content.find(c => c.type === 'text');
       const retryResponseText = retryText?.type === 'text' ? retryText.text : '';
       const retryParsed = parseAgentOutput(retryResponseText);
-      console.log(`[BackendAgent] Fresh generation produced ${retryParsed.files.length} files`);
+      logger.log('BackendAgent', `Fresh generation produced ${retryParsed.files.length} files`);
       return retryParsed.files;
     };
 
@@ -455,7 +457,7 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
       generateFresh
     );
 
-    console.log(`[BackendAgent] Recovery complete: success=${recoveryResult.success}, fixLoops=${recoveryResult.attempts.fixLoops}, fullRetries=${recoveryResult.attempts.fullRetries}`);
+    logger.log('BackendAgent', `Recovery complete: success=${recoveryResult.success}, fixLoops=${recoveryResult.attempts.fixLoops}, fullRetries=${recoveryResult.attempts.fullRetries}`);
 
     if (!recoveryResult.success) {
       const errorSummary = recoveryResult.errors
@@ -477,7 +479,7 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
           })
           .where(eq(tasks.id, taskId));
       } catch (err) {
-        console.error('[BackendAgent] Failed to save recovery context:', err);
+        logger.error('BackendAgent', 'Failed to save recovery context: ' + err);
       }
 
       await updateTaskStatus(taskId, 'failed', {
@@ -496,20 +498,20 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
     }
 
     // Write final validated files
-    console.log(`[BackendAgent] Writing ${recoveryResult.files.length} validated files...`);
+    logger.log('BackendAgent', `Writing ${recoveryResult.files.length} validated files...`);
     const writeResult = await writeGeneratedFiles(taskId, recoveryResult.files, 'backend');
 
     const finalValidation = await validateGeneratedFiles(writeResult.taskDir, writeResult.files);
     if (!finalValidation.valid) {
-      console.warn('[BackendAgent] Non-severe warnings:', finalValidation.errors);
+      logger.warn('BackendAgent', 'Non-severe warnings: ' + JSON.stringify(finalValidation.errors));
       try {
         await db.update(tasks).set({ warnings: finalValidation.errors }).where(eq(tasks.id, taskId));
       } catch (err) {
-        console.error('[BackendAgent] Failed to save warnings:', err);
+        logger.error('BackendAgent', 'Failed to save warnings: ' + err);
       }
     }
 
-    console.log('[BackendAgent] Creating artifact records...');
+    logger.log('BackendAgent', 'Creating artifact records...');
 
     // Create artifact records
     const artifactIds: string[] = [];
@@ -534,7 +536,7 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
       artifactIds.push(artifact.id);
     }
 
-    console.log(`[BackendAgent] Task ${taskId} completed successfully`);
+    logger.log('BackendAgent', `Task ${taskId} completed successfully`);
 
     // Update task status
     await updateTaskStatus(taskId, 'completed', {
@@ -555,7 +557,7 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error(`[BackendAgent] Task ${taskId} failed:`, errorMessage);
+    logger.error('BackendAgent', `Task ${taskId} failed: ${errorMessage}`);
 
     // Update task status to failed
     await updateTaskStatus(taskId, 'failed', {

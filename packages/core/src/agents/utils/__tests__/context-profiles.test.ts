@@ -113,7 +113,23 @@ describe('selectContextProfile', () => {
     expect(selectContextProfile('Create healthcheck route')).toBe('simple-endpoint');
   });
 
-  it('does NOT select simple-endpoint when database signals compete', () => {
+  it('selects simple-endpoint for "health endpoint" phrasing', () => {
+    expect(selectContextProfile('Create a GET /api/health endpoint')).toBe('simple-endpoint');
+  });
+
+  it('selects simple-endpoint even when weak DB signal "api route" is present', () => {
+    expect(selectContextProfile('Create api route GET /api/health endpoint')).toBe('simple-endpoint');
+  });
+
+  it('selects simple-endpoint for ping endpoint', () => {
+    expect(selectContextProfile('Add a ping endpoint to verify uptime')).toBe('simple-endpoint');
+  });
+
+  it('selects simple-endpoint for liveness probe', () => {
+    expect(selectContextProfile('Create liveness probe endpoint')).toBe('simple-endpoint');
+  });
+
+  it('does NOT select simple-endpoint when strong database signals compete', () => {
     expect(selectContextProfile('Add health check endpoint with database connection test')).toBe(
       'database-task'
     );

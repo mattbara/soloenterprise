@@ -17,6 +17,7 @@ import { existsSync, readdirSync, statSync, readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { selectContextProfile } from './context-profiles';
+import { TaskLogger } from '../../utils/task-logger';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -146,9 +147,11 @@ export async function generateTechSpec(
     return null;
   }
 
+  const logger = new TaskLogger(taskId);
+
   // 2. Skip if spec already exists
   if (task.technicalSpec) {
-    console.log(`[ArchitectSpec] Task ${taskId} already has a tech spec, skipping`);
+    logger.log('ArchitectSpec', `Task ${taskId} already has a tech spec, skipping`);
     return null;
   }
 
@@ -163,15 +166,11 @@ export async function generateTechSpec(
     hasDeps;
 
   if (!needsSpec) {
-    console.log(
-      `[ArchitectSpec] Skipping spec for task ${taskId} (profile=${profile}, deps=${deps.length})`
-    );
+    logger.log('ArchitectSpec', `Skipping spec for task ${taskId} (profile=${profile}, deps=${deps.length})`);
     return null;
   }
 
-  console.log(
-    `[ArchitectSpec] Generating spec for task ${taskId} (${task.agentType}, profile=${profile}, deps=${deps.length})`
-  );
+  logger.log('ArchitectSpec', `Generating spec for task ${taskId} (${task.agentType}, profile=${profile}, deps=${deps.length})`);
 
   // 4. Load dependency artifacts
   let dependencyContext = '';
@@ -282,7 +281,7 @@ export async function generateTechSpec(
     const spec = textBlock?.type === 'text' ? textBlock.text : '';
 
     if (!spec) {
-      console.warn(`[ArchitectSpec] Empty response for task ${taskId}`);
+      logger.warn('ArchitectSpec', `Empty response for task ${taskId}`);
       return null;
     }
 
@@ -300,9 +299,7 @@ export async function generateTechSpec(
       })
       .where(eq(tasks.id, taskId));
 
-    console.log(
-      `[ArchitectSpec] Generated spec for task ${taskId} (${task.agentType}): ~${totalTokens} tokens, ${depCount} dependency artifacts loaded`
-    );
+    logger.log('ArchitectSpec', `Generated spec for task ${taskId} (${task.agentType}): ~${totalTokens} tokens, ${depCount} dependency artifacts loaded`);
 
     // Log TOKEN_BASELINE
     console.log(
@@ -322,10 +319,7 @@ export async function generateTechSpec(
 
     return { spec, tokens: totalTokens };
   } catch (err) {
-    console.error(
-      `[ArchitectSpec] API call failed for task ${taskId}:`,
-      err instanceof Error ? err.message : err
-    );
+    logger.error('ArchitectSpec', `API call failed for task ${taskId}: ${err instanceof Error ? err.message : String(err)}`);
     return null;
   }
 }

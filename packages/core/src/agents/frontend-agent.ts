@@ -19,6 +19,7 @@ import { processWithSyntaxRecovery, type SyntaxError, type RecoveryAttempts } fr
 import { buildFrontendContextWithProfile, getEmptyFrontendContextResult, type FrontendProfiledContextResult } from './utils/frontend-context-loader';
 import type { FrontendContextProfileName } from './utils/frontend-context-profiles';
 import { getSharedRedisConnection, closeSharedRedisConnection } from '../utils/index';
+import { TaskLogger } from '../utils/task-logger';
 
 const QUEUE_NAME = 'frontend-tasks';
 
@@ -194,8 +195,9 @@ async function processFrontendTask(job: Job<TaskJobData>): Promise<{
   error?: string;
 }> {
   const { taskId, projectId, name, description, context } = job.data;
+  const logger = new TaskLogger(taskId);
 
-  console.log(`[FrontendAgent] Processing task ${taskId}: ${name}`);
+  logger.log('FrontendAgent', `Processing task ${taskId}: ${name}`);
 
   // Update status to running
   await updateTaskStatus(taskId, 'running');
@@ -204,21 +206,21 @@ async function processFrontendTask(job: Job<TaskJobData>): Promise<{
     // Load SKILL layers based on task complexity
     const { content: skillContent, complexity, layers, tokens: skillTokens } = await loadSkillsForTask('frontend', description);
 
-    console.log(`[FrontendAgent] Task complexity: simple=${complexity.simple}, database=${complexity.database}, newPattern=${complexity.newPattern}`);
-    console.log(`[FrontendAgent] Loaded layers: ${layers.map(l => l.split('/').pop()).join(', ')}`);
+    logger.log('FrontendAgent', `Task complexity: simple=${complexity.simple}, database=${complexity.database}, newPattern=${complexity.newPattern}`);
+    logger.log('FrontendAgent', `Loaded layers: ${layers.map(l => l.split('/').pop()).join(', ')}`);
 
     // Load codebase context with frontend-specific profile selection
     let codebaseContext: FrontendProfiledContextResult;
     try {
       codebaseContext = await buildFrontendContextWithProfile(description);
     } catch (err) {
-      console.warn('[FrontendAgent] Failed to load codebase context, continuing without it:', err);
+      logger.warn('FrontendAgent', 'Failed to load codebase context, continuing without it: ' + err);
       codebaseContext = getEmptyFrontendContextResult('simple-component');
     }
 
-    console.log(`[FrontendAgent] Context profile: ${codebaseContext.profile}`);
-    console.log(`[FrontendAgent] Components loaded: ${codebaseContext.componentExamplesLoaded}, Hooks: ${codebaseContext.hookExamplesLoaded}`);
-    console.log(`[FrontendAgent] Context tokens: ~${codebaseContext.tokens}`);
+    logger.log('FrontendAgent', `Context profile: ${codebaseContext.profile}`);
+    logger.log('FrontendAgent', `Components loaded: ${codebaseContext.componentExamplesLoaded}, Hooks: ${codebaseContext.hookExamplesLoaded}`);
+    logger.log('FrontendAgent', `Context tokens: ~${codebaseContext.tokens}`);
 
     // Load tech spec from architect layer (if generated)
     const taskRecord = await db.query.tasks.findFirst({
@@ -229,9 +231,9 @@ async function processFrontendTask(job: Job<TaskJobData>): Promise<{
     let techSpecBlock = '';
     if (taskRecord?.technicalSpec) {
       techSpecBlock = `\n\n## TECHNICAL SPECIFICATION (from Architect)\n\nFollow this spec precisely. It was written by a senior architect who reviewed the full project context.\nIf the spec lists existing dependency files, import from them directly. Do NOT create new files that duplicate existing dependency outputs.\n\n${taskRecord.technicalSpec}\n`;
-      console.log(`[FrontendAgent] Tech spec available: ~${taskRecord.technicalSpec.length} chars`);
+      logger.log('FrontendAgent', `Tech spec available: ~${taskRecord.technicalSpec.length} chars`);
     } else {
-      console.log('[FrontendAgent] No tech spec for this task');
+      logger.log('FrontendAgent', 'No tech spec for this task');
     }
 
     // Build prompt with codebase context prepended and tech spec appended
@@ -240,7 +242,7 @@ async function processFrontendTask(job: Job<TaskJobData>): Promise<{
       ? `${codebaseContext.content}\n\n${basePrompt}`
       : basePrompt;
 
-    console.log('[FrontendAgent] Calling Claude API...');
+    logger.log('FrontendAgent', 'Calling Claude API...');
 
     // Call Claude API
     const client = getAnthropicClient();
@@ -265,19 +267,19 @@ async function processFrontendTask(job: Job<TaskJobData>): Promise<{
       throw new Error('No text response from Claude');
     }
 
-    console.log('[FrontendAgent] Parsing response...');
-    console.log('[FrontendAgent] Response text length:', responseText.length);
-    console.log('[FrontendAgent] First 500 chars:', responseText.substring(0, 500));
-    console.log('[FrontendAgent] Last 500 chars:', responseText.substring(Math.max(0, responseText.length - 500)));
+    logger.log('FrontendAgent', 'Parsing response...');
+    logger.log('FrontendAgent', 'Response text length: ' + responseText.length);
+    logger.log('FrontendAgent', 'First 500 chars: ' + responseText.substring(0, 500));
+    logger.log('FrontendAgent', 'Last 500 chars: ' + responseText.substring(Math.max(0, responseText.length - 500)));
 
     // Parse the response
     const parseResult = parseAgentOutput(responseText);
 
-    console.log('[FrontendAgent] Parse result:', {
+    logger.log('FrontendAgent', 'Parse result: ' + JSON.stringify({
       filesCount: parseResult.files.length,
       hasQuestions: parseResult.hasQuestions,
       filePaths: parseResult.files.map(f => f.path),
-    });
+    }));
 
     // Log token baseline metrics and save to database
     await logTokenBaseline({
@@ -306,7 +308,7 @@ async function processFrontendTask(job: Job<TaskJobData>): Promise<{
     if (parseResult.hasQuestions && parseResult.questionsContent) {
       if (parseResult.files.length === 0) {
         // No files = real blocker, agent couldn't proceed
-        console.log('[FrontendAgent] Task has questions and no files - blocking for human input...');
+        logger.log('FrontendAgent', 'Task has questions and no files - blocking for human input...');
 
         const task = await getTask(taskId);
         if (!task) {
@@ -335,7 +337,7 @@ async function processFrontendTask(job: Job<TaskJobData>): Promise<{
         };
       } else {
         // Files generated = task is done, questions are informational
-        console.log(`[FrontendAgent] Questions detected but ${parseResult.files.length} files generated - saving as informational, continuing...`);
+        logger.log('FrontendAgent', `Questions detected but ${parseResult.files.length} files generated - saving as informational, continuing...`);
         try {
           const task = await getTask(taskId);
           if (task) {
@@ -351,7 +353,7 @@ async function processFrontendTask(job: Job<TaskJobData>): Promise<{
             });
           }
         } catch (err) {
-          console.warn('[FrontendAgent] Failed to save informational question:', err);
+          logger.warn('FrontendAgent', 'Failed to save informational question: ' + err);
         }
         // Continue to file processing below
       }
@@ -360,11 +362,11 @@ async function processFrontendTask(job: Job<TaskJobData>): Promise<{
     // Validate parsed files
     const validation = validateParsedFiles(parseResult.files);
     if (!validation.valid) {
-      console.warn('[FrontendAgent] File validation warnings:', validation.errors);
+      logger.warn('FrontendAgent', 'File validation warnings: ' + JSON.stringify(validation.errors));
     }
 
     if (parseResult.files.length === 0) {
-      console.log('[FrontendAgent] No files generated - requesting clarification from user');
+      logger.log('FrontendAgent', 'No files generated - requesting clarification from user');
 
       // Get task to find project ID
       const task = await getTask(taskId);
@@ -397,7 +399,7 @@ async function processFrontendTask(job: Job<TaskJobData>): Promise<{
       };
     }
 
-    console.log(`[FrontendAgent] Validating ${parseResult.files.length} files with syntax recovery...`);
+    logger.log('FrontendAgent', `Validating ${parseResult.files.length} files with syntax recovery...`);
 
     // Create validation function for recovery loop
     const validateFiles = async (files: typeof parseResult.files): Promise<SyntaxError[]> => {
@@ -414,7 +416,7 @@ async function processFrontendTask(job: Job<TaskJobData>): Promise<{
 
     // Create fresh generation function for full retries
     const generateFresh = async (): Promise<typeof parseResult.files> => {
-      console.log('[FrontendAgent] Generating fresh response (full retry)...');
+      logger.log('FrontendAgent', 'Generating fresh response (full retry)...');
       const retryResponse = await client.messages.create({
         model: MODEL,
         max_tokens: MAX_TOKENS,
@@ -425,7 +427,7 @@ async function processFrontendTask(job: Job<TaskJobData>): Promise<{
       const retryText = retryResponse.content.find(c => c.type === 'text');
       const retryResponseText = retryText?.type === 'text' ? retryText.text : '';
       const retryParsed = parseAgentOutput(retryResponseText);
-      console.log(`[FrontendAgent] Fresh generation produced ${retryParsed.files.length} files`);
+      logger.log('FrontendAgent', `Fresh generation produced ${retryParsed.files.length} files`);
       return retryParsed.files;
     };
 
@@ -439,7 +441,7 @@ async function processFrontendTask(job: Job<TaskJobData>): Promise<{
     );
 
     // Log recovery stats
-    console.log(`[FrontendAgent] Recovery complete: success=${recoveryResult.success}, fixLoops=${recoveryResult.attempts.fixLoops}, fullRetries=${recoveryResult.attempts.fullRetries}, fixTokens=${recoveryResult.attempts.fixTokensUsed}`);
+    logger.log('FrontendAgent', `Recovery complete: success=${recoveryResult.success}, fixLoops=${recoveryResult.attempts.fixLoops}, fullRetries=${recoveryResult.attempts.fullRetries}, fixTokens=${recoveryResult.attempts.fixTokensUsed}`);
 
     // Handle recovery failure
     if (!recoveryResult.success) {
@@ -463,7 +465,7 @@ async function processFrontendTask(job: Job<TaskJobData>): Promise<{
           })
           .where(eq(tasks.id, taskId));
       } catch (err) {
-        console.error('[FrontendAgent] Failed to save recovery context:', err);
+        logger.error('FrontendAgent', 'Failed to save recovery context: ' + err);
       }
 
       await updateTaskStatus(taskId, 'failed', {
@@ -482,24 +484,24 @@ async function processFrontendTask(job: Job<TaskJobData>): Promise<{
     }
 
     // Write final validated files
-    console.log(`[FrontendAgent] Writing ${recoveryResult.files.length} validated files...`);
+    logger.log('FrontendAgent', `Writing ${recoveryResult.files.length} validated files...`);
     const writeResult = await writeGeneratedFiles(taskId, recoveryResult.files, 'frontend');
 
     // Final validation to capture any remaining warnings (non-severe)
     const finalValidation = await validateGeneratedFiles(writeResult.taskDir, writeResult.files);
     if (!finalValidation.valid) {
-      console.warn('[FrontendAgent] Non-severe warnings after recovery:', finalValidation.errors);
+      logger.warn('FrontendAgent', 'Non-severe warnings after recovery: ' + JSON.stringify(finalValidation.errors));
       try {
         await db
           .update(tasks)
           .set({ warnings: finalValidation.errors })
           .where(eq(tasks.id, taskId));
       } catch (err) {
-        console.error('[FrontendAgent] Failed to save warnings:', err);
+        logger.error('FrontendAgent', 'Failed to save warnings: ' + err);
       }
     }
 
-    console.log('[FrontendAgent] Creating artifact records...');
+    logger.log('FrontendAgent', 'Creating artifact records...');
 
     // Create artifact records
     const artifactIds: string[] = [];
@@ -524,7 +526,7 @@ async function processFrontendTask(job: Job<TaskJobData>): Promise<{
       artifactIds.push(artifact.id);
     }
 
-    console.log(`[FrontendAgent] Task ${taskId} completed successfully`);
+    logger.log('FrontendAgent', `Task ${taskId} completed successfully`);
 
     // Update task status
     await updateTaskStatus(taskId, 'completed', {
@@ -546,7 +548,7 @@ async function processFrontendTask(job: Job<TaskJobData>): Promise<{
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error(`[FrontendAgent] Task ${taskId} failed:`, errorMessage);
+    logger.error('FrontendAgent', `Task ${taskId} failed: ${errorMessage}`);
 
     // Update task status to failed
     await updateTaskStatus(taskId, 'failed', {

@@ -6,6 +6,7 @@ export { RequirementsModal } from "./RequirementsModal";
 export { DashboardHeader } from "./DashboardHeader";
 export { MarkdownRenderer } from "./MarkdownRenderer";
 export { WorkerStatus } from "./WorkerStatus";
+export { WorkerDashboardPanel } from "./WorkerDashboardPanel";
 export { RecentTasks } from "./RecentTasks";
 export { RefreshButton } from "./RefreshButton";
 export { ErrorsTable } from "./ErrorsTable";
