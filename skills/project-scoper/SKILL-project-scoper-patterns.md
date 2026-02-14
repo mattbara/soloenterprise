@@ -4,12 +4,11 @@
 <!-- Load When: standard scoping tasks -->
 
 ## Scope Output Schema
-
 ```yaml
 project_scope:
   project_name: string
   client: string
-  brief_id: string              # Reference to original brief
+  brief_id: string
   summary: string               # 2-3 sentence overview
 
   requirements:
@@ -17,22 +16,22 @@ project_scope:
       description: string
       category: backend | frontend | fullstack | infrastructure
       complexity: simple | standard | complex
-      estimated_tasks: number    # How many agent tasks
-      agent_types: string[]      # Which agents needed
-      dependencies: string[]     # Other REQ IDs this depends on
+      estimated_tasks: number
+      agent_types: string[]
+      dependencies: string[]    # Other REQ IDs
       risks: string[]
       assumptions: string[]
 
   agents_required:
     backend: boolean
     frontend: boolean
-    qa: boolean                  # Almost always true
+    qa: boolean
     devops: boolean
-    devops_human_fallback: boolean  # True if devops agent unavailable
+    devops_human_fallback: boolean
 
   estimates:
     total_tasks: number
-    duration_range: string       # "2-3 weeks"
+    duration_range: string      # "2-3 weeks"
     complexity_breakdown:
       simple: number
       standard: number
@@ -42,15 +41,15 @@ project_scope:
 
   gaps:
     - question: string
-      blocking: boolean          # Can we start without this answer?
-      default_assumption: string # What we'll assume if no answer
+      blocking: boolean
+      default_assumption: string
 
   out_of_scope:
-    - string[]
+    - string
 
   milestones:
     - name: string
-      requirements: string[]     # REQ IDs included
+      requirements: string[]
       deliverables: string[]
       estimated_duration: string
 ```
@@ -87,8 +86,8 @@ project_scope:
 
 ### Pattern: Existing Codebase Modification
 1. List files/modules that need changing
-2. Assess: is existing code well-structured or spaghetti?
-3. If spaghetti: add "refactor first" tasks, flag risk
+2. Assess: is existing code well-structured or needs refactoring first?
+3. If messy: add "refactor first" tasks, flag risk
 4. Map changes to specific agents
 5. Higher QA allocation (regression risk)
 
