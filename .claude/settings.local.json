@@ -55,7 +55,13 @@
       "Bash(lsof:*)",
       "Bash(for path in / /dashboard /forecasts /alerts /locations)",
       "Bash(do echo -n \"$path: \")",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(git checkout:*)",
+      "Bash(git pull:*)",
+      "Bash(/Users/matteobaratella/Projects/PERSONAL_PROJECTS/SoloEnterprise/soloenterprise/skills/project-scoper/SKILL-project-scoper-core.md:*)",
+      "Bash(/Users/matteobaratella/Projects/PERSONAL_PROJECTS/SoloEnterprise/soloenterprise/skills/project-scoper/SKILL-project-scoper-patterns.md:*)",
+      "Bash(/Users/matteobaratella/Projects/PERSONAL_PROJECTS/SoloEnterprise/soloenterprise/skills/project-scoper/SKILL-project-scoper-examples.md:*)",
+      "Bash(xargs -I {} sh -c 'echo \"\"\"\"=== {} ===\"\"\"\" && head -30 {}')"
     ]
   }
 }
