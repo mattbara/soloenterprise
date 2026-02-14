@@ -90,11 +90,9 @@ decomposition:
     outputs: [tests/e2e/profile.spec.ts, tests/integration/profile-api.test.ts]
     dependencies: [frontend-avatar-component]
 
-  - task: devops-storage-config
-    agent: devops
-    description: Configure S3 bucket and IAM permissions
-    outputs: [infrastructure/terraform/storage.tf]
-    dependencies: []  # Can run in parallel
+  # NOTE: S3/IAM configuration requires DevOps agent (not yet available).
+  # The CommandExecutor will reject tasks targeting unavailable agents and
+  # create a human question instead. Do NOT assign tasks to `devops`.
 ```
 
 ### Pattern: Bug Fix
@@ -121,28 +119,25 @@ decomposition:
     dependencies: [backend-fix-email-update]
 ```
 
-### Pattern: Infrastructure Change
+### Pattern: Infrastructure Change (Agent Unavailable)
 
 ```yaml
 # Input: "Set up staging environment"
+# NOTE: DevOps agent is NOT YET AVAILABLE (see Agent Registry)
 
-decomposition:
-  - task: devops-terraform-staging
-    agent: devops
-    description: Create Terraform config for staging environment
-    outputs: [infrastructure/terraform/environments/staging/]
-
-  - task: devops-ci-staging
-    agent: devops
-    description: Add staging deployment to CI/CD pipeline
-    outputs: [.github/workflows/deploy.yml]
-    dependencies: [devops-terraform-staging]
-
-  - task: devops-monitoring-staging
-    agent: devops
-    description: Set up monitoring and alerting for staging
-    outputs: [infrastructure/terraform/monitoring.tf]
-    dependencies: [devops-terraform-staging]
+# CORRECT: Escalate to human instead of creating devops tasks
+action: escalate_to_human
+questions:
+  - id: q-infra-staging
+    priority: high
+    category: manual_work_required
+    question: |
+      This project requires infrastructure/DevOps work that cannot be automated yet:
+      - Terraform config for staging environment
+      - CI/CD pipeline deployment stage
+      - Monitoring and alerting setup
+      Please handle manually or defer to a later phase.
+    impact: "No DevOps agent available. Human must provision infrastructure."
 ```
 
 ## Human Question Queue

@@ -18,6 +18,7 @@ import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { selectContextProfile } from './context-profiles';
 import { TaskLogger } from '../../utils/task-logger';
+import { summarizeArtifact, shouldSummarize, estimateTokens } from './artifact-summarizer';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -172,9 +173,13 @@ export async function generateTechSpec(
 
   logger.log('ArchitectSpec', `Generating spec for task ${taskId} (${task.agentType}, profile=${profile}, deps=${deps.length})`);
 
-  // 4. Load dependency artifacts
+  // 4. Load dependency artifacts (with summarization for large files)
   let dependencyContext = '';
   let depCount = 0;
+  let summarizedCount = 0;
+  let totalOriginalTokens = 0;
+  let totalSummaryTokens = 0;
+  let hasSummarizedDeps = false;
 
   if (hasDeps) {
     const depTasks = await db.query.tasks.findMany({
@@ -201,7 +206,25 @@ export async function generateTechSpec(
         try {
           const content = readFileSync(filePath, 'utf-8');
           const relativePath = filePath.replace(taskDir + '/', '');
-          const block = `\n### Dependency: "${depTask.name}" — ${relativePath}\n\`\`\`\n${content}\n\`\`\`\n`;
+
+          let displayContent: string;
+          let marker = '';
+
+          if (shouldSummarize(relativePath, content)) {
+            const summary = summarizeArtifact(relativePath, content);
+            displayContent = summary.summary;
+            marker = ' (API Surface Summary)';
+            summarizedCount++;
+            totalOriginalTokens += summary.originalTokens;
+            totalSummaryTokens += summary.summaryTokens;
+            hasSummarizedDeps = true;
+          } else {
+            displayContent = content;
+            totalOriginalTokens += estimateTokens(content);
+            totalSummaryTokens += estimateTokens(content);
+          }
+
+          const block = `\n### Dependency: "${depTask.name}" — ${relativePath}${marker}\n\`\`\`\n${displayContent}\n\`\`\`\n`;
 
           if (totalChars + block.length > MAX_DEPENDENCY_CHARS) break;
 
@@ -212,6 +235,18 @@ export async function generateTechSpec(
           // Skip unreadable files
         }
       }
+    }
+
+    if (summarizedCount > 0) {
+      const reduction = totalOriginalTokens > 0
+        ? Math.round((1 - totalSummaryTokens / totalOriginalTokens) * 100)
+        : 0;
+      logger.log(
+        'ArchitectSpec',
+        `Dependency context: ${depCount} artifacts (${summarizedCount} summarized), ` +
+        `~${totalOriginalTokens} original tokens → ~${totalSummaryTokens} summary tokens ` +
+        `(${reduction}% reduction)`
+      );
     }
   }
 
@@ -263,6 +298,24 @@ export async function generateTechSpec(
   // 6. Call Claude API
   try {
     const client = getArchitectClient();
+
+    // Append summary context note when dependencies were summarized
+    let systemPrompt = ARCHITECT_SYSTEM_PROMPT;
+    if (hasSummarizedDeps) {
+      systemPrompt += `
+
+## Dependency Context Note
+
+Some dependency artifacts below are shown as **API surface summaries** (marked with "API Surface").
+These show only exported types, function signatures, and component props — not full implementation.
+
+When writing specs that reference these dependencies:
+- Use the exported types and interfaces as shown
+- Reference function signatures for integration points
+- Do NOT assume internal implementation details
+- If you need a specific implementation detail that's not in the summary, note it as a spec assumption`;
+    }
+
     const response = await client.messages.create({
       model: MODEL,
       max_tokens: 4096,
@@ -270,7 +323,7 @@ export async function generateTechSpec(
       system: [
         {
           type: 'text',
-          text: ARCHITECT_SYSTEM_PROMPT,
+          text: systemPrompt,
           cache_control: { type: 'ephemeral' },
         },
       ],
@@ -299,7 +352,7 @@ export async function generateTechSpec(
       })
       .where(eq(tasks.id, taskId));
 
-    logger.log('ArchitectSpec', `Generated spec for task ${taskId} (${task.agentType}): ~${totalTokens} tokens, ${depCount} dependency artifacts loaded`);
+    logger.log('ArchitectSpec', `Generated spec for task ${taskId} (${task.agentType}): ~${totalTokens} tokens, ${depCount} dependency artifacts loaded (${summarizedCount} summarized)`);
 
     // Log TOKEN_BASELINE
     console.log(
@@ -312,6 +365,9 @@ export async function generateTechSpec(
         outputTokens,
         totalTokens,
         dependencyArtifacts: depCount,
+        summarizedArtifacts: summarizedCount,
+        estimatedOriginalTokens: totalOriginalTokens,
+        estimatedSummaryTokens: totalSummaryTokens,
         profile,
         agentType: task.agentType,
       })

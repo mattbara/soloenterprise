@@ -336,26 +336,18 @@ async function processFrontendTask(job: Job<TaskJobData>): Promise<{
           summary: 'Task requires human input - questions pending',
         };
       } else {
-        // Files generated = task is done, questions are informational
-        logger.log('FrontendAgent', `Questions detected but ${parseResult.files.length} files generated - saving as informational, continuing...`);
-        try {
-          const task = await getTask(taskId);
-          if (task) {
-            await db.insert(questions).values({
-              projectId: task.projectId,
-              taskId,
-              question: parseResult.questionsContent,
-              context: `Task: ${name}\n\nDescription: ${description}`,
-              askedByAgent: 'frontend',
-              status: 'pending',
-              priority: 'informational',
-              isBlocking: false,
-            });
-          }
-        } catch (err) {
-          logger.warn('FrontendAgent', 'Failed to save informational question: ' + err);
-        }
-        // Continue to file processing below
+        // Files generated = agent made its decisions. Discard phantom questions.
+        const questionSnippets = parseResult.questionsContent
+          .split('\n')
+          .filter(l => l.trim())
+          .map(q => q.substring(0, 80) + (q.length > 80 ? '...' : ''))
+          .join('; ');
+        logger.log('FrontendAgent',
+          `Agent generated ${parseResult.files.length} files alongside question(s). ` +
+          `Discarding questions — agent made its decisions by producing output. ` +
+          `Questions were: ${questionSnippets}`
+        );
+        // Do NOT create DB records — continue to file processing below
       }
     }
 
@@ -487,10 +479,11 @@ async function processFrontendTask(job: Job<TaskJobData>): Promise<{
     logger.log('FrontendAgent', `Writing ${recoveryResult.files.length} validated files...`);
     const writeResult = await writeGeneratedFiles(taskId, recoveryResult.files, 'frontend');
 
-    // Final validation to capture any remaining warnings (non-severe)
-    const finalValidation = await validateGeneratedFiles(writeResult.taskDir, writeResult.files);
+    // Skip bracket check — files already passed TS compiler validation in recovery loop.
+    // The regex bracket counter produces false positives on valid code.
+    const finalValidation = await validateGeneratedFiles(writeResult.taskDir, writeResult.files, { skipBracketCheck: true });
     if (!finalValidation.valid) {
-      logger.warn('FrontendAgent', 'Non-severe warnings after recovery: ' + JSON.stringify(finalValidation.errors));
+      logger.warn('FrontendAgent', 'Post-recovery warnings (typos/non-syntax): ' + JSON.stringify(finalValidation.errors));
       try {
         await db
           .update(tasks)

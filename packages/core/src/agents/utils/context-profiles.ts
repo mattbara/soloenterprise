@@ -3,6 +3,11 @@
  *
  * Selectively loads schema and examples based on task type to reduce token consumption.
  * Expected reduction: 25-35% for simple tasks by avoiding full codebase context loading.
+ *
+ * Uses a 3-pass selection system to prevent false positives:
+ *   Pass 1: Override keywords — short-circuit to a forced profile (e.g. scaffolding → simple-endpoint)
+ *   Pass 2: Positive signal collection — existing keyword matching logic
+ *   Pass 3: Negative signal demotion — cancel false-positive matches (e.g. "drizzle" + "setup" ≠ database-task)
  */
 
 export interface ContextConfig {
@@ -48,6 +53,65 @@ export const CONTEXT_PROFILES: Record<ContextProfileName, ContextConfig> = {
   },
 };
 
+// ============================================================
+// OVERRIDE KEYWORDS — checked FIRST, short-circuit all other matching
+// ============================================================
+// If ANY override keyword is found, the profile is forced regardless of other signals.
+// Use narrow, multi-word phrases to avoid false positives.
+
+interface ProfileOverride {
+  keywords: string[];
+  profile: ContextProfileName;
+  description: string;
+}
+
+export const PROFILE_OVERRIDES: ProfileOverride[] = [
+  // === FORCE SIMPLE (scaffolding/setup) ===
+  {
+    keywords: [
+      'scaffolding', 'scaffold', 'project setup', 'base configuration',
+      'boilerplate', 'project structure', 'folder structure', 'directory structure',
+    ],
+    profile: 'simple-endpoint',
+    description: 'Scaffolding/setup tasks are always simple regardless of what they mention',
+  },
+  // === FORCE SIMPLE (config/tooling) ===
+  {
+    keywords: [
+      'eslint config', 'prettier config', 'tsconfig', 'vitest config',
+      'tailwind config', 'next config', 'configuration file', 'config setup',
+      'linting setup', 'formatter setup',
+    ],
+    profile: 'simple-endpoint',
+    description: 'Config/tooling tasks never need schema or full context',
+  },
+  // === FORCE BUG-FIX ===
+  {
+    keywords: ['hotfix', 'regression', 'revert'],
+    profile: 'bug-fix',
+    description: 'Hotfixes, regressions, and reverts are always bug-fix profile',
+  },
+];
+
+// ============================================================
+// NEGATIVE KEYWORDS — demote signals that would otherwise match
+// ============================================================
+// These keywords WEAKEN the signal of a candidate profile. They don't force a profile,
+// but they cancel false-positive matches and demote to the simplest profile.
+
+export const NEGATIVE_SIGNALS: Partial<Record<ContextProfileName, string[]>> = {
+  // These keywords CANCEL database-task when paired with DB keywords.
+  // Use narrow terms — "setup" is excluded because "database setup" IS a legit DB task.
+  'database-task': [
+    'scaffolding', 'scaffold', 'boilerplate', 'skeleton',
+  ],
+  // These keywords CANCEL full-feature when it would otherwise be selected.
+  // Multi-word phrases only — single words like "simple" are too broad.
+  'full-feature': [
+    'single endpoint', 'simple endpoint', 'utility hook', 'helper function',
+  ],
+};
+
 /**
  * Word-boundary keyword match. Prevents substring false positives
  * like "orm" matching "forms" or "table" matching "comfortable".
@@ -84,9 +148,10 @@ export interface ProfileSelectionOptions {
 /**
  * Selects appropriate context profile based on task description and optional signals.
  *
- * Uses multi-signal collection: gathers evidence for each profile, then picks
- * based on priority with conflict resolution. Database signals override bug-fix
- * signals to prevent starving CRUD tasks of schema context.
+ * Uses a 3-pass selection system:
+ *   Pass 1: Override keywords — short-circuit to a forced profile
+ *   Pass 2: Positive signal collection — existing keyword matching logic
+ *   Pass 3: Negative signal demotion — cancel false-positive matches
  */
 export function selectContextProfile(
   taskDescription: string,
@@ -94,7 +159,23 @@ export function selectContextProfile(
 ): ContextProfileName {
   const lower = taskDescription.toLowerCase();
 
-  // Collect signals for each profile category
+  // ==============================
+  // PASS 1: Check overrides (short-circuit)
+  // ==============================
+  for (const override of PROFILE_OVERRIDES) {
+    const matchedKeyword = override.keywords.find(kw => matchesWord(lower, kw));
+    if (matchedKeyword) {
+      console.log(
+        `[ContextProfiles] Override: "${override.description}" → ${override.profile} ` +
+        `(keyword: "${matchedKeyword}") for: "${taskDescription.substring(0, 80)}"`
+      );
+      return override.profile;
+    }
+  }
+
+  // ==============================
+  // PASS 2: Positive signal collection (existing logic)
+  // ==============================
   const bugSignals: string[] = [];
   const dbSignals: string[] = [];
   const simpleSignals: string[] = [];
@@ -177,6 +258,7 @@ export function selectContextProfile(
   // --- Selection with priority and conflict resolution ---
   let selected: ContextProfileName;
   let reason: string;
+  let positiveKeyword = '';
 
   // Weak DB signals — generic web keywords that indicate "this is an API task" but
   // say nothing about needing database context. When these are the ONLY DB signals
@@ -185,25 +267,42 @@ export function selectContextProfile(
   const hasOnlyWeakDbSignals = dbSignals.length > 0 && dbSignals.every(s => WEAK_DB_SIGNALS.has(s));
 
   if (simpleSignals.length > 0 && (dbSignals.length === 0 || hasOnlyWeakDbSignals) && fullSignals.length === 0) {
-    // Simple endpoint — wins even if weak DB signals like "api route" are present,
-    // since a health/ping endpoint with "api route" in the description doesn't need schema.
     selected = 'simple-endpoint';
+    positiveKeyword = simpleSignals[0];
     reason = `Simple signals: [${simpleSignals.join(', ')}]${hasOnlyWeakDbSignals ? ` (weak DB signals ignored: [${dbSignals.join(', ')}])` : ''}`;
   } else if (bugSignals.length > 0 && dbSignals.length === 0 && fullSignals.length === 0) {
-    // Bug fix ONLY when no database/full-feature signals compete
     selected = 'bug-fix';
+    positiveKeyword = bugSignals[0];
     reason = `Bug signals: [${bugSignals.join(', ')}], no competing db/full signals`;
   } else if (dbSignals.length > 0) {
-    // Database signals present — always provide schema context
     selected = 'database-task';
+    positiveKeyword = dbSignals[0];
     reason = `Database signals: [${dbSignals.join(', ')}]`;
   } else if (fullSignals.length > 0) {
     selected = 'full-feature';
+    positiveKeyword = fullSignals[0];
     reason = `Full feature signals: [${fullSignals.join(', ')}]`;
   } else {
-    // No clear signals — default to full-feature (safer than starving context)
     selected = 'full-feature';
     reason = 'No clear signals, defaulting to full-feature for safety';
+  }
+
+  // ==============================
+  // PASS 3: Check negative signals (demotion)
+  // ==============================
+  const negatives = NEGATIVE_SIGNALS[selected];
+  if (negatives) {
+    const matchedNeg = negatives.find(neg => matchesWord(lower, neg));
+    if (matchedNeg) {
+      const demotedFrom = selected;
+      selected = 'simple-endpoint';
+      console.log(
+        `[ContextProfiles] Negative signal demoted "${demotedFrom}" → "simple-endpoint" ` +
+        `(positive: "${positiveKeyword}", negative: "${matchedNeg}") ` +
+        `for: "${taskDescription.substring(0, 80)}"`
+      );
+      return selected;
+    }
   }
 
   console.log(

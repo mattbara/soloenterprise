@@ -19,6 +19,12 @@ interface TaskContext {
   [key: string]: unknown;
 }
 
+interface ImageAttachment {
+  url: string;
+  mimeType: string;
+  name: string;
+}
+
 interface Task {
   id: string;
   name: string;
@@ -35,6 +41,9 @@ interface Task {
   } | null;
   warnings: TaskWarning[] | null;
   context?: TaskContext | null;
+  imageAttachments?: ImageAttachment[] | null;
+  imageRequirements?: string | null;
+  imageRequirementsTokens?: number | null;
 }
 
 interface RecentTasksProps {
@@ -56,6 +65,7 @@ export function RecentTasks({ tasks }: RecentTasksProps) {
   const [isArchiving, setIsArchiving] = useState(false);
   const [retryingTaskId, setRetryingTaskId] = useState<string | null>(null);
   const [logsTask, setLogsTask] = useState<Task | null>(null);
+  const [removingImageUrl, setRemovingImageUrl] = useState<string | null>(null);
   // Files viewer state
   const [filesTask, setFilesTask] = useState<Task | null>(null);
   const [files, setFiles] = useState<GeneratedFile[]>([]);
@@ -256,6 +266,38 @@ export function RecentTasks({ tasks }: RecentTasksProps) {
     setCopied(false);
   };
 
+  const handleRemoveImage = async (taskId: string, url: string) => {
+    setRemovingImageUrl(url);
+    try {
+      const response = await fetch("/api/tasks/upload-images", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId, url }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        alert(data.error || "Failed to remove image");
+        return;
+      }
+
+      const { attachments } = await response.json();
+      // Update selectedTask in-place so the modal reflects the change immediately
+      if (selectedTask && selectedTask.id === taskId) {
+        setSelectedTask({
+          ...selectedTask,
+          imageAttachments: attachments.length > 0 ? attachments : null,
+        });
+      }
+      router.refresh();
+    } catch (error) {
+      console.error("Failed to remove image:", error);
+      alert("Failed to remove image");
+    } finally {
+      setRemovingImageUrl(null);
+    }
+  };
+
   // Files viewer handlers
   const handleViewFiles = async (task: Task) => {
     setFilesTask(task);
@@ -338,7 +380,7 @@ export function RecentTasks({ tasks }: RecentTasksProps) {
         </div>
       </div>
       {/* Scrollable container with sticky header */}
-      <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+      <div className="overflow-x-auto max-h-[500px] overflow-y-scroll task-list-scroll">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50 sticky top-0 z-10">
             <tr>
@@ -571,6 +613,71 @@ export function RecentTasks({ tasks }: RecentTasksProps) {
                       </div>
                     </div>
                   </div>
+                )}
+
+                {/* Image Attachments */}
+                {selectedTask.imageAttachments && selectedTask.imageAttachments.length > 0 && (
+                  <div className="mt-4">
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">
+                      Attached Images ({selectedTask.imageAttachments.length})
+                    </h4>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedTask.imageAttachments.map((img, i) => {
+                        const parts = img.url.split('/');
+                        const filename = parts[parts.length - 1];
+                        const imgTaskId = parts[parts.length - 2];
+                        const isRemoving = removingImageUrl === img.url;
+                        return (
+                          <div key={i} className="relative group">
+                            <a
+                              href={`/api/tasks/images/${imgTaskId}/${filename}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="block"
+                            >
+                              <img
+                                src={`/api/tasks/images/${imgTaskId}/${filename}`}
+                                alt={img.name}
+                                className={`h-24 w-24 rounded-md object-cover border border-gray-200 hover:border-blue-400 transition-colors ${isRemoving ? "opacity-40" : ""}`}
+                              />
+                            </a>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRemoveImage(selectedTask.id, img.url);
+                              }}
+                              disabled={isRemoving}
+                              className="absolute -top-1.5 -right-1.5 rounded-full bg-red-500 text-white w-5 h-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                              aria-label={`Remove ${img.name}`}
+                            >
+                              x
+                            </button>
+                            <p className="text-[10px] text-gray-400 truncate w-24 mt-0.5">{img.name}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Extracted Image Requirements */}
+                {selectedTask.imageRequirements && (
+                  <details className="mt-4">
+                    <summary className="cursor-pointer text-sm font-medium text-gray-700 hover:text-gray-900">
+                      Visual Requirements (extracted)
+                      {selectedTask.imageRequirementsTokens && (
+                        <span className="ml-2 text-xs text-gray-400 font-normal">
+                          ~{selectedTask.imageRequirementsTokens.toLocaleString()} tokens
+                        </span>
+                      )}
+                    </summary>
+                    <div className="mt-2 bg-indigo-50 border border-indigo-100 rounded-lg p-4">
+                      <pre className="whitespace-pre-wrap text-sm text-gray-700 font-mono">
+                        {selectedTask.imageRequirements}
+                      </pre>
+                    </div>
+                  </details>
                 )}
               </div>
 

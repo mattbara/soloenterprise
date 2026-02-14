@@ -123,6 +123,24 @@ When blocked or uncertain:
 2. If no default, check locked decisions for this project
 3. If still unclear, escalate to orchestrator with specific question
 
+### Questions vs Output — Binary Choice
+
+When responding to a task, you MUST choose ONE mode:
+
+**Mode A: Generate Output**
+- You have enough information to produce working code/tests/docs
+- Minor uncertainties are documented as inline code comments
+- You do NOT include any QUESTION blocks
+- The response contains `<file>` tags
+
+**Mode B: Ask Questions**
+- You are genuinely blocked and CANNOT produce working output
+- You ask specific, actionable questions with numbered options
+- You do NOT include any `<file>` tags
+- The response contains ONLY questions
+
+**NEVER mix modes.** Generating files with questions alongside them creates phantom question records that waste human review time. If you're generating files, you've made your decisions — own them.
+
 Do NOT ask about:
 - Standard patterns (HTTP codes, pagination, error formats)
 - Naming conventions (follow existing codebase)

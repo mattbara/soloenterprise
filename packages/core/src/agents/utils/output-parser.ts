@@ -15,6 +15,8 @@ export interface ParseResult {
   hasQuestions: boolean;
   questionsContent: string | null;
   rawResponse: string;
+  /** True when questions were found alongside files — these are informational noise, not real blockers */
+  questionsAreInformational: boolean;
 }
 
 /**
@@ -112,6 +114,7 @@ export function parseAgentOutput(response: string): ParseResult {
     hasQuestions: questionsResult.hasQuestions,
     questionsContent: questionsResult.content,
     rawResponse: response,
+    questionsAreInformational: questionsResult.hasQuestions && files.length > 0,
   };
 }
 
@@ -237,15 +240,17 @@ function extractQuestions(response: string, hasFiles: boolean): { hasQuestions: 
 function isValidQuestionsContent(content: string): boolean {
   if (content.length === 0) return false;
 
-  // Too short to be real questions
-  if (content.length < 20) return false;
-
   const trimmed = content.trim();
   const lower = trimmed.toLowerCase();
 
+  // Too short to be real questions (check after trim)
+  if (trimmed.length < 20) return false;
+
+  // "None" at the start = no questions, regardless of what follows
+  if (/^none\b/i.test(trimmed)) return false;
+
   // Common "no questions" patterns
   const noQuestionsPatterns = [
-    /^none\.?$/i,
     /^n\/a\.?$/i,
     /^no questions?\.?$/i,
     /^no clarification/i,
@@ -259,6 +264,9 @@ function isValidQuestionsContent(content: string): boolean {
     /^understood/i,
     /^i understand/i,
     /^no further/i,
+    /^specification is (complete|clear|unambiguous)/i,
+    /^the specification is (complete|clear|unambiguous)/i,
+    /^complete and unambiguous/i,
   ];
 
   for (const pattern of noQuestionsPatterns) {
@@ -267,8 +275,11 @@ function isValidQuestionsContent(content: string): boolean {
     }
   }
 
-  // Also check if it contains "no questions" anywhere
+  // Also check if it contains dismissive phrases anywhere
   if (lower.includes('no questions')) return false;
+  if (lower.includes('specification is complete')) return false;
+  if (lower.includes('spec is complete')) return false;
+  if (lower.includes('requirements are unambiguous')) return false;
 
   return true;
 }

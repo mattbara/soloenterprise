@@ -19,7 +19,10 @@
     "test:backend": "tsx scripts/test-backend-agent.ts",
     "worker": "pnpm --filter @soloenterprise/core worker",
     "worker:echo": "pnpm --filter @soloenterprise/core worker:echo",
-    "worker:backend": "pnpm --filter @soloenterprise/core worker:backend"
+    "worker:backend": "pnpm --filter @soloenterprise/core worker:backend",
+    "worker:frontend": "pnpm --filter @soloenterprise/core worker:frontend",
+    "worker:qa": "pnpm --filter @soloenterprise/core worker:qa",
+    "worker:orchestrator": "pnpm --filter @soloenterprise/core worker:orchestrator"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.9.5",
@@ -30,7 +33,8 @@
     "next": "^15.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-markdown": "^10.1.0"
+    "react-markdown": "^10.1.0",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.0.0",

@@ -41,6 +41,11 @@ All code output uses XML file tags:
 - Files not directly related to the task
 - Boilerplate the project already has
 
+**Questions vs Code — pick one:**
+- If you can generate working code → generate it. No questions alongside files.
+- If you are genuinely blocked → ask a question. No files alongside questions.
+- Never output both files AND questions in the same response. Minor uncertainties go in code comments, not question blocks.
+
 ---
 
 ## Constraints
