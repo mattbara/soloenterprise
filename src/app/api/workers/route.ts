@@ -14,6 +14,7 @@ const VALID_WORKER_TYPES: WorkerType[] = [
   "qa",
   "devops",
   "feedback",
+  "scoper",
 ];
 
 // Types that can be passed to the POST endpoint (includes "all")

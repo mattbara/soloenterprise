@@ -118,15 +118,17 @@ export function parseScoperOutput(response: string): ScoperParseResult {
 // Prompt Builder
 // ============================================================================
 
-function buildPrompt(briefTitle: string, briefContent: string): string {
+function buildPrompt(briefId: string, briefTitle: string, briefContent: string): string {
   const parts: string[] = [];
 
   parts.push('# Scoping Request\n');
+  parts.push(`**Brief ID:** ${briefId}`);
   parts.push(`**Brief Title:** ${briefTitle}\n`);
   parts.push('**Brief Content:**\n');
   parts.push(briefContent);
   parts.push('\n---\n');
   parts.push('Analyze this brief and produce your scoping output using the <scope> and <client_document> XML tags as specified in your skill definition.');
+  parts.push(`\nIMPORTANT: Use exactly \`${briefId}\` as the \`brief_id\` value in the YAML output. Do NOT invent a different ID.`);
 
   return parts.join('\n');
 }
@@ -179,7 +181,7 @@ async function processScoperTask(job: Job<TaskJobData>): Promise<{
     });
 
     // Build user prompt
-    const userPrompt = buildPrompt(briefTitle, description);
+    const userPrompt = buildPrompt(briefId, briefTitle, description);
 
     logger.log('ScoperAgent', 'Calling Claude API (Opus)...');
 
@@ -301,7 +303,9 @@ async function processScoperTask(job: Job<TaskJobData>): Promise<{
     }
 
     // Extract estimates from scope data
-    const estimates = (scopeData.estimates ?? scopeData.estimate ?? {}) as Record<string, unknown>;
+    // YAML schema wraps everything under `project_scope:`, so parsed object is { project_scope: { estimates: { ... } } }
+    const projectScope = (scopeData.project_scope ?? scopeData) as Record<string, unknown>;
+    const estimates = (projectScope.estimates ?? projectScope.estimate ?? {}) as Record<string, unknown>;
     const estimatedTasks = typeof estimates.total_tasks === 'number'
       ? estimates.total_tasks
       : null;
