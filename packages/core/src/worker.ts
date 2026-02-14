@@ -73,6 +73,8 @@ async function start() {
     shutdownQAWorker,
     createOrchestratorWorker,
     shutdownOrchestratorWorker,
+    createScoperWorker,
+    shutdownScoperWorker,
   } = await import('./agents/index');
 
   const {
@@ -182,6 +184,15 @@ async function start() {
     workers.push({ worker: orchestratorWorker, shutdown: shutdownOrchestratorWorker, type: 'orchestrator' });
     await registerWorker('orchestrator', process.pid);
     console.log('[Worker] Orchestrator agent worker started and registered');
+  }
+
+  if (workerType === 'all' || workerType === 'scoper') {
+    console.log('[Worker] Starting Project Scoper agent worker...');
+    const scoperWorker = createScoperWorker();
+    setupWorkerEvents(scoperWorker, 'scoper');
+    workers.push({ worker: scoperWorker, shutdown: shutdownScoperWorker, type: 'scoper' });
+    await registerWorker('scoper', process.pid);
+    console.log('[Worker] Project Scoper agent worker started and registered');
   }
 
   // Start heartbeat interval

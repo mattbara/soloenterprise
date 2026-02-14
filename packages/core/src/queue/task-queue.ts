@@ -24,6 +24,7 @@ const QUEUE_NAMES = {
   qa: 'qa-tasks',
   devops: 'devops-tasks',       // Phase 7 — NO ACTIVE WORKER (guard in CommandExecutor)
   feedback: 'feedback-tasks',   // NO ACTIVE WORKER (guard in CommandExecutor)
+  scoper: 'scoper-tasks',
 } as const;
 
 type AgentType = keyof typeof QUEUE_NAMES;
