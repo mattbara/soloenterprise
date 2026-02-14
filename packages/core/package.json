@@ -21,7 +21,8 @@
     "worker:backend": "tsx src/worker.ts backend",
     "worker:frontend": "tsx src/worker.ts frontend",
     "worker:qa": "tsx src/worker.ts qa",
-    "worker:orchestrator": "tsx src/worker.ts orchestrator"
+    "worker:orchestrator": "tsx src/worker.ts orchestrator",
+    "worker:scoper": "tsx src/worker.ts scoper"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

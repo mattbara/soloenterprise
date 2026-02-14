@@ -17,6 +17,7 @@ import {
   boolean,
   jsonb,
   integer,
+  numeric,
   pgEnum,
   index,
   uniqueIndex,
@@ -61,6 +62,7 @@ export const agentTypeEnum = pgEnum('agent_type', [
   'qa',
   'devops',
   'feedback',
+  'scoper',
 ]);
 
 export const questionStatusEnum = pgEnum('question_status', [
@@ -126,6 +128,12 @@ export const projects = pgTable('projects', {
     branch?: string;
   }>().default({}),
   
+  // Consulting pipeline (Phase 6)
+  clientId: uuid('client_id').references((): any => clients.id),
+  scopeId: uuid('scope_id').references((): any => projectScopes.id),
+  currentMilestone: text('current_milestone'),
+  billingStatus: text('billing_status').default('not_started'),
+
   // Metadata
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -237,6 +245,9 @@ export const tasks = pgTable('tasks', {
   imageRequirements: text('image_requirements'),
   imageRequirementsGeneratedAt: timestamp('image_requirements_generated_at', { withTimezone: true }),
   imageRequirementsTokens: integer('image_requirements_tokens'),
+
+  // Consulting pipeline (Phase 6)
+  milestoneId: uuid('milestone_id').references((): any => milestones.id),
 }, (table) => ({
   projectIdx: index('tasks_project_idx').on(table.projectId),
   statusIdx: index('tasks_status_idx').on(table.status),
@@ -427,14 +438,123 @@ export const agentSessions = pgTable('agent_sessions', {
 }));
 
 // ============================================================================
+// CLIENTS (Consulting Pipeline)
+// ============================================================================
+
+export const clients = pgTable('clients', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  contactName: text('contact_name'),
+  contactEmail: text('contact_email'),
+  notes: text('notes'),
+  status: text('status').notNull().default('active'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
+// ============================================================================
+// PROJECT BRIEFS
+// ============================================================================
+
+export const projectBriefs = pgTable('project_briefs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  clientId: uuid('client_id').references(() => clients.id),
+  title: text('title').notNull(),
+  rawContent: text('raw_content').notNull(),
+  status: text('status').notNull().default('received'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
+// ============================================================================
+// PROJECT SCOPES
+// ============================================================================
+
+export const projectScopes = pgTable('project_scopes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  briefId: uuid('brief_id').references(() => projectBriefs.id).notNull(),
+  projectId: uuid('project_id').references(() => projects.id),
+  scopeData: jsonb('scope_data').notNull(),
+  clientDocument: text('client_document'),
+  estimatedTasks: integer('estimated_tasks'),
+  estimatedDuration: text('estimated_duration'),
+  riskLevel: text('risk_level'),
+  status: text('status').notNull().default('draft'),
+  approvedBy: text('approved_by'),
+  approvedAt: timestamp('approved_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
+// ============================================================================
+// MILESTONES
+// ============================================================================
+
+export const milestones = pgTable('milestones', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id').references(() => projects.id).notNull(),
+  name: text('name').notNull(),
+  description: text('description'),
+  deliverables: jsonb('deliverables'),
+  targetDate: text('target_date'),
+  status: text('status').notNull().default('pending'),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+});
+
+// ============================================================================
+// CLIENT REPORTS
+// ============================================================================
+
+export const clientReports = pgTable('client_reports', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id').references(() => projects.id).notNull(),
+  reportType: text('report_type').notNull(),
+  reportContent: text('report_content').notNull(),
+  internalNotes: text('internal_notes'),
+  period: text('period'),
+  status: text('status').notNull().default('draft'),
+  sentAt: timestamp('sent_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+});
+
+// ============================================================================
+// COST TRACKING
+// ============================================================================
+
+export const costTracking = pgTable('cost_tracking', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id').references(() => projects.id).notNull(),
+  taskId: uuid('task_id').references(() => tasks.id),
+  agentType: text('agent_type').notNull(),
+  tokensInput: integer('tokens_input').notNull(),
+  tokensOutput: integer('tokens_output').notNull(),
+  cachedTokens: integer('cached_tokens').default(0),
+  apiCostUsd: numeric('api_cost_usd', { precision: 10, scale: 4 }),
+  estimatedBillableHours: numeric('estimated_billable_hours', { precision: 6, scale: 2 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+});
+
+// ============================================================================
 // RELATIONS
 // ============================================================================
 
-export const projectsRelations = relations(projects, ({ many }) => ({
+export const projectsRelations = relations(projects, ({ one, many }) => ({
   tasks: many(tasks),
   questions: many(questions),
   artifacts: many(artifacts),
   deployments: many(deployments),
+  client: one(clients, {
+    fields: [projects.clientId],
+    references: [clients.id],
+  }),
+  scope: one(projectScopes, {
+    fields: [projects.scopeId],
+    references: [projectScopes.id],
+  }),
+  milestones: many(milestones),
+  clientReports: many(clientReports),
+  costTracking: many(costTracking),
 }));
 
 export const tasksRelations = relations(tasks, ({ one, many }) => ({
@@ -451,6 +571,11 @@ export const tasksRelations = relations(tasks, ({ one, many }) => ({
   questions: many(questions),
   artifacts: many(artifacts),
   fileLocks: many(fileLocks),
+  milestone: one(milestones, {
+    fields: [tasks.milestoneId],
+    references: [milestones.id],
+  }),
+  costEntries: many(costTracking),
 }));
 
 export const questionsRelations = relations(questions, ({ one }) => ({
@@ -492,6 +617,58 @@ export const deploymentsRelations = relations(deployments, ({ one }) => ({
 export const agentSessionsRelations = relations(agentSessions, ({ one }) => ({
   currentTask: one(tasks, {
     fields: [agentSessions.currentTaskId],
+    references: [tasks.id],
+  }),
+}));
+
+// Consulting pipeline relations
+
+export const clientsRelations = relations(clients, ({ many }) => ({
+  projects: many(projects),
+  briefs: many(projectBriefs),
+}));
+
+export const projectBriefsRelations = relations(projectBriefs, ({ one }) => ({
+  client: one(clients, {
+    fields: [projectBriefs.clientId],
+    references: [clients.id],
+  }),
+  scope: one(projectScopes),
+}));
+
+export const projectScopesRelations = relations(projectScopes, ({ one }) => ({
+  brief: one(projectBriefs, {
+    fields: [projectScopes.briefId],
+    references: [projectBriefs.id],
+  }),
+  project: one(projects, {
+    fields: [projectScopes.projectId],
+    references: [projects.id],
+  }),
+}));
+
+export const milestonesRelations = relations(milestones, ({ one, many }) => ({
+  project: one(projects, {
+    fields: [milestones.projectId],
+    references: [projects.id],
+  }),
+  tasks: many(tasks),
+}));
+
+export const clientReportsRelations = relations(clientReports, ({ one }) => ({
+  project: one(projects, {
+    fields: [clientReports.projectId],
+    references: [projects.id],
+  }),
+}));
+
+export const costTrackingRelations = relations(costTracking, ({ one }) => ({
+  project: one(projects, {
+    fields: [costTracking.projectId],
+    references: [projects.id],
+  }),
+  task: one(tasks, {
+    fields: [costTracking.taskId],
     references: [tasks.id],
   }),
 }));

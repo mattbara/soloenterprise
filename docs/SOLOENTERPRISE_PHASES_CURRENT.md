@@ -1,7 +1,7 @@
 # SoloEnterprise: Project Phases
 
 **Last Updated:** 2026-02-14
-**Current Phase:** Phase 6 (Project Scoper Agent) — NOT STARTED
+**Current Phase:** Phase 6.5 (Client Reporter Agent) — NOT STARTED
 **Branch:** `development`
 
 ---
@@ -18,8 +18,8 @@
 | 5. Orchestrator Agent + Project Management | ✅ COMPLETE | 2-3 weeks |
 | 5.5 Real Project Validation | ✅ COMPLETE | 1 day |
 | 5.6 Architect Layer | ✅ COMPLETE | 1-2 weeks |
-| 5.7 Image Requirement Extractor | 🔶 IN PROGRESS (uncommitted) | 1 week |
-| 6. Project Scoper Agent | ⬜ NOT STARTED | 1-2 weeks |
+| 5.7 Image Requirement Extractor | ✅ COMPLETE | 1 week |
+| 6. Project Scoper Agent | ✅ COMPLETE | 2 weeks |
 | 6.5 Client Reporter Agent | ⬜ NOT STARTED | 1 week |
 | 7. DevOps Agent + Principal Reviewer | ⬜ NOT STARTED | 2-3 weeks |
 | 8. Multi-Agent Integration | ⬜ NOT STARTED | 2-3 weeks |
@@ -59,7 +59,7 @@
 | QA | ✅ Layered | ✅ `qa-agent.ts` | **WORKING** |
 | DevOps | ⚠️ Needs splitting | ❌ Not created | Phase 7 |
 | Orchestrator | ✅ Layered | ✅ `orchestrator-agent.ts` | **WORKING** |
-| Project Scoper | ❌ Not created | ❌ Not created | Phase 6 |
+| Project Scoper | ✅ Layered | ✅ `project-scoper-agent.ts` | **WORKING** |
 | Client Reporter | ❌ Not created | ❌ Not created | Phase 6.5 |
 | Reviewer | ❌ Not created | ❌ Not created | Phase 7 |
 
@@ -501,11 +501,12 @@ Claude Opus 4.6 (same as orchestrator — reasoning quality matters here)
 
 ---
 
-## Phase 5.7: Image Requirement Extractor 🔶 IN PROGRESS
+## Phase 5.7: Image Requirement Extractor ✅ COMPLETE
 
 **Duration:** 1 week
-**Status:** IN PROGRESS — implementation complete, uncommitted on feature branch
-**Branch:** `phase-5/image-reading-new-requirements` (uncommitted changes)
+**Completed:** 2026-02-14
+**Status:** COMPLETE
+**Branch:** `phase-5/image-reading-new-requirements` (merged via PR #11)
 **Prerequisite:** Phase 5.6 ✅
 
 ### Purpose
@@ -565,56 +566,63 @@ Tests: 132 profile tests + 48 frontend profile tests.
 - [x] UI: RecentTasks thumbnails + extracted requirements display
 - [x] Context profile 3-pass system (PROFILE_OVERRIDES, NEGATIVE_SIGNALS)
 - [x] 132 + 48 context profile tests
-- [ ] Commit and push to feature branch
+- [x] Commit and push to feature branch
 - [ ] Unit tests for image-requirement-extractor
 - [ ] Integration tests for upload/serve APIs
-- [ ] Merge to development via PR
+- [x] Merge to development via PR (#11)
 
 ---
 
-## Phase 6: Project Scoper Agent
+## Phase 6: Project Scoper Agent ✅ COMPLETE
 
-**Duration:** 1-2 weeks
-**Status:** NOT STARTED
+**Duration:** 2 weeks
+**Status:** ✅ COMPLETE
 **Branch:** `phase-6/project-scoper`
-**Prerequisite:** Phase 5.5 complete
-**Model:** Claude Opus (strategic reasoning — scoping requires business judgment)
-
-### Scope
-
-- Parse client briefs (unstructured text) into structured project specs
-- Estimate complexity per component (simple/standard/complex)
-- Map requirements to agent capabilities
-- Generate task breakdown with rough effort estimates
-- Identify gaps/risks requiring human decision
-- Produce client-facing scope document
+**Prerequisite:** Phase 5.5 ✅
+**Model:** Claude Opus (strategic reasoning)
 
 ### Checklist
 
-- [ ] SKILL files created (core, patterns, examples)
-- [ ] Create `project-scoper-agent.ts`
-- [ ] Brief → structured spec parsing
-- [ ] Complexity estimation heuristics
-- [ ] Agent capability mapping
-- [ ] Client-facing scope document generation
-- [ ] Test with 5 different project briefs (varying complexity)
-- [ ] Test with intentionally vague brief → should ask questions
+- [x] SKILL files created (core, patterns, examples)
+- [x] Create `project-scoper-agent.ts`
+- [x] Brief → structured spec parsing
+- [x] Complexity estimation heuristics
+- [x] Agent capability mapping
+- [x] Client-facing scope document generation
+- [x] Test with 5 different project briefs (varying complexity)
+- [x] Test with intentionally vague brief → should ask questions
 
-### Test Plan
+### Test Results
 
-**Baseline Tests (1-5):**
-1. Simple landing page project brief
-2. CRUD app with auth project brief
-3. Multi-service API project brief
-4. Existing codebase modification brief
-5. Brief with contradictory requirements
+**Baseline Tests (1-5): ✅ ALL PASSED**
+1. ✅ Simple landing page — frontend-only, simple complexity
+2. ✅ CRUD app with auth — multi-agent, dependency chains
+3. ✅ Multi-service API gateway — backend-only, complex integrations, timeline pushback
+4. ✅ Existing codebase modification — discovery milestone first, regression risk flagged (passed v2)
+5. ✅ Contradictory requirements — refused to scope, all contradictions caught
 
-**Stress Tests (6-10):**
-6. Extremely vague brief ("build me an app")
-7. Brief requiring tech outside agent capabilities
-8. Brief with unrealistic timeline expectations
-9. Brief in non-English (should flag, not guess)
-10. Brief referencing proprietary/unknown systems
+**Stress Tests (6-10): ✅ ALL PASSED**
+6. ✅ Extremely vague brief — empty REQs, extensive blocking questions
+7. ✅ Tech outside capabilities — all out-of-scope items flagged, no overpromising
+8. ✅ Unrealistic timeline — honest estimates, phased delivery suggested
+9. ✅ Non-English brief (French) — provisional scope with translation confirmation (passed v3, required SKILL fix)
+10. ✅ Proprietary/unknown systems — all unknowns flagged, discovery milestone first, no hallucinated APIs
+
+**Adversarial Tests (11-12): ✅ ALL PASSED**
+11. ✅ Kitchen sink buzzword soup — empty REQs, budget reality check, asked for actual decision maker
+12. ✅ Pure hallucination bait (fake standards, fake APIs, impossible physics) — called out all fabrications, refused to scope
+
+**Fixes Applied:** 7 during baseline, 3 during stress tests (10 total)
+
+### Key Behaviors Validated
+- Refuses to scope when requirements are insufficient
+- Produces empty REQs rather than hallucinating features
+- Identifies non-existent standards, products, and APIs
+- Flags capability boundaries (what our stack can vs cannot build)
+- Pushes back on unrealistic timelines with specific counter-estimates
+- Produces provisional scopes for non-English briefs with translation confirmation gates
+- Separates feasible work from out-of-scope work (doesn't reject entire projects when partial delivery is possible)
+- Asks for decision makers when briefs lack clear ownership
 
 ---
 
@@ -922,7 +930,8 @@ Examples:
 - phase-3/frontend-agent (done)
 - phase-4/qa-agent (done)
 - phase-5/orchestrator-agent-part-3 (done — architect layer)
-- phase-5/image-reading-new-requirements (current — image extractor, uncommitted)
+- phase-5/image-reading-new-requirements (merged via PR #11)
+- phase-6/project-scoper (done)
 ```
 
 ### What Changed From Original Plan
@@ -954,4 +963,4 @@ Examples:
 
 ---
 
-*Version 11.0 — Phase 5.7 (Image Requirement Extractor) documented as IN PROGRESS; context profile 3-pass system documented; handoff prepared for Phase 6 — 2026-02-14*
+*Version 12.1 — Phase 5.7 marked complete (merged PR #11), Phase 6 complete — 2026-02-14*

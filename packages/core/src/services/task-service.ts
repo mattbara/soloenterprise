@@ -16,7 +16,7 @@ import { publishTaskEvent, type TaskEvent } from './task-events';
 export interface CreateTaskInput {
   name: string;
   description: string;
-  agentType: 'orchestrator' | 'backend' | 'frontend' | 'qa' | 'devops' | 'feedback' | 'echo';
+  agentType: 'orchestrator' | 'backend' | 'frontend' | 'qa' | 'devops' | 'feedback' | 'echo' | 'scoper';
   priority?: 'critical' | 'high' | 'medium' | 'low';
   context?: Record<string, unknown>;
   filesToModify?: string[];
