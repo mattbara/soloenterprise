@@ -1,19 +1,49 @@
-# SoloEnterprise — Phase 6.5 Handoff: Client Reporter Agent
+# SoloEnterprise — Phase 6.5 Handoff: Client Reporter Agent — COMPLETE
 
-## Current State (2026-02-14)
+## Status: ✅ COMPLETE (2026-02-16)
 
-Phase 6 (Project Scoper) is complete. The scoper takes client briefs and produces structured YAML scopes + client-facing documents. The next business agent is the Client Reporter — it sits at the END of the pipeline, producing progress reports from task execution data.
+Phase 6.5 delivered the Client Reporter Agent — the second business-facing agent in the consulting pipeline. It sits AFTER task execution, aggregating results into client-readable progress reports.
 
-## What's Complete
+## What Was Delivered
 
-### Phase 6: Project Scoper Agent (COMPLETE)
-- 12/12 tests passed (5 baseline + 5 stress + 2 adversarial)
-- 10 fixes applied during testing
-- SKILL files: core, patterns, examples
-- Pipeline: `POST /api/briefs → BullMQ → Opus → YAML scope + client document`
-- Key behaviors: refuses to scope vague briefs, catches hallucinations, pushes back on timelines, provisional scopes for non-English
+### Agent Implementation
+- `packages/core/src/agents/client-reporter-agent.ts` — Sonnet 4.5 agent, processes task data → client reports
+- Wired into orchestrator, worker registry, task queue, and task service
+- Output to `generated/reports/{project-id}/`
 
-## Pipeline Flow (Current)
+### SKILL Files
+- `skills/client-reporter/SKILL-client-reporter-core.md` — tone, structure, inclusion/exclusion rules
+- `skills/client-reporter/SKILL-client-reporter-patterns.md` — report templates, data aggregation patterns
+
+### Supporting Utilities
+- `packages/core/src/agents/utils/report-parser.ts` — XML tag extraction for report content + internal notes
+- `packages/core/src/agents/utils/token-pricing.ts` — per-model USD cost calculation (Sonnet/Opus/Haiku)
+- `packages/core/src/agents/utils/project-context-loader.ts` — builds business context from DB for reporter
+- `packages/core/src/services/cost-tracking-service.ts` — `recordAgentCost()` wired into all 6 agents
+
+### API Endpoints
+- `POST /api/reports` — trigger report generation (returns 202 with jobId)
+- `GET /api/reports/{projectId}` — list reports with type/status filters + pagination
+- `GET /api/reports/{projectId}/latest` — most recent report with optional type filter
+
+### Database Schema
+- `clientReports` table — stores report content, type, status, period, internal notes
+- `costTracking` table — per-task token usage, USD cost, billable hours
+
+### Tests (44 new, 412 total)
+| Test File | Tests | Coverage |
+|-----------|-------|----------|
+| `packages/core/src/agents/utils/__tests__/token-pricing.test.ts` | 11 | Pricing per model, cache, fallback, edge cases |
+| `packages/core/src/agents/utils/__tests__/report-parser.test.ts` | 6 | XML extraction, missing tags, whitespace |
+| `packages/core/src/services/__tests__/cost-tracking-service.test.ts` | 6 | DB insert, USD calc, billable hours, error handling |
+| `packages/core/src/agents/utils/__tests__/project-context-loader.test.ts` | 7 | Missing project, full context, task counts, costs |
+| `src/app/api/reports/__tests__/reports-api.test.ts` | 14 | POST validation, GET list/latest, filters |
+
+### Infrastructure
+- Vitest upgraded 1.6.1 → 4.0.18 (root + packages/core) — CJS deprecation warning eliminated
+- Root `vitest.config.ts` added for API route tests with `@/` path alias
+
+## Pipeline Flow (Updated)
 
 ```
 Client brief (unstructured text)
@@ -25,10 +55,11 @@ Client brief (unstructured text)
   → Agents (Sonnet 4.5) execute against spec + SKILL files
   → Output to generated/tasks/{task-id}/
   → Human reviews via dashboard
-  → ??? CLIENT REPORTER GOES HERE ???
+  → Client Reporter Agent (Sonnet 4.5) → progress/milestone/blocker reports
+  → Output to generated/reports/{project-id}/
 ```
 
-## Working Agents
+## Working Agents (7 total)
 
 | Agent | Model | Status |
 |-------|-------|--------|
@@ -38,75 +69,26 @@ Client brief (unstructured text)
 | Frontend | Sonnet 4.5 | Working — React components, pages, hooks |
 | QA | Sonnet 4.5 | Working — Vitest tests, coverage |
 | Architect | Opus 4.6 | Working — tech specs (runs in orchestrator pipeline) |
-
-## Phase 6.5: Client Reporter Agent — What to Build
-
-### Purpose
-
-The Client Reporter is the second business-facing agent. It sits AFTER task execution, aggregating results into client-readable progress reports. Where the Scoper answers "what will we build?", the Reporter answers "what did we build and where are we?"
-
-### What the Reporter Produces
-
-1. **Progress reports** — aggregate task statuses into project-level progress
-2. **Milestone summaries** — what was delivered in each milestone
-3. **Blocker reports** — what's stuck and what decisions are needed from the client
-4. **Cost tracking** — token usage mapped to estimated hours/cost
-5. **Client-facing updates** — readable by non-technical stakeholders (same tone as scoper's client document)
-
-### Key Architecture Decisions to Make
-
-1. **Model:** Sonnet 4.5 (structured output generation — less reasoning needed than scoping)
-2. **Trigger:** Manual (API call) or automatic (on milestone completion)?
-3. **Output format:** Markdown? Markdown + PDF generation? Both?
-4. **Output location:** `generated/reports/{project-id}/` (alongside scoper output?)
-5. **Data sources:** tasks table, questions table, token metrics, artifacts, scopes
-6. **Report types:** Weekly update, milestone report, project summary — all three or start with one?
-
-### Files to Create
-
-| File | Purpose |
-|------|---------|
-| `skills/client-reporter/SKILL-client-reporter-core.md` | Core rules: tone, structure, what to include/exclude |
-| `skills/client-reporter/SKILL-client-reporter-patterns.md` | Report templates, data aggregation patterns |
-| `packages/core/src/agents/client-reporter-agent.ts` | Agent implementation |
-| `src/app/api/reports/route.ts` | API endpoint to trigger report generation |
-
-### Checklist (from phases doc)
-
-- [ ] SKILL files created (core, patterns)
-- [ ] Create `client-reporter-agent.ts`
-- [ ] Progress report generation from task data
-- [ ] Milestone tracking
-- [ ] Cost tracking (token usage → estimated hours)
-- [ ] Report templates (weekly update, milestone report, project summary)
-
-### Data Available for Reports
-
-The reporter can query these tables:
-- `tasks` — status, agent type, token metrics, created/completed timestamps
-- `questions` — blocking items, human responses
-- `projects` — project-level status
-- `project_briefs` — original brief content
-- `project_scopes` — structured scope (estimates, requirements, milestones)
-- `artifacts` — generated files per task
+| Client Reporter | Sonnet 4.5 | Working — progress reports, cost tracking |
 
 ## Key Files Reference
 
-### Existing (use as patterns)
-- Scoper agent (closest pattern): `packages/core/src/agents/project-scoper-agent.ts`
-- Scoper SKILL files: `skills/project-scoper/SKILL-project-scoper-core.md`
-- Schema: `packages/db/src/schema.ts`
-- Skill Loader: `packages/core/src/agents/utils/skill-loader.ts`
+### Created in Phase 6.5
+- Agent: `packages/core/src/agents/client-reporter-agent.ts`
+- Skills: `skills/client-reporter/SKILL-client-reporter-{core,patterns}.md`
+- Utils: `packages/core/src/agents/utils/{report-parser,token-pricing,project-context-loader}.ts`
+- Service: `packages/core/src/services/cost-tracking-service.ts`
+- API: `src/app/api/reports/{route,\[projectId\]/route,\[projectId\]/latest/route}.ts`
 
 ### Documentation
 - Phases roadmap: `docs/SOLOENTERPRISE_PHASES_CURRENT.md`
-- Phase 6 handover: `docs/HANDOFF_PHASES/HANDOFF_PHASE6_COMPLETE.md`
 - Architecture: `docs/MASTER_ARCHITECTURE.md`
+- This handoff: `docs/HANDOFF_PHASES/HANDOFF_PHASE6.5_READY.md`
 
-## Repo
+## Next Phase: 6.6 Dashboard Navigation Overhaul
 
-github.com/mattbara/soloenterprise, `development` branch
+See `docs/SOLOENTERPRISE_PHASES_CURRENT.md` for details.
 
 ---
 
-*Phase 6.5 completes the business agent pair: Scoper (before engineering) + Reporter (after engineering). Together they form the client-facing bookends of the consulting pipeline.*
+*Phase 6.5 completed the business agent pair: Scoper (before engineering) + Reporter (after engineering). Together they form the client-facing bookends of the consulting pipeline.*

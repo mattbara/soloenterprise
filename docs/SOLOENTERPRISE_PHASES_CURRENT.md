@@ -1,8 +1,8 @@
 # SoloEnterprise: Project Phases
 
 **Last Updated:** 2026-02-16
-**Current Phase:** Phase 6.5 (Client Reporter Agent) — Ready to Start
-**Branch:** `phase-6.5/client-reporter`
+**Current Phase:** Phase 6.6 (Dashboard Navigation Overhaul) — Next
+**Branch:** `development`
 
 ---
 
@@ -13,8 +13,8 @@
 | 0–4. Foundation + Agents | ✅ COMPLETE | — | — | — |
 | 5–5.7 Orchestrator + Validation + Architect + Image Extractor | ✅ COMPLETE | — | — | — |
 | 6. Project Scoper Agent | ✅ COMPLETE | — | — | — |
-| **6.5 Client Reporter Agent** | **🔵 NEXT** | **M** | **High** | **3-5 days** |
-| 6.6 Dashboard Navigation Overhaul | ⬜ NOT STARTED | S | Medium | 2-3 days |
+| 6.5 Client Reporter Agent | ✅ COMPLETE | — | — | — |
+| **6.6 Dashboard Navigation Overhaul** | **🔵 NEXT** | **S** | **Medium** | **2-3 days** |
 | 6.7 Projects Management UI | ⬜ NOT STARTED | M | High | 3-5 days |
 | 6.8 Scope Review UI | ⬜ NOT STARTED | S | Medium | 2-3 days |
 | 7. DevOps Agent + Principal Reviewer | ⬜ NOT STARTED | L | Critical | 1-2 weeks |
@@ -26,7 +26,7 @@
 | 9.5 Institutional Memory & Knowledge Persistence | ⬜ NOT STARTED | L | High | 1-2 weeks |
 | 10+ Business Automation (PM, Design, GTM, Ops) | 🔮 FUTURE | — | — | TBD |
 
-**Remaining Estimate:** 10-15 weeks (Phases 6.5–9.5)
+**Remaining Estimate:** 8-13 weeks (Phases 6.6–9.5)
 
 ---
 
@@ -39,7 +39,7 @@
 | QA | ✅ Layered | ✅ `qa-agent.ts` | **WORKING** |
 | Orchestrator | ✅ Layered | ✅ `orchestrator-agent.ts` | **WORKING** |
 | Project Scoper | ✅ Layered | ✅ `project-scoper-agent.ts` | **COMPLETE** |
-| Client Reporter | ✅ Layered | ❌ Not created | Phase 6.5 |
+| Client Reporter | ✅ Layered | ✅ `client-reporter-agent.ts` | **COMPLETE** |
 | DevOps | ⚠️ Needs splitting | ❌ Not created | Phase 7 |
 | Reviewer | ❌ Not created | ❌ Not created | Phase 7 |
 
@@ -87,69 +87,44 @@ Each layer builds on the previous. Orchestrator receives layer 3 as input. Layer
 
 ---
 
-## Phase 6.5: Client Reporter Agent 🔵 NEXT
+## Phase 6.5: Client Reporter Agent ✅ COMPLETE
 
 **Effort:** M | **Impact:** High
-**Duration:** 3-5 days
-**Status:** SKILL files exist, no agent implementation
-**Branch:** `phase-6.5/client-reporter`
-**Prerequisite:** Phase 6 complete ✅
+**Status:** COMPLETE — merged to `development` (2026-02-16)
+**Branch:** `phase6/report-agent`
 **Model:** Claude Sonnet (structured output generation)
 
-### Scope
+### Delivered
 
-- Aggregate task statuses into project-level progress
-- Generate client-facing progress reports (markdown)
-- Highlight blockers and decisions needed
-- Produce milestone completion summaries
-- Track time/cost per project using existing `cost_tracking` table
+- ✅ `client-reporter-agent.ts` — generates weekly/milestone/summary reports from project data
+- ✅ Token-to-USD pricing (`token-pricing.ts`) — model-aware, cache savings tracking (Sonnet/Opus/Haiku)
+- ✅ Report parser (`report-parser.ts`) — extracts XML-tagged report content and internal notes
+- ✅ Project context loader (`project-context-loader.ts`) — builds business context from DB for reports
+- ✅ Cost tracking service (`cost-tracking-service.ts`) — records per-call API costs, wired into all 6 agents
+- ✅ `estimateBillableHours()` — heuristic mapping token counts to consulting hours
+- ✅ API: `POST /api/reports` — queue report generation (returns 202 with jobId)
+- ✅ API: `GET /api/reports/{projectId}` — list reports with type/status/limit filters
+- ✅ API: `GET /api/reports/{projectId}/latest` — most recent report with optional type filter
+- ✅ 44 new tests across 5 test files (412 total, all passing)
+- ✅ Vitest upgraded 1.6.1 → 4.0.18 (fixed CJS deprecation warning)
+- ✅ Root `vitest.config.ts` for API route tests with `@/` path alias
 
-### Cost Tracking Integration
+### Test Files
 
-**Existing infrastructure:**
-- `cost_tracking` table: `projectId`, `taskId`, `agentType`, `tokensInput`, `tokensOutput`, `cachedTokens`, `apiCostUsd`, `estimatedBillableHours`
-- `tasks.tokenMetrics` (jsonb): per-task token breakdown populated by all agents
-
-**What this phase adds:**
-- Wire agent runs to INSERT into `cost_tracking` after each task completion
-- Token-to-USD pricing function (per model, input vs output vs cache)
-- Aggregate queries for reports (cost per project, cost per agent type, cost per milestone)
-
-**NO new tables.** The schema already supports this — it just needs the insertion logic.
-
-### Report Types
-
-| Report | Trigger | Content |
-|--------|---------|---------|
-| Weekly Update | Manual (API call) | Tasks completed, in progress, blocked. Decisions needed. |
-| Milestone Report | On milestone completion | What was delivered, what's next, scope changes. |
-| Project Summary | Project end | Full summary, metrics, lessons learned. |
-
-### Checklist
-
-- [ ] Create `client-reporter-agent.ts`
-- [ ] Wire cost tracking insertion into agent execution pipeline
-- [ ] Token-to-USD pricing function (model-aware)
-- [ ] Weekly update report template
-- [ ] Milestone report template
-- [ ] Project summary report template
-- [ ] API endpoint: `POST /api/reports` (trigger report generation)
-- [ ] API endpoint: `GET /api/reports/{projectId}` (list reports)
-- [ ] Test with real project data from Phase 5.5 validation
+| File | Tests |
+|------|-------|
+| `packages/core/src/agents/utils/__tests__/token-pricing.test.ts` | 11 |
+| `packages/core/src/agents/utils/__tests__/report-parser.test.ts` | 6 |
+| `packages/core/src/services/__tests__/cost-tracking-service.test.ts` | 6 |
+| `packages/core/src/agents/utils/__tests__/project-context-loader.test.ts` | 7 |
+| `src/app/api/reports/__tests__/reports-api.test.ts` | 14 |
 
 ### What's NOT in This Phase
 
-- ~~Batch API~~ — Requires async job infrastructure that doesn't exist. Defer to Phase 8+ if report volume justifies it.
-- ~~PDF generation~~ — Markdown is sufficient for MVP. PDF can be added later with a library like `puppeteer` or `react-pdf`.
-- ~~Automated scheduling~~ — Reports are manually triggered via API. Cron-based automation is Phase 8+ territory.
-
-### Test Plan
-
-1. Generate weekly update for Phase 5.5 project → verify task counts, blockers, cost summary
-2. Generate milestone report → verify deliverables listed, next milestone identified
-3. Generate project summary → verify full metrics, lessons learned section
-4. Cost tracking: verify `cost_tracking` rows created after agent runs
-5. Cost aggregation: verify per-project and per-agent-type totals match
+- ~~Batch API~~ — Deferred to Phase 8+
+- ~~PDF generation~~ — Markdown sufficient for MVP
+- ~~Automated scheduling~~ — Reports manually triggered via API
+- ~~Dashboard UI~~ — Phase 6.6/6.7 territory
 
 ---
 

@@ -32,6 +32,10 @@ soloenterprise/
 │   │   │   ├── agents/            # AI agent implementations
 │   │   │   │   ├── backend-agent.ts
 │   │   │   │   ├── frontend-agent.ts
+│   │   │   │   ├── qa-agent.ts
+│   │   │   │   ├── orchestrator-agent.ts
+│   │   │   │   ├── project-scoper-agent.ts
+│   │   │   │   ├── client-reporter-agent.ts
 │   │   │   │   ├── echo-agent.ts
 │   │   │   │   └── utils/         # Shared agent utilities
 │   │   │   │       ├── context-loader.ts
@@ -41,10 +45,18 @@ soloenterprise/
 │   │   │   │       ├── file-writer.ts
 │   │   │   │       ├── file-validator.ts
 │   │   │   │       ├── output-parser.ts
+│   │   │   │       ├── report-parser.ts
+│   │   │   │       ├── token-pricing.ts
+│   │   │   │       ├── project-context-loader.ts
+│   │   │   │       ├── architect-spec-generator.ts
+│   │   │   │       ├── image-requirement-extractor.ts
 │   │   │   │       └── skill-loader.ts
 │   │   │   ├── queue/             # BullMQ task queue
 │   │   │   ├── locks/             # File lock management
 │   │   │   ├── services/          # Shared services
+│   │   │   │   ├── task-service.ts
+│   │   │   │   ├── cost-tracking-service.ts
+│   │   │   │   └── worker-registry.ts
 │   │   │   └── worker.ts          # BullMQ worker entry point
 │   │   └── generated/             # Sandboxed agent outputs
 │   │       ├── tasks/{task-id}/   # Generated code per task

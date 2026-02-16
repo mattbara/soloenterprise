@@ -1,8 +1,8 @@
 # Product Factory: Master Architecture
 ## AI-Powered Development Team Orchestration System
 
-**Version:** 2.0  
-**Last Updated:** 2025-01-08  
+**Version:** 2.1
+**Last Updated:** 2026-02-16
 **Status:** Technical Specification
 
 ---
@@ -494,7 +494,7 @@ agent:
 | Backend Framework | Hono | Fast, modern, TypeScript-native |
 | Frontend Framework | Next.js 14 | App Router, RSC, familiar |
 | UI Components | shadcn/ui | Customizable, accessible |
-| Testing | Vitest + Playwright | Fast + comprehensive |
+| Testing | Vitest 4.x + Playwright | Fast + comprehensive |
 | ORM | Drizzle | Type-safe, SQL-like |
 
 ### Infrastructure
@@ -513,14 +513,14 @@ agent:
 
 | Agent | Model | Rationale |
 |-------|-------|-----------|
-| Orchestrator | Opus 4.5 | Strategic reasoning |
+| Orchestrator | Opus 4.6 | Strategic reasoning |
 | Backend Engineer | Sonnet 4.5 | Code generation |
 | Frontend Engineer | Sonnet 4.5 | Code generation |
 | QA Engineer | Sonnet 4.5 | Test generation |
-| DevOps Engineer | Sonnet 4.5 | Infrastructure code |
-| Project Scoper | Opus 4.5 | Business judgment for scoping |
+| DevOps Engineer | Sonnet 4.5 | Infrastructure code (Phase 7) |
+| Project Scoper | Opus | Business judgment for scoping |
 | Client Reporter | Sonnet 4.5 | Structured report generation |
-| Feedback Analyst | Sonnet 4.5 | Analysis |
+| Feedback Analyst | Sonnet 4.5 | Analysis (Future) |
 
 ---
 
@@ -867,12 +867,14 @@ Non-code agents need defined output formats:
 ### Sequencing
 
 1. **Engineering agents** (Phases 0-4) ✅ COMPLETE — execution layer
-2. **Orchestrator + project management** (Phase 5) — coordination layer
-3. **Real project validation** (Phase 5.5) — prove it works end-to-end
-4. **Business operations agents** (Phase 6-6.5) — Project Scoper + Client Reporter
-5. **DevOps + Reviewer agents** (Phase 7) — automation and quality
-6. **Multi-agent integration** (Phase 8) — parallel execution at scale
-7. **Product/Design/Growth agents** (Phase 10+) — only after revenue validation
+2. **Orchestrator + project management** (Phase 5) ✅ COMPLETE — coordination layer
+3. **Real project validation** (Phase 5.5) ✅ COMPLETE — proved end-to-end
+4. **Architect + Image Extractor** (Phase 5.6-5.7) ✅ COMPLETE — tech specs + context profiles
+5. **Business operations agents** (Phase 6-6.5) ✅ COMPLETE — Project Scoper + Client Reporter + Cost Tracking
+6. **Dashboard + UI** (Phase 6.6-6.8) — navigation, projects management, scope review
+7. **DevOps + Reviewer agents** (Phase 7) — automation and quality
+8. **Multi-agent integration** (Phase 8) — parallel execution at scale
+9. **Product/Design/Growth agents** (Phase 10+) — only after revenue validation
 
 ---
 
@@ -900,4 +902,4 @@ Before proceeding:
 
 ---
 
-*Document version 2.1 — Added build gate, 3-strike rule, Prettier auto-fix, task management decision (Auto-Claude Kanban over Jira).*
+*Document version 2.1 — Updated agent status, model versions, sequencing to reflect Phase 6.5 completion (2026-02-16).*
