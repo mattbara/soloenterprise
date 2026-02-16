@@ -1,785 +1,732 @@
 # SoloEnterprise: Project Phases
 
-**Last Updated:** 2026-02-14
-**Current Phase:** Phase 6.5 (Client Reporter Agent) — NOT STARTED
-**Branch:** `development`
+**Last Updated:** 2026-02-16
+**Current Phase:** Phase 6.5 (Client Reporter Agent) — Ready to Start
+**Branch:** `phase-6.5/client-reporter`
 
 ---
 
 ## Timeline Overview
 
-| Phase | Status | Duration |
-|-------|--------|----------|
-| 0. Foundation | ✅ COMPLETE | 4 weeks |
-| 1. Token Optimization | ✅ COMPLETE | 1 week |
-| 2. Decision Cache | ⏭️ SKIPPED (for now) | — |
-| 3. Frontend Agent | ✅ COMPLETE | 2-3 weeks |
-| 4. QA Agent | ✅ COMPLETE | 1 week |
-| 5. Orchestrator Agent + Project Management | ✅ COMPLETE | 2-3 weeks |
-| 5.5 Real Project Validation | ✅ COMPLETE | 1 day |
-| 5.6 Architect Layer | ✅ COMPLETE | 1-2 weeks |
-| 5.7 Image Requirement Extractor | ✅ COMPLETE | 1 week |
-| 6. Project Scoper Agent | ✅ COMPLETE | 2 weeks |
-| 6.5 Client Reporter Agent | ⬜ NOT STARTED | 1 week |
-| 7. DevOps Agent + Principal Reviewer | ⬜ NOT STARTED | 2-3 weeks |
-| 8. Multi-Agent Integration | ⬜ NOT STARTED | 2-3 weeks |
-| 9. Documentation | ⬜ NOT STARTED | 1 week |
-| 10. Product Manager | 🔮 FUTURE | TBD |
-| 11. Design | 🔮 FUTURE | TBD |
-| 12. Go-to-Market | 🔮 FUTURE | TBD |
-| 13. Operations | 🔮 FUTURE | TBD |
+| Phase | Status | Effort | Impact | Duration |
+|-------|--------|--------|--------|----------|
+| 0–4. Foundation + Agents | ✅ COMPLETE | — | — | — |
+| 5–5.7 Orchestrator + Validation + Architect + Image Extractor | ✅ COMPLETE | — | — | — |
+| 6. Project Scoper Agent | ✅ COMPLETE | — | — | — |
+| **6.5 Client Reporter Agent** | **🔵 NEXT** | **M** | **High** | **3-5 days** |
+| 6.6 Dashboard Navigation Overhaul | ⬜ NOT STARTED | S | Medium | 2-3 days |
+| 6.7 Projects Management UI | ⬜ NOT STARTED | M | High | 3-5 days |
+| 6.8 Scope Review UI | ⬜ NOT STARTED | S | Medium | 2-3 days |
+| 7. DevOps Agent + Principal Reviewer | ⬜ NOT STARTED | L | Critical | 1-2 weeks |
+| 7.5 QA Production Readiness | ⬜ NOT STARTED | L | High | 1 week |
+| 7.7 Tool/Service Separation Refactor | ⬜ NOT STARTED | M | High | 3-5 days |
+| 8. Multi-Agent Integration | ⬜ NOT STARTED | XL | Critical | 2-3 weeks |
+| 8.5 Model Routing & Cost Optimization | ⬜ NOT STARTED | M | High | 3-5 days |
+| 9. Documentation | ⬜ NOT STARTED | S | Medium | 3 days |
+| 9.5 Institutional Memory & Knowledge Persistence | ⬜ NOT STARTED | L | High | 1-2 weeks |
+| 10+ Business Automation (PM, Design, GTM, Ops) | 🔮 FUTURE | — | — | TBD |
 
-**Total Estimate:** 14-20 weeks remaining (Phases 5.6-9 only)
+**Remaining Estimate:** 10-15 weeks (Phases 6.5–9.5)
 
 ---
 
-## Phase 0: Foundation ✅ COMPLETE
-
-**Duration:** 4 weeks (DONE)
-
-### What Was Built
-
-| Component | Location |
-|-----------|----------|
-| Database Schema (8 tables) | `packages/db/src/schema.ts` |
-| Task Queue (BullMQ + Redis) | `packages/core/src/queue/task-queue.ts` |
-| File Lock Manager | `packages/core/src/locks/file-lock-manager.ts` |
-| Worker Registry | `packages/core/src/services/worker-registry.ts` |
-| Backend Agent | `packages/core/src/agents/backend-agent.ts` |
-| Dashboard UI | `src/app/page.tsx` |
-| Questions UI | `src/app/questions/page.tsx` |
-| API Routes | `src/app/api/` |
-
-### Agents Status
+## Agents Status
 
 | Agent | SKILL Files | Implementation | Status |
 |-------|-------------|----------------|--------|
 | Backend | ✅ Layered | ✅ `backend-agent.ts` | **WORKING** |
 | Frontend | ✅ Layered | ✅ `frontend-agent.ts` | **WORKING** |
 | QA | ✅ Layered | ✅ `qa-agent.ts` | **WORKING** |
-| DevOps | ⚠️ Needs splitting | ❌ Not created | Phase 7 |
 | Orchestrator | ✅ Layered | ✅ `orchestrator-agent.ts` | **WORKING** |
-| Project Scoper | ✅ Layered | ✅ `project-scoper-agent.ts` | **WORKING** |
-| Client Reporter | ❌ Not created | ❌ Not created | Phase 6.5 |
+| Project Scoper | ✅ Layered | ✅ `project-scoper-agent.ts` | **COMPLETE** |
+| Client Reporter | ✅ Layered | ❌ Not created | Phase 6.5 |
+| DevOps | ⚠️ Needs splitting | ❌ Not created | Phase 7 |
 | Reviewer | ❌ Not created | ❌ Not created | Phase 7 |
-
----
-
-## Phase 1: Token Optimization ✅ COMPLETE
-
-**Duration:** 1 week  
-**Status:** COMPLETE  
-**Result:** 40-80% token reduction achieved
-
-### Checklist
-
-- [x] Token metrics logging (`TokenMetrics` interface in backend-agent.ts)
-- [x] SKILL file splitting (ALL 5 agent types)
-- [x] Skill loader with complexity-based selection (`skill-loader.ts`, 278 lines)
-- [x] Create `context-profiles.ts`
-- [x] Update context loader to use profiles
-- [x] Fix profile selection bug (`complete` → `full-feature` false positive)
-- [x] Verify with test tasks
-
-### Measured Results
-
-| Task Type | Profile | Input Tokens | Reduction |
-|-----------|---------|--------------|-----------|
-| Simple endpoint | simple-endpoint | 1,532 | ~80% |
-| Database query (filtered) | database-task | 4,288 | ~45% |
-| Database query (full schema) | database-task | 7,762 | Baseline |
-
-### SKILL File Structure (IMPLEMENTED)
-
-```
-skills/
-├── common/
-│   └── SKILL-common.md
-├── backend/
-│   ├── SKILL-backend-core.md
-│   ├── SKILL-backend-patterns.md
-│   └── SKILL-backend-examples.md
-├── frontend/
-│   ├── SKILL-frontend-core.md
-│   ├── SKILL-frontend-patterns.md
-│   └── SKILL-frontend-examples.md
-├── qa/
-│   ├── SKILL-qa-core.md
-│   ├── SKILL-qa-patterns.md
-│   └── SKILL-qa-examples.md
-├── devops/
-│   ├── SKILL-devops-core.md
-│   ├── SKILL-devops-patterns.md
-│   └── SKILL-devops-examples.md
-└── orchestrator/
-    ├── SKILL-orchestrator-core.md
-    ├── SKILL-orchestrator-assignment.md
-    ├── SKILL-orchestrator-quality.md
-    └── SKILL-orchestrator-examples.md
-```
-
-**22 layered files** + 6 legacy monolithic files (can be deleted)
-
-### Context Profiles (IMPLEMENTED)
-
-```typescript
-// packages/core/src/agents/utils/context-profiles.ts
-export const CONTEXT_PROFILES = {
-  'simple-endpoint': {
-    includeSchema: false,
-    includeRouteExamples: true,
-    maxExamples: 1,
-  },
-  'database-task': {
-    includeSchema: true,
-    schemaTablesFilter: ['relevant', 'tables', 'only'],
-    includeRouteExamples: false,
-  },
-  'full-feature': {
-    includeSchema: true,
-    includeRouteExamples: true,
-    maxExamples: 2,
-  },
-  'bug-fix': {
-    includeSchema: false,
-    includeRouteExamples: false,
-    maxExamples: 0,
-  },
-};
-```
-
-### Key Files Created/Updated
-
-| File | Purpose |
-|------|---------|
-| `packages/core/src/agents/utils/context-profiles.ts` | Profile definitions + selection logic |
-| `packages/core/src/agents/utils/context-loader.ts` | Profile-aware context building |
-| `packages/core/src/agents/utils/skill-loader.ts` | Complexity-based SKILL layer loading |
-| `packages/core/src/agents/backend-agent.ts` | Token metrics logging |
-
----
-
-## Phase 2: Decision Cache ⏭️ SKIPPED
-
-**Status:** Deferred until needed  
-**Reason:** Decision cache is useful for multi-task projects with repeated architecture decisions. Not needed until Orchestrator is decomposing large features into multiple tasks.
-
-**Will revisit after:** Phase 5 (Orchestrator Agent)
-
-### Schema (Ready When Needed)
-
-```typescript
-export const decisions = pgTable('decisions', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  projectId: uuid('project_id').references(() => projects.id),
-  key: text('key').notNull(),           // e.g., "auth-strategy"
-  decision: text('decision').notNull(), // e.g., "nextauth"
-  decidedBy: text('decided_by').notNull(), // 'agent' | 'human'
-  decidedAt: timestamp('decided_at').defaultNow(),
-  locked: boolean('locked').default(true),
-});
-```
-
----
-
-## Phase 3: Frontend Agent ✅ COMPLETE
-
-**Duration:** 2-3 weeks
-**Status:** COMPLETE
-**Branch:** `phase-3/frontend-agent` (merged)
-**Prerequisite:** Phase 1 ✅
-
-### Checklist
-
-- [x] SKILL files (EXISTS: core, patterns, examples)
-- [x] Create `frontend-agent.ts` (copy pattern from backend-agent.ts)
-- [x] Add `frontend-tasks` queue to BullMQ
-- [x] Add to worker registry
-- [x] Update dashboard to show frontend tasks
-- [x] Run tests 1-5 (baseline)
-- [x] Run tests 6-10 (stress)
-- [x] Fix issues found
-- [x] Document learnings
-
-### Test Plan
-
-**Baseline Tests (1-5):**
-1. Simple React component
-2. Component with props/state
-3. API integration component
-4. Form with validation
-5. Complex multi-component feature
-
-**Stress Tests (6-10):**
-6. Vague requirements
-7. Styling edge cases (Tailwind specifics)
-8. State management patterns
-9. Conflicting UI requirements
-10. Missing design context
-
----
-
-## Phase 4: QA Agent ✅ COMPLETE
-
-**Duration:** 1 week
-**Status:** COMPLETE
-**Branch:** `phase-4/qa-agent`
-
-### What Was Built
-
-| Component | Location |
-|-----------|----------|
-| QA Agent | `packages/core/src/agents/qa-agent.ts` |
-| QA Context Loader | `packages/core/src/agents/utils/qa-context-loader.ts` |
-| SKILL Files (Layered) | `skills/qa/SKILL-qa-core.md`, `SKILL-qa-patterns.md`, `SKILL-qa-examples.md` |
-
-### Test Results
-
-**Baseline Tests (1-5):** ✅ All passed
-- Utility functions, React components, async services, API routes, custom hooks
-- Generated 18-32 test cases per task
-- Proper Vitest + React Testing Library usage
-
-**Stress Tests (6-10):** ✅ All passed
-- Vague requirements → Asked clarifying questions
-- Missing context → Requested source files
-- Conflicting requirements → Detected contradiction, asked for clarification
-- Edge cases → Now tests undefined behavior with BUG comments
-- Security boundary → Mocked fs, documented path traversal vulnerabilities
-
-### Issues Fixed During Phase 4
-
-1. **Question-answer workflow broken** - BullMQ job ID collision when re-queuing after human answers; fixed by adding timestamp to job ID
-2. **SDK mocking pattern wrong** - Agent generated `await` in non-async `beforeEach`; fixed via SKILL file update
-3. **Edge cases skipped** - Agent left TODO comments instead of testing; added SKILL rule to test undefined behavior
-
-### SKILL File Updates
-
-- Added External SDK Mocking pattern (4-step vi.mock pattern)
-- Added "NEVER Do This" anti-patterns section
-- Added Undefined Behavior Testing section
-- Added MUST rule for testing edge cases even when broken
-
----
-
-## Phase 5: Orchestrator Agent + Project Management ✅ COMPLETE
-
-**Duration:** 2-3 weeks
-**Completed:** 2026-02-07
-**Branch:** `phase-5/stress-tests` (merged to `development`)
-**Prerequisite:** Phase 4 ✅
-**Model:** Claude Opus 4.6 (1M context window)
-
-### What Was Built
-
-| Component | Location |
-|-----------|----------|
-| Orchestrator Agent | `packages/core/src/agents/orchestrator-agent.ts` |
-| Command Executor | `packages/core/src/agents/utils/orchestrator-command-executor.ts` |
-| Output Parser | `packages/core/src/agents/utils/orchestrator-output-parser.ts` |
-| Context Loader | `packages/core/src/agents/utils/orchestrator-context-loader.ts` |
-| Dependency Resolver | `packages/core/src/services/dependency-resolver.ts` |
-| Test Script | `scripts/test-orchestrator-agent.ts` |
-
-### Test Results
-
-**Baseline Tests (1-5): 5/5 PASS**
-1. Simple single-agent task — 2 tasks (backend + qa), correct dependency chain
-2. Multi-agent task — 4 tasks (backend + frontend + 2x qa), parallel queuing
-3. Task with QA — 2 tasks, correct dependency
-4. Ambiguous requirements — 0 tasks, 6 questions, status → waiting_human
-5. Multi-step feature (blog system) — 8 tasks across 4 layers, complex dependency graph
-
-**Stress Tests (6-10): 5/5 PASS (after fixes)**
-6. Concurrent multi-project — PASS (isolated, no cross-contamination)
-7. Large decomposition (25 tasks) — PASS (4-layer architecture, all IDs resolved)
-8. Contradictory requirements — PASS (caught 4/4 contradictions, refused to decompose)
-9. Reference existing work — PASS (found 8 existing tasks, extended without duplication)
-10. Recovery after failure — PASS (detected failure, traced deps, asked questions, tracked strikes)
-
-### Bugs Found & Fixed (6 total)
-
-1. **YAML parser fails on colons in prose** — fixed (`stripInformationalSections` strips analysis/summary before parsing)
-2. **Skill detection order** — fixed (decompose matched before review for "complete" keyword)
-3. **No API timeout** — fixed (10min explicit timeout on Anthropic client)
-4. **Question parser rejects nested format** — fixed (`composeQuestionText` coerces summary/details/contradictions into flat string)
-5. **Cross-session dependency resolution** — fixed (resolve existing UUIDs against DB, handle prefix LIKE queries)
-6. **Custom action names** — deferred (LOW, parser accepts unknown actions with warning)
-
-### Token Usage
-
-- Total across 14 orchestrator calls: 78,044 tokens (51,131 in / 26,913 out)
-- Largest single decomposition: 25 tasks, 9,024 output tokens
-- Prompt caching active for SKILL file content
-
-### Checklist
-
-- [x] SKILL files (core, assignment, quality, examples)
-- [x] Create `orchestrator-agent.ts`
-- [x] Implement task decomposition (1-25 tasks)
-- [x] Implement agent assignment (backend, frontend, qa, devops → human)
-- [x] Implement dependency management (placeholder IDs + cross-session UUIDs)
-- [x] Human escalation flow (questions, contradictions, 3-strike)
-- [x] Run baseline tests 1-5
-- [x] Run stress tests 6-10
-- [x] Fix all blocking bugs
-- [x] Unit tests for parser (6 tests) and executor (5 tests)
-
----
-
-## Phase 5.5: Real Project Validation ✅ COMPLETE
-
-**Duration:** 1 day (2026-02-07)
-**Status:** COMPLETE
-**Prerequisite:** Phase 5 ✅
-
-### Purpose
-
-Validate the full agent pipeline (Orchestrator → Backend → Frontend → QA) on a real project, not test scenarios. This is not optional. Every failure, human intervention, and workaround gets documented. This data shapes all subsequent phases.
-
-### Entry Criteria (all met)
-
-- [x] Orchestrator decomposes tasks at any scale (1-25)
-- [x] Dependency chains resolve correctly (including cross-session)
-- [x] Contradiction detection works
-- [x] Failure recovery works
-- [x] Question/answer workflow persists to DB
-
-### What This Phase Tests
-
-- Agents actually writing code (not just orchestrator decomposition)
-- BullMQ worker pipeline end-to-end
-- File lock system under real usage
-- QA agent validating real code output
-- Manual PR process (human creates branches, reviews, merges)
-
-### What This Phase Does NOT Include
-
-- Automated PR creation (Phase 7)
-- Business agents (Phase 6/6.5)
-- DevOps automation
-
-### Checklist
-
-- [x] Select real project (internal tool or test client) — Booking Management System
-- [x] Define project brief as a client would write it
-- [x] Run through full pipeline: brief → scope → decompose → execute → deliver
-- [x] Track: tasks completed vs failed, human interventions, time per task — 5/5, 0 interventions
-- [x] Track: agent acceptance rate (first attempt vs revisions needed) — 5/5 first attempt
-- [x] Track: total token cost → map to theoretical billable hours
-- [x] Document ALL pain points — 4 issues found (see findings below)
-- [x] Document what manual work was still needed
-- [x] Write post-mortem with specific improvements needed — led to Phase 5.6
-
-### Phase 5.5 Findings (from validation run)
-
-**Date:** 2026-02-07
-**Project:** Booking Management System (5 tasks, 19 files)
-**Result:** All 5 tasks completed successfully, 0 syntax errors, full dependency chain resolved
-
-**Issues Found:**
-1. **Context profile misassignment** — TASK-002 (API endpoints, database-heavy) got `bug-fix` profile (35 tokens, no schema). Complexity detector looks at task description keywords only, not dependency context or task inputs.
-2. **Status update placeholder ID bug** — Orchestrator YAML `status_updates` referenced `TASK-001` instead of resolved UUID. Command executor's status update path doesn't use the same ID mapping as dependency resolution.
-3. **Non-severe bracket warnings** — `page.tsx` had "Unmatched ')'" warning, `route.test.ts` had "Unmatched '}'". TypeScript compiler showed 0 errors, so these are likely false positives in the bracket analyzer.
-4. **No code-level guidance for agents** — Sonnet receives task descriptions but no interface contracts, code patterns, or implementation hints. Works for simple CRUD, will fail on complex tasks.
-
-**Decision:** Add Architect Layer to address finding #4. Fix context profile bug separately.
-
-### Output
-
-Validation report that determines if Phase 6+ priorities need changing.
-
----
-
-## Phase 5.6: Architect Layer ✅ COMPLETE
-
-**Duration:** 1-2 weeks
-**Completed:** 2026-02-14
-**Status:** COMPLETE
-**Branch:** `phase-5/orchestrator-agent-part-3` (merged to `development`)
-**Prerequisite:** Phase 5.5 findings addressed (context profile bug fixed ✅)
-
-### Purpose
-
-Add a per-task technical specification step between orchestrator decomposition and agent execution. The orchestrator decomposes a project into tasks (WHAT to build). The architect layer generates a detailed technical spec for each task (HOW to build it). Sonnet agents then execute against the spec instead of against a vague description.
-
-### Flow Change
-
-**Before:**
-```
-Orchestrator (Opus 4.6) → decompose → task record → BullMQ → Agent (Sonnet 4.5) → code
-```
-
-**After:**
-```
-Orchestrator (Opus 4.6) → decompose → task record → Architect Step (Opus 4.6, per-task) → enriched task record → BullMQ → Agent (Sonnet 4.5) → code
-```
-
-### What the Architect Step Produces (per task)
-
-For each task, a single Opus 4.6 call generates a `technical_spec` field containing:
-
-1. **File structure** — exact files to create with purpose of each
-2. **Interface contracts** — TypeScript interfaces, function signatures, props types
-3. **Code patterns** — specific patterns to follow with code snippets (e.g., "use this Drizzle query pattern")
-4. **Dependency context** — relevant code from completed dependency tasks (read from artifacts)
-5. **Edge cases** — specific edge cases to handle with expected behavior
-6. **Anti-patterns** — what NOT to do (common Sonnet mistakes for this task type)
-7. **Import map** — exact imports the agent should use
-
-### Architecture Decisions
-
-- **NOT a separate agent** — no new queue, no new worker, no new SKILL files
-- **Runs inside orchestrator pipeline** — after task creation, before queue insertion
-- **One Opus call per task** — focused, high-quality specs
-- **Can read dependency artifacts** — architect for TASK-002 sees TASK-001's output
-- **Spec stored in task record** — new `technicalSpec` column in tasks table
-- **Agents receive spec as additional context** — injected into prompt alongside SKILL content
-
-### Model
-
-Claude Opus 4.6 (same as orchestrator — reasoning quality matters here)
-
-### Cost Impact
-
-- ~$0.10-0.15 per task for the architect call
-- For 5-task project: ~$0.50-0.75 additional
-- Expected savings: fewer retries, fewer questions, better first-attempt quality
-- Break-even: if it prevents even 1 retry per project, it pays for itself
-
-### What Was Built
-
-| Component | Location |
-|-----------|----------|
-| Architect Spec Generator | `packages/core/src/agents/utils/architect-spec-generator.ts` (332 lines) |
-| DB Schema (3 columns) | `packages/db/src/schema.ts` — `technicalSpec`, `techSpecGeneratedAt`, `techSpecTokens` |
-| Command Executor Integration | `packages/core/src/agents/utils/orchestrator-command-executor.ts` (lines 233-241) |
-| Dependency Resolver Integration | `packages/core/src/services/dependency-resolver.ts` (lines 70-78, 210-218) |
-| Backend Agent Injection | `packages/core/src/agents/backend-agent.ts` (lines 231-245) |
-| Frontend Agent Injection | `packages/core/src/agents/frontend-agent.ts` (lines 223-238) |
-| QA Agent Injection | `packages/core/src/agents/qa-agent.ts` (lines 238-253) |
-
-### Architecture Decisions
-
-- Uses Opus 4.6 (same model as orchestrator — reasoning quality matters)
-- Complexity gating: only generates specs for `database-task`, `full-feature`, or tasks with dependencies
-- `simple-endpoint` / `bug-fix` with no deps skip spec generation (cost optimization)
-- Reads dependency artifacts from `generated/tasks/{task-id}/` (up to 60k chars / ~15k tokens)
-- PATH ENFORCEMENT in system prompt prevents agents from recreating files that exist in dependency artifacts
-- Graceful degradation: if API call fails, task proceeds without spec (logged, not fatal)
-
-### Checklist
-
-- [x] Add `technicalSpec` text column to tasks table
-- [x] Create architect prompt template (system prompt + per-task template)
-- [x] Implement `generateTechSpec()` function in orchestrator pipeline
-- [x] Load dependency artifacts for spec generation
-- [x] Inject tech spec into agent prompt (backend-agent.ts, frontend-agent.ts, qa-agent.ts)
-- [x] Update command executor to call architect step before queuing
-- [x] Context profile bug fix (TASK-002 misassignment)
-- [x] Path enforcement rules added to architect prompts
-- [x] Test: simple task → spec skipped (ping endpoint got `simple-endpoint` profile, no spec generated, 505 input tokens)
-- [x] Test: complex task with dependencies → spec references dependency outputs (CRUD API spec loaded 4 dependency artifacts, frontend spec loaded 5, QA spec loaded 14)
-- [x] Test: full project end-to-end — Notifications System: 5/5 tasks completed, 0 syntax errors, 0 retries, 0 fix loops, 32 files generated
-- [x] Token metrics: architect specs totaled ~34k tokens across 5 tasks. Simple tasks correctly skipped. Cache hit rate reached 100% on sequential backend tasks (90% savings).
-
-### Test Results
-
-**All 4 checklist items passed.**
-
-| Test | Result | Details |
-|------|--------|---------|
-| Simple task skip | ✅ PASS | Ping endpoint → `simple-endpoint` profile, no spec generated, 505 input tokens |
-| Complex task with deps | ✅ PASS | CRUD API: 4 dep artifacts loaded. Frontend: 5. QA: 14. All referenced correctly. |
-| Full E2E (Notifications System) | ✅ PASS | 5/5 tasks, 0 syntax errors, 0 retries, 0 fix loops, 32 files generated |
-| Token metrics | ✅ PASS | ~34k tokens total across 5 specs. Cache hit: 100% on sequential tasks (90% savings) |
-
-### Bugs Found & Fixed (2 total)
-
-1. **Status overwrite bug** — Command executor status updates could downgrade completed tasks back to `queued`. Fixed with status precedence guard.
-2. **Context profile misassignment** — "api route" falsely triggered `database-task` profile. Fixed by removing weak signals from DB keyword list.
-
----
-
-## Phase 5.7: Image Requirement Extractor ✅ COMPLETE
-
-**Duration:** 1 week
-**Completed:** 2026-02-14
-**Status:** COMPLETE
-**Branch:** `phase-5/image-reading-new-requirements` (merged via PR #11)
-**Prerequisite:** Phase 5.6 ✅
-
-### Purpose
-
-Allow users to attach reference images (mockups, wireframes, screenshots) to tasks. A Claude Vision call extracts structured visual requirements from the images, which are injected into the orchestrator's decomposition prompt. Agents receive concrete UI specs instead of vague descriptions like "make it look modern."
-
-### Flow
-
-```
-User attaches images → Upload API (resize + validate) → stored in generated/uploads/{taskId}/
-→ Orchestrator calls extractImageRequirements() → Claude Vision → structured markdown
-→ Appended to task description → Opus decomposes with visual context
-```
-
-### What Was Built
-
-| Component | Location | Lines |
-|-----------|----------|-------|
-| Image Requirement Extractor | `packages/core/src/agents/utils/image-requirement-extractor.ts` | 278 |
-| Upload Images API (POST + DELETE) | `src/app/api/tasks/upload-images/route.ts` | 242 |
-| Image Serving API | `src/app/api/tasks/images/[taskId]/[filename]/route.ts` | 59 |
-| DB Schema (4 columns) | `packages/db/src/schema.ts` — `imageAttachments`, `imageRequirements`, `imageRequirementsGeneratedAt`, `imageRequirementsTokens` | 4 |
-| Orchestrator Integration | `packages/core/src/agents/orchestrator-agent.ts` (lines 194-204) | ~10 |
-| RequirementsModal (upload flow) | `src/components/RequirementsModal.tsx` | ~50 |
-| RecentTasks (thumbnails + requirements display) | `src/components/RecentTasks.tsx` | ~60 |
-
-### Architecture Decisions
-
-- Uses Claude Sonnet 4.5 (vision quality sufficient, cheaper than Opus)
-- Sharp resizing to max 1568px (Claude's optimal image size)
-- Magic byte validation (PNG, JPEG, WebP, GIF only — no MIME trust)
-- 2MB max per file, 20 images max per task
-- Structured markdown output: Layout, Components, Styling, Data Display, Interactive Elements, Responsive Notes
-- Idempotent: skips if `imageRequirements` already populated
-- Graceful degradation: if Vision API fails, task proceeds without visual context
-- Images stored locally at `generated/uploads/{taskId}/` (sandboxed)
-- Path traversal protection on image serving route
-
-### Also Completed: Context Profile 3-Pass System
-
-Major improvement to `context-profiles.ts` (354 lines) — fixes false positives from Phase 5.5:
-
-1. **Pass 1 (Override):** `PROFILE_OVERRIDES` — short-circuit keywords (scaffolding → `full-feature`, hotfix → `bug-fix`)
-2. **Pass 2 (Signals):** Existing keyword matching with frontend-aware filtering (skips ambiguous DB keywords like `table`, `filter`, `query` for frontend agents)
-3. **Pass 3 (Demotion):** `NEGATIVE_SIGNALS` — cancels false positives (e.g., component library task won't get `stateful-component`)
-
-Tests: 132 profile tests + 48 frontend profile tests.
-
-### Checklist
-
-- [x] Upload API with magic byte validation + Sharp resize
-- [x] Image serving API with path traversal protection
-- [x] `extractImageRequirements()` with Claude Vision
-- [x] DB schema columns (4 new columns + ImageAttachment interface)
-- [x] Orchestrator integration (inject visual requirements into decomposition)
-- [x] UI: RequirementsModal upload flow
-- [x] UI: RecentTasks thumbnails + extracted requirements display
-- [x] Context profile 3-pass system (PROFILE_OVERRIDES, NEGATIVE_SIGNALS)
-- [x] 132 + 48 context profile tests
-- [x] Commit and push to feature branch
-- [ ] Unit tests for image-requirement-extractor
-- [ ] Integration tests for upload/serve APIs
-- [x] Merge to development via PR (#11)
 
 ---
 
 ## Phase 6: Project Scoper Agent ✅ COMPLETE
 
-**Duration:** 2 weeks
-**Status:** ✅ COMPLETE
+**Effort:** L | **Impact:** Critical
+**Status:** COMPLETE — merged via PR #13
 **Branch:** `phase-6/project-scoper`
-**Prerequisite:** Phase 5.5 ✅
-**Model:** Claude Opus (strategic reasoning)
+**Model:** Claude Opus (strategic reasoning — scoping requires business judgment)
 
-### Checklist
+### Delivered
 
-- [x] SKILL files created (core, patterns, examples)
-- [x] Create `project-scoper-agent.ts`
-- [x] Brief → structured spec parsing
-- [x] Complexity estimation heuristics
-- [x] Agent capability mapping
-- [x] Client-facing scope document generation
-- [x] Test with 5 different project briefs (varying complexity)
-- [x] Test with intentionally vague brief → should ask questions
+- ✅ Brief → structured spec parsing (YAML)
+- ✅ Complexity estimation per component (simple/standard/complex)
+- ✅ Agent capability mapping (backend, frontend, QA, devops)
+- ✅ Task breakdown with effort estimates
+- ✅ Gap/risk identification requiring human decision
+- ✅ Client-facing scope document (markdown)
+- ✅ Security assessment (LOW/MEDIUM/HIGH classification)
+- ✅ SKILL files (core, patterns, examples)
 
-### Test Results
+### Remaining Items (Deferred)
 
-**Baseline Tests (1-5): ✅ ALL PASSED**
-1. ✅ Simple landing page — frontend-only, simple complexity
-2. ✅ CRUD app with auth — multi-agent, dependency chains
-3. ✅ Multi-service API gateway — backend-only, complex integrations, timeline pushback
-4. ✅ Existing codebase modification — discovery milestone first, regression risk flagged (passed v2)
-5. ✅ Contradictory requirements — refused to scope, all contradictions caught
+- [ ] PII sanitization layer — strip emails, phone numbers, addresses before API call, restore in output
+- [ ] Adversarial brief testing (fictional companies, contradictions)
 
-**Stress Tests (6-10): ✅ ALL PASSED**
-6. ✅ Extremely vague brief — empty REQs, extensive blocking questions
-7. ✅ Tech outside capabilities — all out-of-scope items flagged, no overpromising
-8. ✅ Unrealistic timeline — honest estimates, phased delivery suggested
-9. ✅ Non-English brief (French) — provisional scope with translation confirmation (passed v3, required SKILL fix)
-10. ✅ Proprietary/unknown systems — all unknowns flagged, discovery milestone first, no hallucinated APIs
+### PII Sanitization (Production Requirement)
 
-**Adversarial Tests (11-12): ✅ ALL PASSED**
-11. ✅ Kitchen sink buzzword soup — empty REQs, budget reality check, asked for actual decision maker
-12. ✅ Pure hallucination bait (fake standards, fake APIs, impossible physics) — called out all fabrications, refused to scope
+Before the scoper processes a brief, sanitize PII to avoid sending personal data to the API:
+```typescript
+function sanitizeBrief(brief: string): { sanitized: string; piiMap: Map<string, string> }
+```
+PII stripped before API call, restored in output. The piiMap stays in the database, never sent to Anthropic. GDPR compliance for production.
 
-**Fixes Applied:** 7 during baseline, 3 during stress tests (10 total)
+### 3-Amigo Layered Output
 
-### Key Behaviors Validated
-- Refuses to scope when requirements are insufficient
-- Produces empty REQs rather than hallucinating features
-- Identifies non-existent standards, products, and APIs
-- Flags capability boundaries (what our stack can vs cannot build)
-- Pushes back on unrealistic timelines with specific counter-estimates
-- Produces provisional scopes for non-English briefs with translation confirmation gates
-- Separates feasible work from out-of-scope work (doesn't reject entire projects when partial delivery is possible)
-- Asks for decision makers when briefs lack clear ownership
+Scoper produces three document layers:
+1. **PRD** — what needs to be built, user stories, acceptance criteria
+2. **Technical Architecture** — system design, API specs, data models, integration points
+3. **Agent Execution Package** — task breakdown mapped to agent capabilities, dependency graph, estimated token budget per task
+
+Each layer builds on the previous. Orchestrator receives layer 3 as input. Layers 1 and 2 become reference context for agents via targeted retrieval.
 
 ---
 
-## Phase 6.5: Client Reporter Agent
+## Phase 6.5: Client Reporter Agent 🔵 NEXT
 
-**Duration:** 1 week
-**Status:** NOT STARTED
-**Prerequisite:** Phase 6 complete
+**Effort:** M | **Impact:** High
+**Duration:** 3-5 days
+**Status:** SKILL files exist, no agent implementation
+**Branch:** `phase-6.5/client-reporter`
+**Prerequisite:** Phase 6 complete ✅
 **Model:** Claude Sonnet (structured output generation)
 
 ### Scope
 
 - Aggregate task statuses into project-level progress
-- Generate client-facing progress reports (markdown → PDF)
+- Generate client-facing progress reports (markdown)
 - Highlight blockers and decisions needed
 - Produce milestone completion summaries
-- Track time/cost per project
+- Track time/cost per project using existing `cost_tracking` table
+
+### Cost Tracking Integration
+
+**Existing infrastructure:**
+- `cost_tracking` table: `projectId`, `taskId`, `agentType`, `tokensInput`, `tokensOutput`, `cachedTokens`, `apiCostUsd`, `estimatedBillableHours`
+- `tasks.tokenMetrics` (jsonb): per-task token breakdown populated by all agents
+
+**What this phase adds:**
+- Wire agent runs to INSERT into `cost_tracking` after each task completion
+- Token-to-USD pricing function (per model, input vs output vs cache)
+- Aggregate queries for reports (cost per project, cost per agent type, cost per milestone)
+
+**NO new tables.** The schema already supports this — it just needs the insertion logic.
+
+### Report Types
+
+| Report | Trigger | Content |
+|--------|---------|---------|
+| Weekly Update | Manual (API call) | Tasks completed, in progress, blocked. Decisions needed. |
+| Milestone Report | On milestone completion | What was delivered, what's next, scope changes. |
+| Project Summary | Project end | Full summary, metrics, lessons learned. |
 
 ### Checklist
 
-- [ ] SKILL files created (core, patterns)
 - [ ] Create `client-reporter-agent.ts`
-- [ ] Progress report generation from task data
-- [ ] Milestone tracking
-- [ ] Cost tracking (token usage → estimated hours)
-- [ ] Report templates (weekly update, milestone report, project summary)
+- [ ] Wire cost tracking insertion into agent execution pipeline
+- [ ] Token-to-USD pricing function (model-aware)
+- [ ] Weekly update report template
+- [ ] Milestone report template
+- [ ] Project summary report template
+- [ ] API endpoint: `POST /api/reports` (trigger report generation)
+- [ ] API endpoint: `GET /api/reports/{projectId}` (list reports)
+- [ ] Test with real project data from Phase 5.5 validation
+
+### What's NOT in This Phase
+
+- ~~Batch API~~ — Requires async job infrastructure that doesn't exist. Defer to Phase 8+ if report volume justifies it.
+- ~~PDF generation~~ — Markdown is sufficient for MVP. PDF can be added later with a library like `puppeteer` or `react-pdf`.
+- ~~Automated scheduling~~ — Reports are manually triggered via API. Cron-based automation is Phase 8+ territory.
+
+### Test Plan
+
+1. Generate weekly update for Phase 5.5 project → verify task counts, blockers, cost summary
+2. Generate milestone report → verify deliverables listed, next milestone identified
+3. Generate project summary → verify full metrics, lessons learned section
+4. Cost tracking: verify `cost_tracking` rows created after agent runs
+5. Cost aggregation: verify per-project and per-agent-type totals match
+
+---
+
+## Phase 6.6: Dashboard Navigation Overhaul
+
+**Effort:** S | **Impact:** Medium
+**Duration:** 2-3 days
+**Status:** NOT STARTED
+**Branch:** `phase-6.6/navigation-overhaul`
+**Prerequisite:** None (independent of Phase 6.5)
+
+### Scope
+
+Replace top header navigation with sidebar layout. Cosmetic restructure — no new features.
+
+### Changes
+
+**Current:** Top header navigation with links to Dashboard, Questions, etc.
+
+**New: Sidebar Navigation**
+- **Left sidebar** (persistent, collapsible) replaces top header
+- Sidebar sections:
+  - **Projects** — main project management view (default landing page)
+  - **Tasks** — cross-project task view (existing, moved to sidebar)
+  - **Questions** — human question queue (existing, moved to sidebar)
+  - **Workers** — worker status panel (existing, moved to sidebar)
+  - **Reports** — client reports list (new, from Phase 6.5)
+  - **Settings** — future: API keys, provider config, user preferences
+- Active section highlighted
+- Sidebar collapses to icon-only on small screens
+- Top header becomes minimal: SoloEnterprise logo + user avatar
+
+### Tech
+
+- shadcn/ui sidebar component + lucide-react icons
+- Update `layout.tsx` to sidebar layout
+- Responsive: sidebar collapses on mobile
+
+### Checklist
+
+- [ ] Create sidebar component with navigation items
+- [ ] Move existing nav items to sidebar
+- [ ] Implement sidebar collapse for mobile
+- [ ] Update `layout.tsx`
+- [ ] Set Projects as default landing page
+
+### Test Plan
+
+1. All existing pages accessible via sidebar
+2. Sidebar collapse/expand works on mobile breakpoint
+3. Active section highlighted correctly
+4. No broken links or missing routes
+
+---
+
+## Phase 6.7: Projects Management UI
+
+**Effort:** M | **Impact:** High
+**Duration:** 3-5 days
+**Status:** NOT STARTED
+**Branch:** `phase-6.7/projects-ui`
+**Prerequisite:** Phase 6.6 (sidebar must exist for navigation context)
+
+### Scope
+
+Projects table with full CRUD + New Project overlay that triggers the scoper.
+
+### Projects Table
+
+| Column | Description |
+|--------|-------------|
+| **Name** | Project name (clickable, future: opens detail view) |
+| **Client** | Client name |
+| **Brief** | Status badge: `received` / `in progress` / `complete` |
+| **Date Started** | Project creation date |
+| **Progress** | (completed tasks / total tasks) × 100 as progress bar |
+| **ETA** | Estimated completion date or "TBD" |
+| **Actions** | Delete button |
+
+**Brief status updates:** Server-side. When user navigates to Projects page, Server Component queries current brief status from DB. No push updates needed — `router.refresh()` after any mutation.
+
+**Table features:** Sortable by any column, default newest first, empty state with CTA.
+
+### New Project Overlay
+
+Full-page overlay (shadcn `Dialog`):
+
+| Field | Type | Required |
+|-------|------|----------|
+| **Project Name** | Text input | Yes |
+| **Client Name** | Text input | No |
+| **Project Type** | Checkbox (disabled: "End-to-End Project") | N/A |
+| **GitHub URL** | Text input | No |
+| **Project Brief** | Large textarea (min 300px) | Yes |
+
+**On submit:**
+1. Validate: Project Name + Brief not empty
+2. Create project + brief records in database
+3. Set brief status to `received`
+4. Close overlay, `router.refresh()` → new project appears in table
+5. Trigger Project Scoper agent with the brief (async via BullMQ)
+6. User refreshes page to see brief status update (`received` → `in progress` → `complete`)
+
+### Delete Flow
+
+- First confirmation: "Are you sure you want to delete [Project Name]?"
+- Second confirmation: "Type the project name to confirm deletion:" (exact match)
+- On confirm: cancel queued tasks → release file locks → delete artifacts → delete DB records
+- `router.refresh()` after deletion
+- **Irreversible.** Double confirmation because deletion destroys everything.
+
+### Checklist
+
+- [ ] Projects table component with all columns
+- [ ] Sortable column headers
+- [ ] Brief status badges (grey=received, yellow=in progress, green=complete)
+- [ ] Progress bar column
+- [ ] Empty state
+- [ ] New Project overlay with form + validation
+- [ ] On submit: create records + trigger scoper
+- [ ] Delete flow with double confirmation
+- [ ] Connect all to database via Server Actions
+
+### Test Plan
+
+1. Create project → appears in table with Brief=`received`, Progress=0%, ETA=TBD
+2. After scoper runs → refresh page → Brief badge updates correctly
+3. Delete project → double confirmation → all data cleaned up
+4. Sort by each column → correct ordering
+5. Empty state → shows CTA to create first project
+6. Special characters in project name → handles correctly
+
+---
+
+## Phase 6.8: Scope Review UI
+
+**Effort:** S | **Impact:** Medium
+**Duration:** 2-3 days
+**Status:** NOT STARTED
+**Branch:** `phase-6.8/scope-review`
+**Prerequisite:** Phase 6.7 (projects table must exist, brief=`complete` badge must be clickable)
+
+### Scope
+
+Scope review overlay when clicking the green `complete` badge on a project's brief status.
+
+### Scope Review Overlay
+
+Full-page overlay rendering the scoper's output:
+- Summary section
+- Requirements list with complexity badges (simple/standard/complex)
+- Security assessment badge (LOW=green, MEDIUM=yellow, HIGH=red with "ESCALATE TO HUMAN" warning)
+- Effort estimates per component
+- Gaps/questions requiring human decision
+- Out of scope items
+- Milestones
+
+### Actions
+
+- **Reject** — sets brief status back to `received`, logs rejection reason (text input)
+- **Approve** — sets project status to `approved`, logs approval
+- **Neither triggers downstream actions.** Orchestrator wiring comes in Phase 8.
+
+### Checklist
+
+- [ ] Scope review overlay (full-page dialog)
+- [ ] Render scope output as readable HTML/markdown
+- [ ] Security classification badge with correct colors
+- [ ] Reject button → status update + reason logging
+- [ ] Approve button → status update
+- [ ] `router.refresh()` after approve/reject
+
+### Test Plan
+
+1. Click `complete` badge → overlay opens with correct scope data
+2. Security badges render correctly for LOW/MEDIUM/HIGH
+3. Reject → brief status resets to `received`, rejection logged
+4. Approve → project status set to `approved`, approval logged
+5. Close overlay → returns to projects table
 
 ---
 
 ## Phase 7: DevOps Agent + Principal Reviewer
 
-**Duration:** 2-3 weeks
+**Effort:** L | **Impact:** Critical
+**Duration:** 1-2 weeks
 **Status:** NOT STARTED
 **Branch:** `phase-7/devops-agent`
-**Prerequisite:** Phase 6.5 complete
+**Prerequisite:** Phase 6.8 complete
+**Model:** Claude Sonnet (infrastructure automation)
 
-### DevOps Agent
+### Strategic Context
 
-#### Pre-work Required
+Scoped exclusively for **Type 1: Greenfield projects**. Creates a complete, self-contained, handover-ready project from scratch. Client receives a working application with live URLs, CI/CD pipeline, and everything needed to continue independently.
 
-Before implementation, split `skills/SKILL-devops-engineer.md` (757 lines) into:
+### Provider Abstraction (MANDATORY)
+
+**Do NOT hardcode provider SDK calls.** Use an interface so providers can be swapped later:
+
+```typescript
+interface InfraProvider {
+  createProject(config: ProjectConfig): Promise<ProjectResult>;
+  setupAuth(config: AuthConfig): Promise<AuthResult>;
+  provisionDatabase(config: DbConfig): Promise<DbResult>;
+  deploy(artifact: BuildArtifact, env: Environment): Promise<DeployResult>;
+  setupCI(config: CIConfig): Promise<CIResult>;
+}
+
+// Phase 7 ships with ONE implementation:
+class FirebaseRailwayProvider implements InfraProvider { ... }
+```
+
+**Initial provider stack (hardcoded behind interface):**
+- **Hosting + Auth:** Firebase (Hosting + Authentication)
+- **Database:** Dockerized PostgreSQL + Drizzle ORM (local dev), Railway (production)
+- **CI/CD:** GitHub Actions
+- **Environments:** dev / staging / prod
+- **Repo:** GitHub (per client project)
+- **E2E:** Playwright (pre-installed, runs in CI)
+- **Security:** pnpm audit + dependency scanning in CI
+
+### Pre-work Required
+
+Split `skills/SKILL-devops-engineer.md` (757 lines) into:
 - `skills/devops/SKILL-devops-core.md` (~1,000-1,200 tokens)
 - `skills/devops/SKILL-devops-patterns.md` (~800-1,000 tokens)
 - `skills/devops/SKILL-devops-examples.md` (~1,500-2,000 tokens)
 
-#### Checklist
+### DevOps Agent Checklist
 
 - [ ] Split monolithic SKILL file into layered structure
-- [ ] Narrow scope (decide: GitHub Actions + Docker only? Or full Terraform?)
-- [ ] Create `devops-agent.ts`
-- [ ] Run tests 1-5
-- [ ] Run tests 6-10
+- [ ] Define `InfraProvider` interface in `packages/core/src/agents/types/`
+- [ ] Implement `FirebaseRailwayProvider`
+- [ ] Create `devops-agent.ts` (calls through interface, not direct SDK)
+- [ ] GitHub repo creation (per client project)
+- [ ] Firebase project setup (hosting + auth)
+- [ ] Railway PostgreSQL provisioning
+- [ ] GitHub Actions CI/CD pipeline (lint, type-check, test, build, deploy)
+- [ ] **Preview deployments on PR** (required for Phase 7.5 Lighthouse testing)
+- [ ] Environment configuration (dev/staging/prod)
+- [ ] Playwright integration in CI
+- [ ] pnpm audit in CI pipeline
+- [ ] Monorepo scaffold (Next.js + packages)
+- [ ] Docker Compose for local Postgres
 
-### PR Workflow & Code Review Pipeline (Sub-task)
-
-The mechanism by which agent-generated code reaches the real codebase.
-
-#### How It Works
-
-1. **Agents write code** to `packages/core/generated/tasks/{task-id}/` (sandboxed, no git awareness)
-2. **Orchestrator detects milestone completion** — all tasks for a milestone are `completed` or explicitly descoped by human
-3. **Orchestrator emits `create_pull_request` action** with file mappings (sandbox path → real codebase path)
-4. **Command executor handles git operations:**
-   - Creates feature branch from `development`
-   - Assembles files from sandbox to real paths **in dependency order** (task A's files first, then task B's — NOT merged arbitrarily)
-   - Detects file path conflicts between non-dependent tasks → **fail fast, escalate to human** (should not happen if file locks worked, but defensive check)
-   - Commits with structured message (task IDs, agent types, milestone)
-   - Pushes branch and creates PR via GitHub API
-   - Assigns PR to Principal Software Engineer
-5. **`pull_requests` table tracks state** (see SCHEMA_ADDITIONS.md)
-6. **Dashboard shows pending PR notifications** for human
-7. **GitHub webhook receives PR events** (approved, changes_requested, merged)
-8. **Changes requested → new orchestrator task created** with the full review comments pasted in; orchestrator re-decomposes into agent tasks (v1: no clever per-comment routing)
-
-#### Edge Cases
-
-**Partial milestone failure:** A milestone PR is only created when ALL tasks are either `completed` or explicitly descoped by the human. No partial PRs. The existing 3-strike rule escalates failed tasks to human review. The human decides: fix it manually, remove it from scope, or move it to the next milestone. This keeps the PR flow simple and the milestone deliverable clean.
-
-**File path conflicts during assembly:** Agents write to separate sandboxes. If two tasks in the same milestone both wrote to `src/routes/index.ts`, the assembly step has two versions. If the tasks are in a dependency chain, apply in dependency order (later task wins). If the tasks are NOT dependent, this is a file lock failure — fail fast and escalate to human. Do not attempt automatic merging.
-
-#### HARD RULE
-
-**Only the Principal Software Engineer can merge PRs.** No exceptions — not agents, not CI, not the founder unless acting as Principal. This is enforced via GitHub branch protection rules.
-
-#### Checklist
-
-- [ ] Add `create_pull_request` action to orchestrator output parser
-- [ ] Implement PR creation in command executor (branch, commit, push, gh API)
-- [ ] Add `pull_requests` table to database schema
-- [ ] GitHub webhook endpoint for PR events
-- [ ] Dashboard: pending PR list with approve/request-changes actions
-- [ ] Orchestrator: handle `changes_requested` → re-open tasks with feedback
-- [ ] Branch protection rules on `development` branch
-- [ ] Test: milestone completion → PR created → Principal merges
-
-### Principal Reviewer Agent (Sub-task)
+### Principal Reviewer (Sub-task)
 
 **Model:** Claude Opus (critical review)
 
-#### Scope
-
-- Security anti-patterns
-- Performance issues
-- Logic errors
-- Error handling gaps
-- PR-level code review (automated first pass before human Principal)
-
-#### Checklist
+**Scope:** Security anti-patterns (hardcoded secrets, SQL injection, XSS, auth bypass), performance issues, logic errors, error handling gaps.
 
 - [ ] Create `SKILL-reviewer-*.md` files
 - [ ] Create `reviewer-agent.ts`
 - [ ] Define review checklist
-- [ ] Integrate into PR review flow (agent reviews first, then human Principal approves/merges)
+- [ ] Integrate into merge flow
 - [ ] Test against known-bad code
 
-#### Future: Anthropic Message Batches API
+### Security Review Gate
 
-The Batches API allows submitting up to 10,000 async requests with 50% discount on input/output tokens (stacks with prompt caching for up to 95% savings). Results delivered within 24 hours. NOT suitable for the real-time agent pipeline (orchestrator → agent → response), but worth evaluating for bulk non-time-sensitive workloads once we're running multiple concurrent projects:
+Mandatory security review step (Sonnet) before any agent output is marked complete:
+1. Repository context understanding (existing patterns, frameworks)
+2. Differential analysis (only new code, not entire codebase)
+3. Vulnerability assessment (trace data flow from inputs to sensitive operations)
 
-- **Bulk QA runs:** Independent test validations across a milestone's task outputs
-- **Client Reporter:** Generating multiple milestone/sprint reports simultaneously
-- **Project Scoper:** Parallel scope analysis across multiple modules
-- **Pre-PR code review:** Batch review of all completed task outputs before PR assembly
+Only flag issues with >80% confidence of actual exploitability. No theoretical issues, no style concerns.
 
-**When to revisit:** When running 5+ concurrent projects with predictable overnight/batch workloads. Not before Phase 7.
+### Test Plan
+
+1. Scaffold new project → valid monorepo with Next.js, Docker Compose, GitHub Actions
+2. Firebase setup → hosting config, auth config, environment files
+3. Railway Postgres → connection string, Drizzle config, migration setup
+4. CI pipeline → runs lint, type-check, test, build on push
+5. **Preview deployment → PR creates preview URL** (blocks Phase 7.5)
+6. Full greenfield → end-to-end from scaffold to deployed preview URL
+7. InfraProvider interface → mock provider passes same test suite
+8. Project with 10+ env vars → all properly configured across environments
+9. CI failure recovery → failed deploy doesn't break staging/prod
+10. Principal Reviewer catches intentionally bad code
+
+---
+
+## Phase 7.5: QA Production Readiness
+
+**Effort:** L | **Impact:** High
+**Duration:** 1 week
+**Status:** NOT STARTED
+**Prerequisite:** Phase 7 complete — **specifically requires preview deployments for Lighthouse testing**
+
+### Strategic Context
+
+Upgrades QA for production handover. Tests that must pass before a project ships to a client.
+
+### Lighthouse Dependency
+
+Lighthouse requires a deployed URL. This phase depends on Phase 7's **preview deployments**:
+- Every PR creates a preview URL (Firebase Hosting preview channel or equivalent)
+- Lighthouse CI runs against the preview URL
+- If Phase 7 does NOT deliver preview deployments, Lighthouse testing must be deferred
+
+### New QA Capabilities
+
+**Visual Regression Testing:**
+- Playwright screenshot comparison against reference images
+- Component-level and page-level visual snapshots
+- Tolerance threshold for acceptable pixel differences
+- Runs in CI on every PR
+
+**Accessibility Testing:**
+- axe-core via `@axe-core/playwright`
+- WCAG 2.1 AA compliance checks
+- Color contrast, alt text, ARIA labels, keyboard navigation, focus management
+
+**Security Baseline Testing:**
+- Auth enforcement: unauthenticated requests to protected routes return 401/403
+- XSS: script injection in form inputs sanitized
+- Security headers: `X-Content-Type-Options`, `X-Frame-Options`, `Strict-Transport-Security`
+- CORS: only allowed origins
+- CSRF: tokens on state-changing requests (if applicable)
+
+**Production Readiness Gate:**
+- Orchestrator-enforced: no project marked "ready for handover" without passing
+- All unit + E2E tests pass (visual, accessibility, security)
+- Build succeeds
+- Lighthouse performance score ≥ 80 (requires preview deployment URL)
+- No critical/high severity issues from pnpm audit
+- Human reviews results before final production deployment
+
+### Checklist
+
+- [ ] Update QA SKILL files for production readiness
+- [ ] Visual regression: Playwright screenshot comparison
+- [ ] Accessibility: axe-core integration
+- [ ] Security baseline: auth, XSS, headers, CORS test patterns
+- [ ] Production readiness gate: orchestrator integration
+- [ ] Lighthouse CI integration (against preview deploy URLs from Phase 7)
+- [ ] All test types run in GitHub Actions CI
+- [ ] Human approval gate for production deployment
+
+---
+
+## Phase 7.7: Tool/Service Separation Refactor
+
+**Effort:** M | **Impact:** High
+**Duration:** 3-5 days
+**Status:** NOT STARTED
+**Branch:** `phase-7.7/tool-service-refactor`
+**Prerequisite:** Phase 7.5 complete
+**MUST complete before Phase 8** — multi-agent integration requires decoupled agents
+
+### Why This Exists
+
+Current agents mix prompt logic, tool definitions, and business logic in single files. Phase 8 (multi-agent integration) requires agents that can share services, be tested independently, and compose without coupling. Doing this refactor DURING Phase 8 is significantly harder than doing it BEFORE.
+
+### Target Architecture
+
+```
+packages/core/src/
+├── agents/          → Thin wrappers: system prompt + tool list + model config
+├── tools/           → Tool definitions: params → service call → string result (for LLM consumption)
+└── services/        → Business logic: typed inputs/outputs, testable without LLM, CLI-callable
+```
+
+**Example:**
+```typescript
+// services/file-writer.ts — pure business logic
+export function writeFile(taskId: string, path: string, content: string): WriteResult { ... }
+
+// tools/write-file-tool.ts — LLM-facing wrapper
+export const writeFileTool: Tool = {
+  name: 'write_file',
+  execute: async (params) => {
+    const result = writeFile(params.taskId, params.path, params.content);
+    return `File written to ${result.path} (${result.bytes} bytes)`;
+  }
+};
+
+// agents/backend-agent.ts — thin wrapper
+export function createBackendAgent(task: Task) {
+  return { systemPrompt: loadSkill('backend'), tools: [writeFileTool, ...], model: 'sonnet' };
+}
+```
+
+### Checklist
+
+- [ ] Define `Service` interface pattern
+- [ ] Extract file-writer service from tool
+- [ ] Extract command-executor service from tool
+- [ ] Extract file-lock service from tool
+- [ ] Refactor backend-agent to use services via tools
+- [ ] Refactor frontend-agent to use services via tools
+- [ ] Refactor QA agent to use services via tools
+- [ ] Verify all existing tests pass after refactor
+- [ ] Document the pattern in agent development guide
+
+### Test Plan
+
+1. All existing agent tests pass unchanged
+2. Services are independently testable (no LLM required)
+3. Tools compose correctly with services
+4. Agent behavior unchanged after refactor (same inputs → same outputs)
 
 ---
 
 ## Phase 8: Multi-Agent Integration
 
-**Duration:** 2-3 weeks  
-**Status:** INFRASTRUCTURE READY  
-**Prerequisite:** All agents complete
+**Effort:** XL | **Impact:** Critical
+**Duration:** 2-3 weeks
+**Status:** INFRASTRUCTURE READY
+**Prerequisite:** Phase 7.7 (Tool/Service refactor) complete
 
 ### Already Done
 
 - [x] File lock manager
 - [x] Database schema supports multi-agent
 - [x] Task queue supports all agent types
+- [x] Tool/Service separation (Phase 7.7)
+
+### Cache Warming Strategy — CRITICAL (Highest ROI)
+
+**Problem:** Parallel agents create separate caches for the same SKILL files. Race condition multiplies costs.
+
+**Numbers:** Without warming: 4.2% cache hit rate. With warming: 94.1%. Cost reduction: 59%.
+
+```typescript
+async function warmProjectCache(projectId: string, skillFiles: string[]) {
+  await anthropic.messages.create({
+    model: "claude-sonnet-4-5-20250929",
+    max_tokens: 10,
+    system: [
+      { type: "text", text: skillFiles.join('\n'), cache_control: { type: "ephemeral" } },
+      { type: "text", text: projectContext, cache_control: { type: "ephemeral" } }
+    ],
+    messages: [{ role: "user", content: "Context loaded. Respond with 'Ready.'" }]
+  });
+}
+await warmProjectCache(projectId, skills);
+await Promise.all([runAgent("backend", task1), runAgent("frontend", task2)]);
+```
+
+### Strategic Cache Breakpoint Placement
+
+**Rules:**
+1. Maximum 4 cache breakpoints per request
+2. Static content FIRST, dynamic content LAST
+3. >20 content blocks before a breakpoint = no cache hits without intermediate breakpoints
+4. Minimum 1,024 tokens per cacheable segment (Sonnet/Opus)
+
+**Optimal structure:**
+```
+[CACHED] Tool definitions           ← Breakpoint 1
+[CACHED] SKILL files                ← Breakpoint 2
+[CACHED] Project context + scope    ← Breakpoint 3
+[CACHED] Conversation history       ← Breakpoint 4
+[NOT CACHED] Current task instruction
+```
+
+### Cost Tracking Consolidation
+
+**Use existing `cost_tracking` table.** No new tables needed.
+
+Wire into agent execution pipeline (started in Phase 6.5):
+- Every agent run → INSERT into `cost_tracking` with model, tokens, calculated USD cost
+- Aggregate per project, per agent type, per milestone
+- Dashboard queries for Phase 8.5 cost monitoring
+
+**Delete the proposed `token_usage` table** — `cost_tracking` already has all required columns.
+
+### Token Budget Enforcement (Discrete Task)
+
+**This is middleware, not a config setting.** Implementation:
+
+```typescript
+class TokenBudgetMiddleware {
+  private budgets: Record<string, number> = {
+    orchestrator: 500_000,
+    backend: 200_000,
+    frontend: 200_000,
+    qa: 100_000,
+    scoper: 300_000,
+    reporter: 50_000,
+  };
+
+  async checkBudget(agentType: string, cumulativeTokens: number): Promise<Action> {
+    const budget = this.budgets[agentType];
+    if (cumulativeTokens > budget * 0.9) return 'compact'; // 90% → trigger compaction
+    if (cumulativeTokens > budget) return 'escalate';       // 100% → escalate to human
+    return 'continue';
+  }
+}
+```
+
+Tracks cumulative tokens across turns within a session. At 90% → compact conversation. At 100% → stop and escalate.
+
+### Verification Gate
+
+After every agent task, orchestrator runs verification:
+```bash
+test -f "generated/tasks/{id}/output.ts" && echo "✅" || echo "❌"
+npx tsc --noEmit "generated/tasks/{id}/output.ts"
+npx vitest run "generated/tasks/{id}/**/*.test.ts"
+```
+Task cannot be marked complete without passing. Failure: retry → different approach → escalate to human.
 
 ### Checklist
 
+- [ ] Cache warming implementation
+- [ ] Strategic cache breakpoint placement in all agents
+- [ ] Token budget enforcement middleware
+- [ ] Verification gate (bash-based, orchestrator-driven)
 - [ ] Test file lock conflicts between agents
 - [ ] Test dependency resolution
 - [ ] Implement environment promotion (DEV → TEST → STAGING → PROD)
 - [ ] Implement human approval gates
-- [ ] End-to-end workflow test
-- [ ] Parallel agent test
+- [ ] End-to-end workflow test (multi-agent project)
+- [ ] Parallel agent test (concurrent execution)
 - [ ] Conflict resolution test
 - [ ] Rollback test
+
+### What's NOT in This Phase
+
+- ~~Context accumulation management~~ — Agents don't have 50-turn conversations. Orchestrator is 5-10 turns max. If context limits become a real problem in production, add compaction then. Don't build speculatively.
+- ~~Batch API~~ — Requires async job infrastructure. Only worth building if report volume at 20+ concurrent projects justifies it. Revisit after Phase 9.
+
+---
+
+## Phase 8.5: Model Routing & Cost Optimization
+
+**Effort:** M | **Impact:** High
+**Duration:** 3-5 days
+**Status:** NOT STARTED
+**Prerequisite:** Phase 8 complete
+
+### Task-Complexity-Based Routing
+
+```typescript
+class ModelRouter {
+  route(task: Task): ModelSelection {
+    // Haiku ($0.25/$1.25 per M): ~60% of tasks
+    if (task.complexity === 'simple' || task.type in ['lint','format','summarize','explore'])
+      return { model: 'claude-haiku-4-5', reason: 'simple-task' };
+    // Sonnet ($3/$15 per M): ~30% of tasks
+    if (task.complexity === 'standard' || task.type === 'implementation')
+      return { model: 'claude-sonnet-4-5', reason: 'standard-task' };
+    // Opus ($5/$25 per M): ~10% of tasks
+    if (task.complexity === 'complex' || task.type in ['architecture','decomposition','scoping'])
+      return { model: 'claude-opus-4-5', reason: 'complex-task' };
+    return { model: 'claude-sonnet-4-5', reason: 'default' };
+  }
+}
+```
+
+**Cost at 10K tasks/month:** All Opus ~$6,000 → Routed (60/30/10) ~$2,400 (60% reduction).
+
+### Additional Optimizations
+
+- **Haiku for non-critical work:** compaction, file exploration, formatting, log analysis, doc generation
+- **Extended thinking budgets:** Simple 1K, Standard 4K, Complex 10K, max 32K
+- **max_tokens per task type:** Code gen 4,096 / Tests 2,048 / Reports 2,048 / Verification 256
+
+### Checklist
+
+- [ ] Implement ModelRouter class
+- [ ] Integrate into all agent dispatch paths
+- [ ] Route summarization/compaction to Haiku
+- [ ] Variable extended thinking budgets per complexity
+- [ ] Optimized max_tokens per task type
+- [ ] Cache performance monitoring (alert if hit rate < 70%)
+- [ ] Per-request cost logging with model attribution
+- [ ] Cost dashboard queries (daily/weekly/monthly)
 
 ---
 
 ## Phase 9: Documentation & Cleanup
 
-**Duration:** 1 week  
-**Status:** NOT STARTED  
+**Effort:** S | **Impact:** Medium
+**Duration:** 3 days
+**Status:** NOT STARTED
 **Prerequisite:** System stable for 1 week
 
 ### Checklist
@@ -787,180 +734,115 @@ The Batches API allows submitting up to 10,000 async requests with 50% discount 
 - [ ] Rewrite `MASTER_ARCHITECTURE.md`
 - [ ] Update `BOOTSTRAP.md`
 - [ ] Delete outdated docs (legacy monolithic SKILL files)
-- [ ] Create agent development guide
+- [ ] Create agent development guide (includes Tool/Service pattern from Phase 7.7)
 - [ ] Create SKILL file authoring guide
 - [ ] Create troubleshooting runbook
-- [ ] Write ADRs (BullMQ, Neon, layered SKILLs, Opus for orchestrator)
+- [ ] Write ADRs (BullMQ, Neon, layered SKILLs, Opus for orchestrator, InfraProvider interface)
 
 ---
 
-## Future Phases: Business Automation
+## Phase 9.5: Institutional Memory & Knowledge Persistence
 
-> **Note:** These phases are vision, not committed. Engineering foundation (Phases 3-9) must be complete and stable first.
+**Effort:** L | **Impact:** High
+**Duration:** 1-2 weeks
+**Status:** NOT STARTED
+**Prerequisite:** Phase 9 complete
 
-### Phase 10: Product Manager Agent 🔮 FUTURE
+### Registry-Based Institutional Memory
 
-**Prerequisite:** Engineering agents stable (Phases 3-9 complete)
-**Model:** Claude Opus (strategic reasoning)
+Centralized registry per project — solves the "agent fixes bug at 9:00, overwrites fix at 14:00" problem.
 
-**Why First After Engineering:**
-- Feeds directly into engineering pipeline
-- PRDs are structured documents (easier to validate than marketing copy)
-- Completes "idea → shipped product" loop
+```markdown
+# Project Registry: {project_name}
 
-**Scope:**
-- Input: Market research, user feedback, business goals
-- Output: PRDs (Markdown + YAML frontmatter), user stories, acceptance criteria
-- Validation: Engineering agents can execute the specs
+## 2026-02-16
+| Report | Status | Summary |
+|--------|--------|---------|
+| backend-api-auth.md | COMPLETE | JWT auth with refresh tokens |
+| frontend-login.md | COMPLETE | React login form with validation |
 
-**Checklist:**
-- [ ] Create `SKILL-product-manager-*.md` files
-- [ ] Create `product-agent.ts`
-- [ ] Define PRD template format
-- [ ] Integration with orchestrator
-- [ ] Test: Can engineering agents execute generated PRDs?
-
----
-
-### Phase 11: Design Agent 🔮 FUTURE
-
-**Prerequisite:** Phase 10 complete
-**Model:** Claude Sonnet
-
-**Scope:**
-- Input: PRD, brand guidelines
-- Output: Component specs, Tailwind configs, React component skeletons
-- NOT: Figma files, images
-
-**Checklist:**
-- [ ] Create `SKILL-design-*.md` files
-- [ ] Create `design-agent.ts`
-- [ ] Define component spec format
-- [ ] Integration with frontend agent
-
----
-
-### Phase 12: Go-to-Market Agents 🔮 FUTURE
-
-**Prerequisite:** Product to market exists
-**Agents:** Content, Marketing
-
-**Content Agent:**
-- Input: Product features, target audience
-- Output: Blog posts, documentation, social posts
-- Validation: Human review (brand voice)
-
-**Marketing Agent:**
-- Input: Product positioning, channels, budget
-- Output: Campaign plans, ad copy, email sequences
-- Validation: Human approval before spend
-
-**Checklist:**
-- [ ] Create `SKILL-content-*.md` files
-- [ ] Create `SKILL-marketing-*.md` files
-- [ ] Create `content-agent.ts`
-- [ ] Create `marketing-agent.ts`
-- [ ] Define output formats (Markdown for content, JSON for campaigns)
-- [ ] Human approval workflows
-
----
-
-### Phase 13: Operations Agents 🔮 FUTURE
-
-**Risk Level:** HIGH (financial, legal liability)
-**Agents:** Finance, Legal
-
-**Finance Agent:**
-- Input: Bank transactions, invoices
-- Output: Reports, forecasts, categorization
-- Requires: Plaid, Stripe, QuickBooks integrations
-- Gate: Human review ALWAYS
-
-**Legal Agent:**
-- Input: Contract templates, business context
-- Output: Draft contracts, compliance checklists
-- Gate: Human review MANDATORY (never auto-execute)
-
-**Checklist:**
-- [ ] Create `SKILL-finance-*.md` files
-- [ ] Create `SKILL-legal-*.md` files
-- [ ] Create `finance-agent.ts`
-- [ ] Create `legal-agent.ts`
-- [ ] Financial service integrations (Plaid, Stripe, etc.)
-- [ ] Mandatory human approval gates
-- [ ] Audit logging for all outputs
-
----
-
-## Appendix
-
-### Codebase Statistics
-
-| Component | Lines | Files |
-|-----------|-------|-------|
-| Database Schema | 456 | 1 |
-| Task Queue | 391 | 1 |
-| Backend Agent | 300+ | 1 |
-| File Lock Manager | 200+ | 1 |
-| Agent Utilities | 500+ | 6 |
-| API Routes | 300+ | 8 |
-| UI Components | 500+ | 15+ |
-| SKILL Files (Layered) | ~3,000+ | 22 |
-
-### Database Tables
-
-| Table | Status |
-|-------|--------|
-| projects | ✅ |
-| tasks | ✅ |
-| questions | ✅ |
-| file_locks | ✅ |
-| artifacts | ✅ |
-| deployments | ✅ |
-| agent_sessions | ✅ |
-| decisions | ⏭️ Deferred (revisit when needed) |
-
-### Branch Naming Convention
-
-```
-phase-{number}/{feature-name}
-
-Examples:
-- phase-1/context-profiles (done)
-- phase-3/frontend-agent (done)
-- phase-4/qa-agent (done)
-- phase-5/orchestrator-agent-part-3 (done — architect layer)
-- phase-5/image-reading-new-requirements (merged via PR #11)
-- phase-6/project-scoper (done)
+### Decisions Locked
+- Auth: JWT with 15min access / 7day refresh tokens
+- Database: PostgreSQL with Drizzle ORM
+- API style: REST with OpenAPI spec
 ```
 
-### What Changed From Original Plan
+**Rules:**
+1. Orchestrator reads registry at session start — last 3 days only (date-filtered)
+2. Sub-agents NEVER read registry directly — orchestrator injects relevant context
+3. Every completed task updates the registry
+4. "Locked" decisions cannot be reversed without human approval
+5. Lightweight reads: 50 lines vs 5,000 lines of full reports
 
-| Original | Reality |
-|----------|---------|
-| Auto-Claude integration | Custom BullMQ + worker system |
-| Git worktrees | `generated/tasks/{id}/` folders |
-| GCP-native | Neon + Upstash (serverless) |
-| n8n notifications | Not implemented |
-| 12-week timeline | 20-24 weeks |
-| Phase 2 before Phase 3 | Skipped Phase 2, go straight to agents |
-| Phase 5 = DevOps, Phase 6 = Orchestrator | Swapped: Orchestrator first (SKILL files ready) |
-| Engineering-only phases | Business ops phases inserted (Scoper, Reporter) after Orchestrator |
-| No validation gate | Phase 5.5 real project validation required before proceeding |
-| Direct orchestrator → agent handoff | Architect layer added between orchestrator and agents (Phase 5.6) |
-| DevOps Agent = Phase 6 | DevOps Agent pushed to Phase 7 (can be done manually initially) |
+### SKILL Feedback Loop
 
-### Risk Assessment
+After failures: orchestrator identifies pattern → if generalizable → update SKILL file anti-patterns → if project-specific → add to registry "Known Issues". All SKILL updates go through human review (PR).
 
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| Token costs exceed budget | HIGH | ✅ Phase 1 complete (40-80% reduction) |
-| Multi-agent conflicts | MEDIUM | File lock manager exists |
-| Agent output quality varies | MEDIUM | 3-strike rule + human escalation |
-| Scope creep | HIGH | Follow phase checklist strictly |
-| No real-world validation | HIGH | Phase 5.5 mandatory gate |
-| No client-facing pipeline | HIGH | Phase 6/6.5 business agents |
+### Progressive Skill Disclosure Enhancement
+
+Enhance skill-loader.ts:
+- **Startup:** name/description only (minimal tokens)
+- **Activation:** full SKILL.md when task type matches
+- **Expansion:** example files only when pattern is new
+- **Session caching:** once loaded, cache across subsequent calls in session
+
+### Checklist
+
+- [ ] Registry system per project
+- [ ] Orchestrator reads registry at session start (date-filtered)
+- [ ] Task completion updates registry automatically
+- [ ] Decision locking mechanism
+- [ ] SKILL feedback loop (failure → anti-pattern update)
+- [ ] Human review gate for SKILL modifications
+- [ ] Enhanced progressive skill disclosure in skill-loader.ts
 
 ---
 
-*Version 12.1 — Phase 5.7 marked complete (merged PR #11), Phase 6 complete — 2026-02-14*
+## Future Phases: Business Automation 🔮
+
+> Engineering foundation (Phases 6–9.5) must be complete and stable first.
+
+| Phase | Agent | Input | Output | Key Challenge |
+|-------|-------|-------|--------|---------------|
+| 10 | Product Manager | Market research, feedback | PRDs, user stories | Validating spec quality |
+| 11 | Design | Requirements, brand guidelines | CSS/Tailwind tokens, component specs | Output is subjective |
+| 12 | Go-to-Market | Product info, audience | Marketing copy, campaigns | Needs real conversion data |
+| 13 | Operations | Business metrics | Reports, forecasts, dashboards | Needs multiple completed projects |
+
+---
+
+## Cross-Cutting Concerns
+
+These are applied across ALL phases — not standalone tasks.
+
+### Exponential Backoff Retry
+Retry 429 + 5xx with backoff (1s, 2s, 4s). Never retry 4xx. Max 3 retries.
+
+### Prompt Caching on Every Call
+Every API call MUST include `cache_control` on static content (SKILL files, tool definitions, project context). No exceptions. This is rule #9 in Non-Negotiable Rules.
+
+### Cache Performance Monitoring
+Log `cache_read_input_tokens`, `cache_creation_input_tokens` on every response. Alert if hit rate < 70%.
+
+---
+
+## Non-Negotiable Rules
+
+1. **One phase at a time** — no parallel phase work
+2. **Tests before moving on** — baseline and stress tests per phase
+3. **Fix issues immediately** — don't defer bugs
+4. **SKILL files are source of truth** — behavior from SKILLs, not hardcoded
+5. **Sandbox isolation** — outputs to `generated/tasks/{id}/`, never modify SoloEnterprise code
+6. **3-strike rule** — 3 failed attempts → escalate to human
+7. **Human approval gates** — scoping, production deploy, security escalation
+8. **Never skip steps or suggest workarounds** — find proper solutions
+9. **Prompt caching on every call** — no API call without cache_control on static content
+10. **Every project starts with a scoped brief** — no coding without written scope
+11. **Client reports generated weekly** — not optional
+12. **Token costs tracked per project** — maps to billing
+13. **No SSE/WebSocket/polling** — use `router.refresh()` after mutations (server-side, free)
+14. **Provider abstraction** — infrastructure calls go through interfaces, not direct SDK calls
+
+---
+
+*Version 9.0 — Restructured from v8.0. Phase 6.1 split into 6.6/6.7/6.8. SSE dropped. Tool/Service refactor added as Phase 7.7. Cost tracking consolidated. Batch API and context compaction deferred. Effort+Impact ratings added. — 2026-02-16*
