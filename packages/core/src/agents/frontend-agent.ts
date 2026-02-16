@@ -20,6 +20,7 @@ import { buildFrontendContextWithProfile, getEmptyFrontendContextResult, type Fr
 import type { FrontendContextProfileName } from './utils/frontend-context-profiles';
 import { getSharedRedisConnection, closeSharedRedisConnection } from '../utils/index';
 import { TaskLogger } from '../utils/task-logger';
+import { recordAgentCost } from '../services/cost-tracking-service';
 
 const QUEUE_NAME = 'frontend-tasks';
 
@@ -302,6 +303,17 @@ async function processFrontendTask(job: Job<TaskJobData>): Promise<{
       // Architect spec metrics
       techSpecTokens: taskRecord?.techSpecTokens ?? 0,
       hasTechSpec: !!taskRecord?.technicalSpec,
+    });
+
+    // Record cost to cost_tracking table
+    await recordAgentCost({
+      projectId,
+      taskId,
+      agentType: 'frontend',
+      model: MODEL,
+      tokensInput: response.usage?.input_tokens ?? 0,
+      tokensOutput: response.usage?.output_tokens ?? 0,
+      cachedTokens: (response.usage as unknown as Record<string, number>)?.cache_read_input_tokens ?? 0,
     });
 
     // Handle questions — only block pipeline if agent produced NO files

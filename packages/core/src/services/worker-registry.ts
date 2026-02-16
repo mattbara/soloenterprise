@@ -8,7 +8,7 @@
 import { createRedisConnection } from '../utils/redis';
 
 // Worker types supported
-export type WorkerType = 'backend' | 'echo' | 'orchestrator' | 'frontend' | 'qa' | 'devops' | 'feedback' | 'scoper';
+export type WorkerType = 'backend' | 'echo' | 'orchestrator' | 'frontend' | 'qa' | 'devops' | 'feedback' | 'scoper' | 'client-reporter';
 
 // Worker status
 export interface WorkerStatus {
@@ -141,7 +141,7 @@ export async function getWorkerStatus(type: WorkerType): Promise<WorkerStatus> {
  * Get status of all known worker types.
  */
 export async function getAllWorkerStatuses(): Promise<Record<WorkerType, WorkerStatus>> {
-  const types: WorkerType[] = ['backend', 'echo', 'orchestrator', 'frontend', 'qa', 'devops', 'feedback', 'scoper'];
+  const types: WorkerType[] = ['backend', 'echo', 'orchestrator', 'frontend', 'qa', 'devops', 'feedback', 'scoper', 'client-reporter'];
 
   const statuses = await Promise.all(types.map(getWorkerStatus));
 

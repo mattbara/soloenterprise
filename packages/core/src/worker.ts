@@ -75,6 +75,8 @@ async function start() {
     shutdownOrchestratorWorker,
     createScoperWorker,
     shutdownScoperWorker,
+    createClientReporterWorker,
+    shutdownClientReporterWorker,
   } = await import('./agents/index');
 
   const {
@@ -193,6 +195,15 @@ async function start() {
     workers.push({ worker: scoperWorker, shutdown: shutdownScoperWorker, type: 'scoper' });
     await registerWorker('scoper', process.pid);
     console.log('[Worker] Project Scoper agent worker started and registered');
+  }
+
+  if (workerType === 'all' || workerType === 'client-reporter') {
+    console.log('[Worker] Starting Client Reporter agent worker...');
+    const clientReporterWorker = createClientReporterWorker();
+    setupWorkerEvents(clientReporterWorker, 'client-reporter');
+    workers.push({ worker: clientReporterWorker, shutdown: shutdownClientReporterWorker, type: 'client-reporter' });
+    await registerWorker('client-reporter', process.pid);
+    console.log('[Worker] Client Reporter agent worker started and registered');
   }
 
   // Start heartbeat interval

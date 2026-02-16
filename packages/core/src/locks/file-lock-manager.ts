@@ -51,7 +51,7 @@ export interface LockStatus {
 export async function acquireLocks(
   filePaths: string[],
   taskId: string,
-  agentType: 'orchestrator' | 'backend' | 'frontend' | 'qa' | 'devops' | 'feedback' | 'scoper',
+  agentType: 'orchestrator' | 'backend' | 'frontend' | 'qa' | 'devops' | 'feedback' | 'scoper' | 'client-reporter',
   branch: string,
   ttlMs: number = DEFAULT_LOCK_TTL_MS
 ): Promise<LockResult> {
