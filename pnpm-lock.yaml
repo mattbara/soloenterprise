@@ -23,6 +23,9 @@ importers:
       drizzle-orm:
         specifier: ^0.30.0
         version: 0.30.10(@neondatabase/serverless@0.9.5)(@types/pg@8.11.6)(@types/react@19.2.7)(react@19.2.3)
+      lucide-react:
+        specifier: ^0.564.0
+        version: 0.564.0(react@19.2.3)
       next:
         specifier: ^15.0.0
         version: 15.5.9(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -2501,6 +2504,11 @@ packages:
 
   lru-queue@0.1.0:
     resolution: {integrity: sha512-BpdYkt9EvGl8OfWHDQPISVpcl5xZthb+XPsbELj5AQXxIC8IriDZIQYjBJPEm5rS420sjZ0TLEzRcq5KdBhYrQ==}
+
+  lucide-react@0.564.0:
+    resolution: {integrity: sha512-JJ8GVTQqFwuliifD48U6+h7DXEHdkhJ/E87kksGByII3qHxtPciVb8T8woQONHBQgHVOl7rSMrrip3SeVNy7Fg==}
+    peerDependencies:
+      react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
   luxon@3.7.2:
     resolution: {integrity: sha512-vtEhXh/gNjI9Yg1u4jX/0YVPMvxzHuGgCm6tC5kZyb08yjGWGnqAjGJvcXbqQR2P3MyMEFnRbpcdFS6PBcLqew==}
@@ -5637,6 +5645,10 @@ snapshots:
   lru-queue@0.1.0:
     dependencies:
       es5-ext: 0.10.64
+
+  lucide-react@0.564.0(react@19.2.3):
+    dependencies:
+      react: 19.2.3
 
   luxon@3.7.2: {}
 

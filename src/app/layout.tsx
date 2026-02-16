@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import Link from "next/link";
 import { db } from "@/lib/db";
 import { tasks } from "@soloenterprise/db/schema";
 import { eq, count, isNotNull } from "drizzle-orm";
-import { NavErrorsLink } from "@/components/NavErrorsLink";
+import { AppSidebar } from "@/components/sidebar/app-sidebar";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -43,70 +42,15 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
-        <div className="min-h-screen bg-gray-50">
-          <nav className="bg-white shadow-sm border-b">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="flex justify-between h-16">
-                <div className="flex">
-                  <div className="flex-shrink-0 flex items-center">
-                    <span className="text-xl font-bold text-gray-900">
-                      SoloEnterprise
-                    </span>
-                  </div>
-                  <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
-                    <Link
-                      href="/"
-                      prefetch={false}
-                      className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
-                    >
-                      Dashboard
-                    </Link>
-                    <Link
-                      href="/projects"
-                      prefetch={false}
-                      className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
-                    >
-                      Projects
-                    </Link>
-                    <Link
-                      href="/tasks"
-                      prefetch={false}
-                      className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
-                    >
-                      Tasks
-                    </Link>
-                    <Link
-                      href="/questions"
-                      prefetch={false}
-                      className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
-                    >
-                      Questions
-                    </Link>
-                    <Link
-                      href="/briefs"
-                      prefetch={false}
-                      className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
-                    >
-                      Briefs
-                    </Link>
-                    <Link
-                      href="/metrics"
-                      prefetch={false}
-                      className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
-                    >
-                      Metrics
-                    </Link>
-                    <NavErrorsLink
-                      errorCount={errorCounts.errors}
-                      warningCount={errorCounts.warnings}
-                    />
-                  </div>
-                </div>
-              </div>
+        <div className="flex h-screen bg-gray-50">
+          <AppSidebar
+            errorCount={errorCounts.errors}
+            warningCount={errorCounts.warnings}
+          />
+          <main className="flex-1 overflow-y-auto">
+            <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+              {children}
             </div>
-          </nav>
-          <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-            {children}
           </main>
         </div>
       </body>
