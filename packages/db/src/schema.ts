@@ -63,6 +63,7 @@ export const agentTypeEnum = pgEnum('agent_type', [
   'devops',
   'feedback',
   'scoper',
+  'client-reporter',
 ]);
 
 export const questionStatusEnum = pgEnum('question_status', [

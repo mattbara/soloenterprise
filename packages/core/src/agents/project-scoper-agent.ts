@@ -21,6 +21,7 @@ import { buildScoperContext } from './utils/scoper-context-loader';
 import { buildCachedSystemPrompt, extractCacheMetrics, logCacheMetrics } from './utils/cache-helper';
 import { getSharedRedisConnection, closeSharedRedisConnection } from '../utils/index';
 import { TaskLogger } from '../utils/task-logger';
+import { recordAgentCost } from '../services/cost-tracking-service';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -241,6 +242,17 @@ async function processScoperTask(job: Job<TaskJobData>): Promise<{
       cacheReadInputTokens: cacheMetrics.cacheReadInputTokens,
       cacheHitPercent: cacheMetrics.cacheHitPercent,
       estimatedSavingsPercent: cacheMetrics.estimatedSavingsPercent,
+    });
+
+    // Record cost to cost_tracking table
+    await recordAgentCost({
+      projectId,
+      taskId,
+      agentType: 'scoper',
+      model: MODEL,
+      tokensInput: response.usage?.input_tokens ?? 0,
+      tokensOutput: response.usage?.output_tokens ?? 0,
+      cachedTokens: (response.usage as unknown as Record<string, number>)?.cache_read_input_tokens ?? 0,
     });
 
     // Parse the response

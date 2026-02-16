@@ -10,6 +10,7 @@ export { createFrontendWorker, shutdownFrontendWorker } from './frontend-agent';
 export { createQAWorker, shutdownQAWorker } from './qa-agent';
 export { createOrchestratorWorker, shutdownOrchestratorWorker } from './orchestrator-agent';
 export { createScoperWorker, shutdownScoperWorker } from './project-scoper-agent';
+export { createClientReporterWorker, shutdownClientReporterWorker } from './client-reporter-agent';
 
 // Utility exports
 export { parseAgentOutput, validateParsedFiles, type ParsedFile, type ParseResult } from './utils/output-parser';

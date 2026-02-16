@@ -19,6 +19,7 @@ import { executeOrchestratorCommands, type ExecutionResult } from './utils/orche
 import { extractImageRequirements } from './utils/image-requirement-extractor';
 import { getSharedRedisConnection, closeSharedRedisConnection } from '../utils/index';
 import { TaskLogger } from '../utils/task-logger';
+import { recordAgentCost } from '../services/cost-tracking-service';
 
 const QUEUE_NAME = 'orchestrator-tasks';
 
@@ -273,6 +274,17 @@ async function processOrchestratorTask(job: Job<TaskJobData>): Promise<{
       cacheReadInputTokens: cacheMetrics.cacheReadInputTokens,
       cacheHitPercent: cacheMetrics.cacheHitPercent,
       estimatedSavingsPercent: cacheMetrics.estimatedSavingsPercent,
+    });
+
+    // Record cost to cost_tracking table
+    await recordAgentCost({
+      projectId,
+      taskId,
+      agentType: 'orchestrator',
+      model: MODEL,
+      tokensInput: response.usage?.input_tokens ?? 0,
+      tokensOutput: response.usage?.output_tokens ?? 0,
+      cachedTokens: (response.usage as unknown as Record<string, number>)?.cache_read_input_tokens ?? 0,
     });
 
     // Parse YAML response
