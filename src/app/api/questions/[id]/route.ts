@@ -65,62 +65,78 @@ export async function PATCH(
       .where(eq(questions.id, id))
       .returning();
 
-    // 3. If this question has an associated task in waiting_human status, re-queue it
+    // 3. If this question has an associated task in waiting_human status, handle it
     let taskRequeued = false;
+    let taskCancelled = false;
+
     if (question.task && question.task.status === "waiting_human") {
       const task = question.task;
 
-      // Add the Q&A to the task context for the next processing attempt
-      const existingContext = (task.context as Record<string, unknown>) ?? {};
-      const answeredQuestions = (existingContext.answeredQuestions as Array<{ question: string; answer: string }>) ?? [];
-
-      answeredQuestions.push({
-        question: question.question,
-        answer: answer,
-      });
-
-      // Update task context with the Q&A (don't set status yet - enqueueTask will set it to 'queued')
-      await db
-        .update(tasks)
-        .set({
-          context: {
-            ...existingContext,
-            answeredQuestions,
-          },
-          updatedAt: new Date(),
-        })
-        .where(eq(tasks.id, task.id));
-
-      // Re-queue the task to the appropriate agent queue
-      console.log(`[Questions API] Attempting to re-queue task ${task.id} to ${task.agentType} queue...`);
-      console.log(`[Questions API] REDIS_URL present: ${!!process.env.REDIS_URL}`);
-
-      try {
-        const job = await enqueueTask(
-          task.id,
-          task.agentType as "backend" | "frontend" | "qa" | "orchestrator" | "devops" | "feedback",
-          task.priority as "critical" | "high" | "medium" | "low"
-        );
-        taskRequeued = true;
-        console.log(`[Questions API] SUCCESS - Task ${task.id} re-queued to ${task.agentType} queue, job ID: ${job.id}`);
-      } catch (queueError) {
-        console.error(`[Questions API] FAILED to re-queue task ${task.id}:`, queueError);
-        console.error(`[Questions API] Error details:`, String(queueError));
-        // Set status to pending so it can be manually retried
+      // Check for cancellation
+      if (answer.toLowerCase().trim() === "cancelled") {
         await db
           .update(tasks)
           .set({
-            status: "pending",
+            status: "cancelled",
             updatedAt: new Date(),
           })
           .where(eq(tasks.id, task.id));
-        console.log(`[Questions API] Task ${task.id} set to pending status for manual retry`);
+        taskCancelled = true;
+        console.log(`[Questions API] Task ${task.id} cancelled by user`);
+      } else {
+        // Add the Q&A to the task context for the next processing attempt
+        const existingContext = (task.context as Record<string, unknown>) ?? {};
+        const answeredQuestions = (existingContext.answeredQuestions as Array<{ question: string; answer: string }>) ?? [];
+
+        answeredQuestions.push({
+          question: question.question,
+          answer: answer,
+        });
+
+        // Update task context with the Q&A (don't set status yet - enqueueTask will set it to 'queued')
+        await db
+          .update(tasks)
+          .set({
+            context: {
+              ...existingContext,
+              answeredQuestions,
+            },
+            updatedAt: new Date(),
+          })
+          .where(eq(tasks.id, task.id));
+
+        // Re-queue the task to the appropriate agent queue
+        console.log(`[Questions API] Attempting to re-queue task ${task.id} to ${task.agentType} queue...`);
+        console.log(`[Questions API] REDIS_URL present: ${!!process.env.REDIS_URL}`);
+
+        try {
+          const job = await enqueueTask(
+            task.id,
+            task.agentType as "backend" | "frontend" | "qa" | "orchestrator" | "devops" | "feedback",
+            task.priority as "critical" | "high" | "medium" | "low"
+          );
+          taskRequeued = true;
+          console.log(`[Questions API] SUCCESS - Task ${task.id} re-queued to ${task.agentType} queue, job ID: ${job.id}`);
+        } catch (queueError) {
+          console.error(`[Questions API] FAILED to re-queue task ${task.id}:`, queueError);
+          console.error(`[Questions API] Error details:`, String(queueError));
+          // Set status to pending so it can be manually retried
+          await db
+            .update(tasks)
+            .set({
+              status: "pending",
+              updatedAt: new Date(),
+            })
+            .where(eq(tasks.id, task.id));
+          console.log(`[Questions API] Task ${task.id} set to pending status for manual retry`);
+        }
       }
     }
 
     return NextResponse.json({
       ...updatedQuestion,
       taskRequeued,
+      taskCancelled,
     });
   } catch (error) {
     console.error("Failed to answer question:", error);

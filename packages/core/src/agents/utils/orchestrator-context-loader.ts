@@ -13,7 +13,7 @@
  */
 
 import { db } from '@soloenterprise/db';
-import { projects, tasks, questions, fileLocks } from '@soloenterprise/db/schema';
+import { projects, tasks, questions, fileLocks, projectScopes } from '@soloenterprise/db/schema';
 import { eq, desc, and, or, inArray, isNull, gt } from 'drizzle-orm';
 
 const CHARS_PER_TOKEN = 4;
@@ -27,6 +27,9 @@ export interface OrchestratorContextResult {
   blockedTaskCount: number;
   pendingQuestionCount: number;
   lockedFileCount: number;
+  // Scope data (loaded from projectScopes via projects.scopeId)
+  scopeData: Record<string, unknown> | null;
+  clientDocument: string | null;
 }
 
 /**
@@ -43,6 +46,24 @@ export async function buildOrchestratorContext(projectId: string): Promise<Orche
   if (!project) {
     console.warn(`[OrchestratorContextLoader] Project not found: ${projectId}`);
     return getEmptyOrchestratorContextResult();
+  }
+
+  // Load scope data if project has a scopeId
+  let scopeData: Record<string, unknown> | null = null;
+  let clientDocument: string | null = null;
+
+  if (project.scopeId) {
+    try {
+      const scope = await db.query.projectScopes.findFirst({
+        where: eq(projectScopes.id, project.scopeId),
+      });
+      if (scope) {
+        scopeData = scope.scopeData as Record<string, unknown>;
+        clientDocument = scope.clientDocument;
+      }
+    } catch (err) {
+      console.warn(`[OrchestratorContextLoader] Failed to load scope data: ${err}`);
+    }
   }
 
   sections.push('## Project State\n');
@@ -201,6 +222,8 @@ export async function buildOrchestratorContext(projectId: string): Promise<Orche
     blockedTaskCount: blockedTasks.length,
     pendingQuestionCount: pendingQuestions.length,
     lockedFileCount: projectLocks.length,
+    scopeData,
+    clientDocument,
   };
 }
 
@@ -215,6 +238,8 @@ export function getEmptyOrchestratorContextResult(): OrchestratorContextResult {
     blockedTaskCount: 0,
     pendingQuestionCount: 0,
     lockedFileCount: 0,
+    scopeData: null,
+    clientDocument: null,
   };
 }
 

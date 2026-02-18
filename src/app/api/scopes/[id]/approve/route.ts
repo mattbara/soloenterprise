@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projectScopes } from "@soloenterprise/db/schema";
-import { eq } from "drizzle-orm";
+import { projectScopes, projects } from "@soloenterprise/db/schema";
+import { eq, and } from "drizzle-orm";
 
 /**
  * POST /api/scopes/:id/approve — Approve or reject a scope
@@ -63,6 +63,19 @@ export async function POST(
       })
       .where(eq(projectScopes.id, id))
       .returning();
+
+    // On approval, link scope to project via projects.scopeId
+    if (action === "approve" && scope.projectId) {
+      try {
+        await db
+          .update(projects)
+          .set({ scopeId: id, updatedAt: new Date() })
+          .where(eq(projects.id, scope.projectId));
+        console.log(`[Scopes API] Linked scope ${id} to project ${scope.projectId}`);
+      } catch (linkError) {
+        console.error(`[Scopes API] Failed to link scope to project:`, linkError);
+      }
+    }
 
     return NextResponse.json(updated);
   } catch (error) {

@@ -9,7 +9,7 @@ import { Worker, Job } from 'bullmq';
 import Anthropic from '@anthropic-ai/sdk';
 import { db } from '@soloenterprise/db';
 import { questions, tasks } from '@soloenterprise/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, and as drizzleAnd, count } from 'drizzle-orm';
 import { updateTaskStatus, getTask, claimTaskForProcessing, type TaskJobData } from '../services/task-service';
 import { loadSkillsForOrchestrator, type OrchestratorAction } from './utils/skill-loader';
 import { buildCachedSystemPrompt, extractCacheMetrics, logCacheMetrics } from './utils/cache-helper';
@@ -97,7 +97,9 @@ function getAnthropicClient(): Anthropic {
 function buildPrompt(
   taskName: string,
   taskDescription: string,
-  context: Record<string, unknown>
+  context: Record<string, unknown>,
+  scopeData?: Record<string, unknown> | null,
+  clientDocument?: string | null,
 ): string {
   const parts: string[] = [];
 
@@ -112,6 +114,22 @@ function buildPrompt(
 
   if (context.projectDescription) {
     parts.push(`**Project Description:** ${context.projectDescription}\n`);
+  }
+
+  // Scope data (from approved project scope)
+  if (scopeData) {
+    parts.push('\n## Approved Project Scope\n');
+    parts.push('The following scope was approved by the client. Use this to guide task decomposition and priorities.\n');
+    parts.push('```json');
+    parts.push(JSON.stringify(scopeData, null, 2));
+    parts.push('```\n');
+  }
+
+  // Client document (from scope approval)
+  if (clientDocument) {
+    parts.push('\n## Client Document\n');
+    parts.push(clientDocument);
+    parts.push('\n');
   }
 
   // Requirements
@@ -209,9 +227,48 @@ async function processOrchestratorTask(job: Job<TaskJobData>): Promise<{
       logger.warn('OrchestratorAgent', `Image extraction failed, continuing without: ${err instanceof Error ? err.message : String(err)}`);
     }
 
-    // Build user prompt with enriched description
+    // Circuit breaker: check question rounds before calling API
+    const maxQuestionRounds = parseInt(process.env.ORCHESTRATOR_MAX_QUESTION_ROUNDS || '5', 10);
+    const [questionCountResult] = await db
+      .select({ value: count() })
+      .from(questions)
+      .where(drizzleAnd(eq(questions.taskId, taskId), eq(questions.askedByAgent, 'orchestrator')));
+    const questionCount = questionCountResult?.value ?? 0;
+
+    if (questionCount >= maxQuestionRounds) {
+      logger.warn('OrchestratorAgent', `Circuit breaker triggered: ${questionCount} question rounds reached (max: ${maxQuestionRounds})`);
+
+      await db.insert(questions).values({
+        projectId,
+        taskId,
+        question: `This task has asked ${questionCount} rounds of questions without producing actionable output. Review the task requirements or answer 'cancelled' to stop.`,
+        context: `Task: ${name}\n\nDescription: ${description}\n\nThis is an automatic escalation — the orchestrator has exceeded the maximum allowed question rounds.`,
+        askedByAgent: 'orchestrator',
+        status: 'pending',
+        priority: 'blocking',
+        isBlocking: true,
+      });
+
+      await updateTaskStatus(taskId, 'waiting_human', {
+        success: false,
+        summary: `Circuit breaker: ${questionCount} question rounds exceeded (max: ${maxQuestionRounds})`,
+      });
+
+      return {
+        success: false,
+        summary: `Circuit breaker triggered after ${questionCount} question rounds`,
+      };
+    }
+
+    // Build user prompt with enriched description (thread scope data from context loader)
     const enrichedDescription = description + imageReqBlock;
-    const userPrompt = buildPrompt(name, enrichedDescription, context);
+    const userPrompt = buildPrompt(
+      name,
+      enrichedDescription,
+      context,
+      orchestratorContext.scopeData,
+      orchestratorContext.clientDocument,
+    );
 
     logger.log('OrchestratorAgent', 'Calling Claude API (Opus)...');
 
@@ -315,6 +372,42 @@ async function processOrchestratorTask(job: Job<TaskJobData>): Promise<{
       }
 
       logger.log('OrchestratorAgent', `Execution complete: ${executionResult.tasksCreated.length} tasks created, ${executionResult.statusesUpdated.length} statuses updated, ${executionResult.locksAcquired.length} locks acquired, ${executionResult.locksReleased.length} locks released`);
+    }
+
+    // No-output guard: if orchestrator produced nothing actionable, escalate
+    const executedCommandCount = executionResult
+      ? executionResult.tasksCreated.length + executionResult.statusesUpdated.length + executionResult.locksAcquired.length + executionResult.locksReleased.length
+      : 0;
+    const hasQuestionsInOutput = parseResult.success && parseResult.questions.length > 0;
+
+    if (executedCommandCount === 0 && !hasQuestionsInOutput) {
+      logger.warn('OrchestratorAgent', 'No-output guard triggered: orchestrator produced no actionable commands and no questions');
+
+      await db.insert(questions).values({
+        projectId,
+        taskId,
+        question: 'The orchestrator produced no actionable output for this task. Please review the task description and provide clarification, or answer \'cancelled\' to stop.',
+        context: `Task: ${name}\n\nDescription: ${description}\n\nRaw response was received but contained no executable commands or questions.`,
+        askedByAgent: 'orchestrator',
+        status: 'pending',
+        priority: 'blocking',
+        isBlocking: true,
+      });
+
+      await updateTaskStatus(taskId, 'waiting_human', {
+        success: false,
+        summary: 'No-output guard: orchestrator produced no actionable output',
+        outputs: {
+          rawResponse: responseText,
+          parsed: parseResult.success,
+          action: parseResult.action,
+        },
+      });
+
+      return {
+        success: false,
+        summary: 'No-output guard: orchestrator produced no actionable output',
+      };
     }
 
     // Check if orchestrator needs human input (has questions in parsed output)
