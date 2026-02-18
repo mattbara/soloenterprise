@@ -15,6 +15,7 @@ import { Redis } from 'ioredis';
 import { db } from '@soloenterprise/db';
 import { tasks, questions } from '@soloenterprise/db/schema';
 import { eq } from 'drizzle-orm';
+import { isRateLimitError, handleRateLimit } from '../utils/rate-limit-guard';
 
 // Queue names per agent type
 export const QUEUE_NAMES = {
@@ -322,6 +323,13 @@ export function createWorker(
   worker.on('failed', async (job, error) => {
     console.error(`[Worker:${agentType}] Job ${job?.id} failed:`, error);
     if (job) {
+      // Check for rate limit / credit limit errors BEFORE burning a retry
+      const limitType = isRateLimitError(error.message);
+      if (limitType) {
+        console.log(`[Worker:${agentType}] Rate limit detected, routing to rate-limit-guard`);
+        await handleRateLimit(job.data.taskId, agentType, error.message, limitType);
+        return; // Skip markTaskFailed — don't burn a retry attempt
+      }
       await markTaskFailed(job.data.taskId, error.message);
     }
   });
