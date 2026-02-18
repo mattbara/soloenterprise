@@ -193,6 +193,7 @@ export async function processWithSyntaxRecovery(
   validateFn: (files: ParsedFile[]) => Promise<SyntaxError[]>,
   generateFreshFn: () => Promise<ParsedFile[]>
 ): Promise<RecoveryResult> {
+  const declaredFileCount = initialFiles.length;
   let currentFiles = initialFiles;
   let fixAttemptsThisGen = 0;
   let fullRetries = 0;
@@ -208,6 +209,11 @@ export async function processWithSyntaxRecovery(
     console.log(`[${agentName}] TypeScript validation: ${syntaxErrors.length} error(s)`);
     for (const err of syntaxErrors) {
       console.log(`[${agentName}]   ${err.file}:${err.line}:${err.column} - ${err.message}`);
+    }
+
+    // 0-file guard: if we started with files but now have 0, something corrupted the recovery
+    if (declaredFileCount > 0 && currentFiles.length === 0) {
+      throw new Error(`Syntax recovery produced 0 files from ${declaredFileCount} declared`);
     }
 
     // Success - no syntax errors

@@ -452,6 +452,12 @@ async function processFrontendTask(job: Job<TaskJobData>): Promise<{
     // Log recovery stats
     logger.log('FrontendAgent', `Recovery complete: success=${recoveryResult.success}, fixLoops=${recoveryResult.attempts.fixLoops}, fullRetries=${recoveryResult.attempts.fullRetries}, fixTokens=${recoveryResult.attempts.fixTokensUsed}`);
 
+    // 0-file safety check: recovery reported success but produced no files
+    if (recoveryResult.success && recoveryResult.files.length === 0) {
+      logger.error('FrontendAgent', `Syntax recovery succeeded but produced 0 files from ${parseResult.files.length} input files`);
+      throw new Error(`Syntax recovery produced 0 files from ${parseResult.files.length} declared — aborting to prevent silent completion`);
+    }
+
     // Handle recovery failure
     if (!recoveryResult.success) {
       const errorSummary = recoveryResult.errors
