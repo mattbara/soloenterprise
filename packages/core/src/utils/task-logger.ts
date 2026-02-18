@@ -1,24 +1,32 @@
 /**
  * Task Logger
  *
- * Writes timestamped log lines to generated/tasks/{taskId}/task.log.
- * Used by all agents to persist execution logs for the dashboard log viewer.
+ * Writes timestamped log lines to a temp directory outside the project tree.
+ * This prevents Turbopack HMR from detecting file changes and triggering
+ * repeated page recompilations while agents are running.
+ *
+ * Logs are buffered in memory and flushed to disk every FLUSH_INTERVAL_MS.
  */
 
 import { mkdirSync, appendFileSync } from 'fs';
 import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { tmpdir } from 'os';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+const LOG_ROOT = resolve(tmpdir(), 'soloenterprise-logs', 'tasks');
+
+const FLUSH_INTERVAL_MS = 5000;
 
 export class TaskLogger {
   private taskId: string;
   private logFilePath: string;
   private initialized: boolean = false;
+  private buffer: string[] = [];
+  private flushTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(taskId: string) {
     this.taskId = taskId;
     this.logFilePath = TaskLogger.getLogFilePath(taskId);
+    this.flushTimer = setInterval(() => this.flush(), FLUSH_INTERVAL_MS);
   }
 
   private ensureDir(): void {
@@ -32,20 +40,38 @@ export class TaskLogger {
     }
   }
 
-  private write(level: string, source: string, message: string): void {
-    const timestamp = new Date().toISOString();
-    const line = `[${timestamp}] [${level}] [${source}] ${message}\n`;
+  /** Flush buffered lines to disk. */
+  flush(): void {
+    if (this.buffer.length === 0) return;
+    const chunk = this.buffer.join('');
+    this.buffer = [];
 
-    // Write to file
     this.ensureDir();
     try {
-      appendFileSync(this.logFilePath, line);
+      appendFileSync(this.logFilePath, chunk);
     } catch (err) {
       // Don't let logging failures crash agents
       console.error(`[TaskLogger] Failed to write log for task ${this.taskId}:`, err);
     }
+  }
 
-    // Also write to console for terminal visibility
+  /** Stop the flush timer and write remaining buffered lines. */
+  close(): void {
+    if (this.flushTimer) {
+      clearInterval(this.flushTimer);
+      this.flushTimer = null;
+    }
+    this.flush();
+  }
+
+  private write(level: string, source: string, message: string): void {
+    const timestamp = new Date().toISOString();
+    const line = `[${timestamp}] [${level}] [${source}] ${message}\n`;
+
+    // Buffer for periodic disk write
+    this.buffer.push(line);
+
+    // Still write to console for terminal visibility
     console.log(`[${source}] ${message}`);
   }
 
@@ -62,6 +88,6 @@ export class TaskLogger {
   }
 
   static getLogFilePath(taskId: string): string {
-    return resolve(__dirname, '../../generated/tasks', taskId, 'task.log');
+    return resolve(LOG_ROOT, taskId, 'task.log');
   }
 }

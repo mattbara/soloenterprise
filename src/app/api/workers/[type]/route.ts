@@ -14,6 +14,7 @@ const VALID_WORKER_TYPES: WorkerType[] = [
   "devops",
   "feedback",
   "scoper",
+  "client-reporter",
 ];
 
 interface RouteParams {

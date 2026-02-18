@@ -194,6 +194,7 @@ async function processOrchestratorTask(job: Job<TaskJobData>): Promise<{
   const claim = await claimTaskForProcessing(taskId);
   if (!claim.claimed) {
     logger.log('OrchestratorAgent', `Task ${taskId} already claimed (status: ${claim.currentStatus}), skipping`);
+    logger.close();
     return { success: false, noop: true, summary: `Task already claimed by another worker (status: ${claim.currentStatus})` };
   }
 
@@ -515,6 +516,8 @@ async function processOrchestratorTask(job: Job<TaskJobData>): Promise<{
       success: false,
       error: errorMessage,
     };
+  } finally {
+    logger.close();
   }
 }
 

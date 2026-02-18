@@ -165,12 +165,14 @@ export async function extractImageRequirements(
   // 2. Check if images exist
   const attachments = (task.imageAttachments as ImageAttachment[] | null) ?? [];
   if (attachments.length === 0) {
+    logger.close();
     return null; // No images, zero cost
   }
 
   // 3. Skip if already extracted (idempotent)
   if (task.imageRequirements) {
     logger.log('ImageExtractor', `Task ${taskId} already has image requirements, skipping`);
+    logger.close();
     return null;
   }
 
@@ -203,6 +205,7 @@ export async function extractImageRequirements(
 
   if (imageBlocks.length === 0) {
     logger.warn('ImageExtractor', `No images could be loaded for task ${taskId}`);
+    logger.close();
     return null;
   }
 
@@ -237,6 +240,7 @@ export async function extractImageRequirements(
 
     if (!requirements) {
       logger.warn('ImageExtractor', `Empty response for task ${taskId}`);
+      logger.close();
       return null;
     }
 
@@ -270,9 +274,11 @@ export async function extractImageRequirements(
       })
     );
 
+    logger.close();
     return { requirements, tokens: totalTokens };
   } catch (err) {
     logger.error('ImageExtractor', `API call failed for task ${taskId}: ${err instanceof Error ? err.message : String(err)}`);
+    logger.close();
     return null; // Graceful degradation
   }
 }

@@ -55,6 +55,17 @@ export interface RecoveryResult {
   attempts: RecoveryAttempts;
 }
 
+/**
+ * Callback for tracking API costs from fix attempts and full retries.
+ * Called after each Claude API call during recovery.
+ */
+export type CostTrackingCallback = (usage: {
+  inputTokens: number;
+  outputTokens: number;
+  cachedTokens: number;
+  callSource: 'syntax-fix' | 'full-retry';
+}) => Promise<void>;
+
 // ============================================================================
 // TypeScript Validation Wrapper
 // ============================================================================
@@ -87,7 +98,8 @@ export async function requestSyntaxFix(
   client: Anthropic,
   brokenFiles: ParsedFile[],
   syntaxErrors: TSValidationError[],
-  agentName: string
+  agentName: string,
+  onCost?: CostTrackingCallback
 ): Promise<{ fixedResponse: string; tokensUsed: number }> {
   // Format errors with full context (line numbers, surrounding code)
   const errorDetails = formatErrorsForFixPrompt(syntaxErrors);
@@ -131,13 +143,24 @@ Return ONLY the fixed file(s). No explanations.`;
   const textContent = response.content.find((c) => c.type === 'text');
   const fixedCode = textContent?.type === 'text' ? textContent.text : '';
 
-  const tokensUsed =
-    (response.usage?.input_tokens ?? 0) + (response.usage?.output_tokens ?? 0);
+  const inputTokens = response.usage?.input_tokens ?? 0;
+  const outputTokens = response.usage?.output_tokens ?? 0;
+  const tokensUsed = inputTokens + outputTokens;
 
   console.log(`[${agentName}] Syntax fix response: ${fixedCode.length} chars`);
   console.log(
-    `[${agentName}] Fix attempt tokens: ${response.usage?.input_tokens ?? 0} in, ${response.usage?.output_tokens ?? 0} out`
+    `[${agentName}] Fix attempt tokens: ${inputTokens} in, ${outputTokens} out`
   );
+
+  // Track cost if callback provided
+  if (onCost) {
+    await onCost({
+      inputTokens,
+      outputTokens,
+      cachedTokens: (response.usage as unknown as Record<string, number>)?.cache_read_input_tokens ?? 0,
+      callSource: 'syntax-fix',
+    });
+  }
 
   return { fixedResponse: fixedCode, tokensUsed };
 }
@@ -191,7 +214,8 @@ export async function processWithSyntaxRecovery(
   agentName: string,
   initialFiles: ParsedFile[],
   validateFn: (files: ParsedFile[]) => Promise<SyntaxError[]>,
-  generateFreshFn: () => Promise<ParsedFile[]>
+  generateFreshFn: () => Promise<ParsedFile[]>,
+  onCost?: CostTrackingCallback
 ): Promise<RecoveryResult> {
   const declaredFileCount = initialFiles.length;
   let currentFiles = initialFiles;
@@ -261,7 +285,8 @@ export async function processWithSyntaxRecovery(
           client,
           currentFiles,
           syntaxErrors,
-          agentName
+          agentName,
+          onCost
         );
 
         totalFixTokens += tokensUsed;
@@ -283,6 +308,8 @@ export async function processWithSyntaxRecovery(
         currentFiles = await generateFreshFn();
         fullRetries++;
         fixAttemptsThisGen = 0; // Reset fix counter for new generation
+        // Note: full retry cost is tracked by the agent's generateFreshFn callback
+        // since the API call happens inside the agent, not here
       } catch (err) {
         console.error(`[${agentName}] Full retry failed:`, err);
         // Give up

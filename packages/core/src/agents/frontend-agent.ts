@@ -15,7 +15,7 @@ import { parseAgentOutput, validateParsedFiles } from './utils/output-parser';
 import { writeGeneratedFiles } from './utils/file-writer';
 import { validateGeneratedFiles } from './utils/file-validator';
 import { loadSkillsForTask, type TaskComplexity } from './utils/skill-loader';
-import { processWithSyntaxRecovery, type SyntaxError, type RecoveryAttempts } from './utils/syntax-recovery';
+import { processWithSyntaxRecovery, type SyntaxError, type RecoveryAttempts, type CostTrackingCallback } from './utils/syntax-recovery';
 import { buildFrontendContextWithProfile, getEmptyFrontendContextResult, type FrontendProfiledContextResult } from './utils/frontend-context-loader';
 import type { FrontendContextProfileName } from './utils/frontend-context-profiles';
 import { getSharedRedisConnection, closeSharedRedisConnection } from '../utils/index';
@@ -203,6 +203,7 @@ async function processFrontendTask(job: Job<TaskJobData>): Promise<{
   const claim = await claimTaskForProcessing(taskId);
   if (!claim.claimed) {
     logger.log('FrontendAgent', `Task ${taskId} already claimed (status: ${claim.currentStatus}), skipping`);
+    logger.close();
     return { success: false, noop: true, summary: `Task already claimed by another worker (status: ${claim.currentStatus})` };
   }
 
@@ -423,6 +424,20 @@ async function processFrontendTask(job: Job<TaskJobData>): Promise<{
       }));
     };
 
+    // Cost tracking callback for syntax recovery
+    const onRecoveryCost: CostTrackingCallback = async (usage) => {
+      await recordAgentCost({
+        projectId,
+        taskId,
+        agentType: 'frontend',
+        model: usage.callSource === 'syntax-fix' ? 'claude-3-5-haiku-latest' : MODEL,
+        tokensInput: usage.inputTokens,
+        tokensOutput: usage.outputTokens,
+        cachedTokens: usage.cachedTokens,
+        callSource: usage.callSource,
+      });
+    };
+
     // Create fresh generation function for full retries
     const generateFresh = async (): Promise<typeof parseResult.files> => {
       logger.log('FrontendAgent', 'Generating fresh response (full retry)...');
@@ -433,6 +448,15 @@ async function processFrontendTask(job: Job<TaskJobData>): Promise<{
         system: skillContent,
         messages: [{ role: 'user', content: userPrompt }],
       });
+
+      // Track full retry cost
+      await onRecoveryCost({
+        inputTokens: retryResponse.usage?.input_tokens ?? 0,
+        outputTokens: retryResponse.usage?.output_tokens ?? 0,
+        cachedTokens: (retryResponse.usage as unknown as Record<string, number>)?.cache_read_input_tokens ?? 0,
+        callSource: 'full-retry',
+      });
+
       const retryText = retryResponse.content.find(c => c.type === 'text');
       const retryResponseText = retryText?.type === 'text' ? retryText.text : '';
       const retryParsed = parseAgentOutput(retryResponseText);
@@ -446,7 +470,8 @@ async function processFrontendTask(job: Job<TaskJobData>): Promise<{
       'FrontendAgent',
       parseResult.files,
       validateFiles,
-      generateFresh
+      generateFresh,
+      onRecoveryCost
     );
 
     // Log recovery stats
@@ -576,6 +601,8 @@ async function processFrontendTask(job: Job<TaskJobData>): Promise<{
       success: false,
       error: errorMessage,
     };
+  } finally {
+    logger.close();
   }
 }
 

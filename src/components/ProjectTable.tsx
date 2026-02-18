@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Trash2, Eye, Activity } from "lucide-react";
+import { Trash2, Eye, Activity, RotateCcw } from "lucide-react";
 
 interface Project {
   id: string;
@@ -74,6 +74,7 @@ export function ProjectTable({
   const [searchQuery, setSearchQuery] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [repushingId, setRepushingId] = useState<string | null>(null);
 
   // Update projects when props change
   useEffect(() => {
@@ -106,6 +107,39 @@ export function ProjectTable({
       // silently fail for now
     } finally {
       setDeleting(false);
+    }
+  }
+
+  async function handleRepushOrchestrator(project: Project) {
+    const scopeRef = project.briefScope || project.scope;
+    if (!scopeRef) return;
+    setRepushingId(project.id);
+    try {
+      const res = await fetch(`/api/scopes/${scopeRef.id}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "approve", approvedBy: "human-repush" }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        // 409 = already approved, try direct orchestrator creation
+        if (res.status === 409) {
+          const orchRes = await fetch(`/api/projects/${project.id}/orchestrate`, {
+            method: "POST",
+          });
+          if (!orchRes.ok) {
+            const orchData = await orchRes.json();
+            throw new Error(orchData.error || "Failed to create orchestrator task");
+          }
+        } else {
+          throw new Error(data.error || "Failed to re-approve scope");
+        }
+      }
+      router.refresh();
+    } catch (err) {
+      console.error("[RepushOrchestrator]", err);
+    } finally {
+      setRepushingId(null);
     }
   }
 
@@ -238,6 +272,19 @@ export function ProjectTable({
                             title="View scope"
                           >
                             <Eye className="h-4 w-4" />
+                          </button>
+                        )}
+                        {briefStatus === "approved" && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRepushOrchestrator(project);
+                            }}
+                            disabled={repushingId === project.id}
+                            className="text-amber-500 hover:text-amber-700 p-1 disabled:opacity-50"
+                            title="Re-push to orchestrator"
+                          >
+                            <RotateCcw className={`h-4 w-4 ${repushingId === project.id ? "animate-spin" : ""}`} />
                           </button>
                         )}
                         <button

@@ -21,7 +21,7 @@ import type {
   OrchestratorStatusUpdate,
   OrchestratorFileLock,
 } from './orchestrator-output-parser';
-import { generateTechSpec } from './architect-spec-generator';
+import { generateTechSpec, generateTechSpecBatch } from './architect-spec-generator';
 import { TaskLogger } from '../../utils/task-logger';
 
 // ============================================================================
@@ -104,6 +104,7 @@ async function createTasks(
 
   if (!project) {
     errors.push(`Project not found: ${projectId}`);
+    logger.close();
     return { created, errors, idMapping };
   }
 
@@ -327,42 +328,56 @@ async function createTasks(
   logger.log('CommandExecutor', 'Pass 2 complete: dependencies resolved');
 
   // =========================================================================
-  // PASS 3: Queue tasks that have no dependencies
+  // PASS 3: Batch generate specs, then queue tasks with no dependencies
   // =========================================================================
+
+  // Collect no-dependency task IDs for batch spec generation
+  const noDepsTaskIds: string[] = [];
+  const noDepsTaskDefs: typeof validTaskDefs = [];
+
   for (const taskDef of validTaskDefs) {
     const placeholderId = taskDef.id ?? taskDef.name;
     const realTaskId = idMapping.get(placeholderId);
-
-    if (!realTaskId) {
-      continue;
-    }
+    if (!realTaskId) continue;
 
     const placeholderDeps = taskDef.dependencies ?? [];
 
     if (hasDependencies(placeholderDeps)) {
-      // Resolve deps to show in log
       const resolvedDeps = placeholderDeps
         .map(dep => idMapping.get(dep) ?? dep)
         .join(', ');
       logger.log('CommandExecutor', `Task ${realTaskId} blocked by dependencies: [${resolvedDeps}] - staying 'pending'`);
     } else {
-      // Generate architect tech spec (inline, before queuing)
-      try {
-        const specResult = await generateTechSpec(realTaskId);
-        if (specResult) {
-          logger.log('CommandExecutor', `Tech spec generated for ${realTaskId}: ~${specResult.tokens} tokens`);
-        }
-      } catch (err) {
-        logger.warn('CommandExecutor', `Tech spec generation failed for ${realTaskId}, queuing without spec: ${err instanceof Error ? err.message : String(err)}`);
-      }
+      noDepsTaskIds.push(realTaskId);
+      noDepsTaskDefs.push(taskDef);
+    }
+  }
 
-      try {
-        // Safe cast: pre-pass guard already filtered out unavailable agents
-        await enqueueTask(realTaskId, taskDef.agent as Parameters<typeof enqueueTask>[1], taskDef.priority);
-        logger.log('CommandExecutor', `Queued task ${realTaskId} to ${taskDef.agent}-tasks queue (no dependencies)`);
-      } catch (err) {
-        logger.error('CommandExecutor', `Failed to queue task ${realTaskId}: ${err instanceof Error ? err.message : String(err)}`);
+  // Batch spec generation: 1 API call instead of N individual calls
+  if (noDepsTaskIds.length > 0) {
+    try {
+      const batchResult = await generateTechSpecBatch(noDepsTaskIds);
+      const method = batchResult.batchUsed ? 'batch' : 'individual';
+      logger.log('CommandExecutor', `Spec generation (${method}): ${batchResult.results.size}/${noDepsTaskIds.length} specs generated`);
+
+      for (const [taskId, specResult] of batchResult.results) {
+        logger.log('CommandExecutor', `Tech spec generated for ${taskId}: ~${specResult.tokens} tokens`);
       }
+    } catch (err) {
+      logger.warn('CommandExecutor', `Batch spec generation failed, tasks will be queued without specs: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  // Queue no-dependency tasks
+  for (let i = 0; i < noDepsTaskIds.length; i++) {
+    const realTaskId = noDepsTaskIds[i];
+    const taskDef = noDepsTaskDefs[i];
+
+    try {
+      await enqueueTask(realTaskId, taskDef.agent as Parameters<typeof enqueueTask>[1], taskDef.priority);
+      logger.log('CommandExecutor', `Queued task ${realTaskId} to ${taskDef.agent}-tasks queue (no dependencies)`);
+    } catch (err) {
+      logger.error('CommandExecutor', `Failed to queue task ${realTaskId}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -402,6 +417,7 @@ async function createTasks(
     }
   }
 
+  logger.close();
   return { created, errors, idMapping };
 }
 
@@ -496,6 +512,7 @@ async function applyStatusUpdates(
     }
   }
 
+  logger.close();
   return { updated, errors };
 }
 
@@ -607,6 +624,7 @@ async function processFileLocks(
     }
   }
 
+  logger.close();
   return { acquired, released, errors };
 }
 
@@ -639,6 +657,7 @@ export async function executeOrchestratorCommands(
     logger.warn('CommandExecutor', 'Skipping execution - parse was not successful');
     result.success = false;
     result.errors.push('Parse result was not successful');
+    logger.close();
     return result;
   }
 
@@ -675,6 +694,7 @@ export async function executeOrchestratorCommands(
 
   logger.log('CommandExecutor', `Execution complete: ${result.tasksCreated.length} tasks created, ${result.statusesUpdated.length} statuses updated, ${result.locksAcquired.length} locks acquired, ${result.locksReleased.length} locks released, ${result.errors.length} errors`);
 
+  logger.close();
   return result;
 }
 

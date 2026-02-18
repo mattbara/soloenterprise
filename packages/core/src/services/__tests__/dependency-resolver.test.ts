@@ -73,6 +73,8 @@ const mockLoggerInstance = vi.hoisted(() => ({
   log: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
+  flush: vi.fn(),
+  close: vi.fn(),
 }));
 
 vi.mock('../../utils/task-logger', () => ({
@@ -80,6 +82,8 @@ vi.mock('../../utils/task-logger', () => ({
     log = mockLoggerInstance.log;
     warn = mockLoggerInstance.warn;
     error = mockLoggerInstance.error;
+    flush = mockLoggerInstance.flush;
+    close = mockLoggerInstance.close;
   },
 }));
 

@@ -73,7 +73,11 @@
       "Bash(git check-ignore:*)",
       "Bash(gh pr create:*)",
       "Bash(node:*)",
-      "Bash(git -C /Users/matteobaratella/Projects/PERSONAL_PROJECTS/SoloEnterprise/soloenterprise checkout:*)"
+      "Bash(git -C /Users/matteobaratella/Projects/PERSONAL_PROJECTS/SoloEnterprise/soloenterprise checkout:*)",
+      "Bash(for f in /Users/matteobaratella/Projects/PERSONAL_PROJECTS/SoloEnterprise/soloenterprise/recovered-transcripts/*.md)",
+      "Bash(if grep -q \"context-snapshot\\\\|model-selector\\\\|architect.*batch\\\\|cost.?optim\" \"$f\")",
+      "Bash(then)",
+      "Bash(fi)"
     ]
   }
 }
