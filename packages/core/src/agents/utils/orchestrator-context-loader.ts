@@ -244,6 +244,63 @@ export function getEmptyOrchestratorContextResult(): OrchestratorContextResult {
 }
 
 /**
+ * Build orchestrator context with diff-awareness.
+ * Compares against cached snapshot — returns minimal summary if unchanged,
+ * full context + diff if changed.
+ */
+export async function buildOrchestratorContextWithDiff(
+  projectId: string
+): Promise<OrchestratorContextResult> {
+  // Lazy import to avoid circular dependencies
+  const { computeContextHash, getSnapshot, setSnapshot, computeContextDiff } = await import('./context-snapshot');
+
+  const result = await buildOrchestratorContext(projectId);
+
+  if (!result.content) return result;
+
+  const currentHash = computeContextHash(result.content);
+  const cached = getSnapshot(projectId);
+
+  const currentMetrics = {
+    activeTaskCount: result.activeTaskCount,
+    blockedTaskCount: result.blockedTaskCount,
+    pendingQuestionCount: result.pendingQuestionCount,
+    lockedFileCount: result.lockedFileCount,
+  };
+
+  if (cached && cached.hash === currentHash) {
+    // Context unchanged — return minimal summary
+    const diff = computeContextDiff(cached.metrics, currentMetrics);
+    console.log(`[OrchestratorContextLoader] Context unchanged for project ${projectId}, using minimal summary`);
+    return {
+      ...result,
+      content: diff.summary,
+      tokens: Math.ceil(diff.summary.length / 4),
+    };
+  }
+
+  // Context changed or first run — cache and return full context
+  setSnapshot(projectId, result.content, currentMetrics);
+
+  if (cached) {
+    // Append diff to context
+    const diff = computeContextDiff(cached.metrics, currentMetrics);
+    if (diff.changed) {
+      const enrichedContent = `${diff.summary}\n\n${result.content}`;
+      console.log(`[OrchestratorContextLoader] Context changed for project ${projectId}, including diff`);
+      return {
+        ...result,
+        content: enrichedContent,
+        tokens: Math.ceil(enrichedContent.length / 4),
+      };
+    }
+  }
+
+  console.log(`[OrchestratorContextLoader] First context load for project ${projectId}`);
+  return result;
+}
+
+/**
  * Truncate a name/string for table display.
  */
 function truncateName(name: string, maxLength: number): string {

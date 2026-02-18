@@ -13,7 +13,9 @@ import { eq, and as drizzleAnd, count } from 'drizzle-orm';
 import { updateTaskStatus, getTask, claimTaskForProcessing, type TaskJobData } from '../services/task-service';
 import { loadSkillsForOrchestrator, type OrchestratorAction } from './utils/skill-loader';
 import { buildCachedSystemPrompt, extractCacheMetrics, logCacheMetrics } from './utils/cache-helper';
-import { buildOrchestratorContext, getEmptyOrchestratorContextResult, type OrchestratorContextResult } from './utils/orchestrator-context-loader';
+import { buildOrchestratorContextWithDiff, getEmptyOrchestratorContextResult, type OrchestratorContextResult } from './utils/orchestrator-context-loader';
+import { selectOrchestratorModel } from './utils/model-selector';
+import { assessProjectComplexity } from './utils/project-context-loader';
 import { parseOrchestratorOutput, type OrchestratorParseResult } from './utils/orchestrator-output-parser';
 import { executeOrchestratorCommands, type ExecutionResult } from './utils/orchestrator-command-executor';
 import { extractImageRequirements } from './utils/image-requirement-extractor';
@@ -67,8 +69,8 @@ async function logTokenBaseline(metrics: OrchestratorTokenMetrics): Promise<void
 
 // ============================================================================
 
-// Claude API configuration - Orchestrator uses Opus for high-quality reasoning
-const MODEL = process.env.ORCHESTRATOR_MODEL || 'claude-opus-4-6';
+// Claude API configuration
+const DEFAULT_MODEL = process.env.ORCHESTRATOR_MODEL || 'claude-opus-4-6';
 const MAX_TOKENS = parseInt(process.env.CLAUDE_MAX_TOKENS || '16384', 10);
 const TEMPERATURE = 0;
 
@@ -204,10 +206,10 @@ async function processOrchestratorTask(job: Job<TaskJobData>): Promise<{
     logger.log('OrchestratorAgent', `Detected action: ${action}`);
     logger.log('OrchestratorAgent', `Loaded layers: ${layers.map(l => l.split('/').pop()).join(', ')}`);
 
-    // Load orchestrator-specific context (project state, tasks, locks, questions)
+    // Load orchestrator-specific context with diff-awareness (returns minimal summary if unchanged)
     let orchestratorContext: OrchestratorContextResult;
     try {
-      orchestratorContext = await buildOrchestratorContext(projectId);
+      orchestratorContext = await buildOrchestratorContextWithDiff(projectId);
     } catch (err) {
       logger.warn('OrchestratorAgent', `Failed to load orchestrator context, continuing without it: ${err}`);
       orchestratorContext = getEmptyOrchestratorContextResult();
@@ -270,15 +272,32 @@ async function processOrchestratorTask(job: Job<TaskJobData>): Promise<{
       orchestratorContext.clientDocument,
     );
 
-    logger.log('OrchestratorAgent', 'Calling Claude API (Opus)...');
+    // Dynamic model selection based on task context and project complexity
+    const hasAnsweredQuestions = Array.isArray(context.answeredQuestions) && context.answeredQuestions.length > 0;
+    const isFirstRun = !hasAnsweredQuestions && job.data.attemptNumber <= 1;
+    let estimatedTaskCount: number | undefined;
+    try {
+      const complexity = await assessProjectComplexity(projectId);
+      estimatedTaskCount = complexity === 'simple' ? 3 : complexity === 'moderate' ? 10 : 20;
+    } catch {
+      // Non-fatal
+    }
 
-    // Build cached system prompt with orchestrator context
-    const cachedSystem = buildCachedSystemPrompt(skillContent, orchestratorContext.content);
+    const selectedModel = process.env.ORCHESTRATOR_MODEL
+      ? DEFAULT_MODEL // Explicit env override takes precedence
+      : selectOrchestratorModel({ hasAnsweredQuestions, isFirstRun, estimatedTaskCount });
+
+    logger.log('OrchestratorAgent', `Calling Claude API (model: ${selectedModel})...`);
+
+    // Build cached system prompt with orchestrator context (cache both blocks for Anthropic prompt caching)
+    const cachedSystem = buildCachedSystemPrompt(skillContent, orchestratorContext.content, {
+      cacheCodebaseContext: true, // Safe now: diff-aware loader returns minimal summary when unchanged
+    });
 
     // Call Claude API (streaming keeps connection alive, prevents timeout on large responses)
     const client = getAnthropicClient();
     const stream = client.messages.stream({
-      model: MODEL,
+      model: selectedModel,
       max_tokens: MAX_TOKENS,
       temperature: TEMPERATURE,
       system: cachedSystem,
@@ -343,7 +362,7 @@ async function processOrchestratorTask(job: Job<TaskJobData>): Promise<{
       projectId,
       taskId,
       agentType: 'orchestrator',
-      model: MODEL,
+      model: selectedModel,
       tokensInput: response.usage?.input_tokens ?? 0,
       tokensOutput: response.usage?.output_tokens ?? 0,
       cachedTokens: (response.usage as unknown as Record<string, number>)?.cache_read_input_tokens ?? 0,

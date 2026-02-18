@@ -28,7 +28,78 @@ import {
   questions,
   costTracking,
 } from '@soloenterprise/db/schema';
-import { eq, and, sql, desc } from 'drizzle-orm';
+import { eq, and, sql, desc, count } from 'drizzle-orm';
+
+// ============================================================================
+// Project Complexity Assessment
+// ============================================================================
+
+export type ProjectComplexity = 'simple' | 'moderate' | 'complex';
+
+const TASK_THRESHOLD = parseInt(process.env.COMPLEXITY_TASK_THRESHOLD || '15', 10);
+const DEP_THRESHOLD = parseInt(process.env.COMPLEXITY_DEP_THRESHOLD || '40', 10);
+const FAILURE_THRESHOLD = parseFloat(process.env.COMPLEXITY_FAILURE_THRESHOLD || '0.2');
+
+/**
+ * Assess project complexity based on task count, dependencies, blocking questions, and failure rate.
+ * Used by model-selector to decide Opus vs Sonnet for the orchestrator.
+ */
+export async function assessProjectComplexity(projectId: string): Promise<ProjectComplexity> {
+  try {
+    // Count total tasks
+    const [taskCountResult] = await db
+      .select({ value: count() })
+      .from(tasks)
+      .where(eq(tasks.projectId, projectId));
+    const taskCount = taskCountResult?.value ?? 0;
+
+    // Count tasks with dependencies (proxy for dependency complexity)
+    const allTasks = await db.query.tasks.findMany({
+      where: eq(tasks.projectId, projectId),
+      columns: { id: true, dependsOn: true, status: true },
+    });
+
+    let depCount = 0;
+    let failedCount = 0;
+    for (const task of allTasks) {
+      if (task.dependsOn?.length) {
+        depCount += task.dependsOn.length;
+      }
+      if (task.status === 'failed') {
+        failedCount++;
+      }
+    }
+
+    // Count blocking questions
+    const [blockingResult] = await db
+      .select({ value: count() })
+      .from(questions)
+      .where(and(
+        eq(questions.projectId, projectId),
+        eq(questions.status, 'pending'),
+        eq(questions.isBlocking, true),
+      ));
+    const blockingQuestions = blockingResult?.value ?? 0;
+
+    // Failure rate
+    const failureRate = taskCount > 0 ? failedCount / taskCount : 0;
+
+    // Complex if ANY threshold is exceeded
+    if (taskCount > TASK_THRESHOLD || depCount > DEP_THRESHOLD || failureRate > FAILURE_THRESHOLD) {
+      return 'complex';
+    }
+
+    // Simple if very small project with no blockers
+    if (taskCount <= 5 && depCount <= 5 && blockingQuestions === 0 && failureRate === 0) {
+      return 'simple';
+    }
+
+    return 'moderate';
+  } catch (err) {
+    console.warn(`[ProjectContextLoader] Failed to assess complexity for ${projectId}, defaulting to moderate:`, err);
+    return 'moderate';
+  }
+}
 
 /**
  * Build a structured context string for business agents.
