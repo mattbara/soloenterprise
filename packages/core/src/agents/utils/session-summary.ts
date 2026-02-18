@@ -74,6 +74,7 @@ export async function extractSessionSummary(
         tokensInput: response.usage?.input_tokens ?? 0,
         tokensOutput: response.usage?.output_tokens ?? 0,
         cachedTokens: 0,
+        callSource: 'session-summary',
       });
     }
 

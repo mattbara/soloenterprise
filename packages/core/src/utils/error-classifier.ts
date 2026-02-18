@@ -1,9 +1,9 @@
 /**
  * Error Classifier
  *
- * Classifies errors as retryable (transient) vs non-retryable (permanent).
- * Used by the worker to decide whether a failed task should be auto-retried
- * or immediately escalated to human review.
+ * 3-tier classification: retryable (transient) → non-retryable (permanent) → escalate (billing/quota).
+ * Used by the worker to decide whether a failed task should be auto-retried,
+ * immediately failed, or escalated to human review.
  */
 
 /** Patterns that indicate transient, retryable errors */
@@ -22,7 +22,7 @@ const RETRYABLE_PATTERNS = [
   'network timeout',
   'fetch failed',
 
-  // HTTP 429 rate limiting
+  // HTTP 429 rate limiting (Wave 4 will intercept these before retry via rate-limit-guard)
   'rate limit',
   'too many requests',
   '429',
@@ -43,14 +43,17 @@ const RETRYABLE_PATTERNS = [
   'server_error',
 ] as const;
 
-/** Patterns that indicate permanent, non-retryable errors */
-const NON_RETRYABLE_PATTERNS = [
-  // Billing/quota errors
+/** Patterns that require immediate escalation to human — retrying won't help and the account needs attention */
+const ESCALATE_PATTERNS = [
   'credit balance is too low',
   'usage limit',
   'billing',
   'quota exceeded',
+  'You have reached your specified API usage limits',
+] as const;
 
+/** Patterns that indicate permanent, non-retryable errors */
+const NON_RETRYABLE_PATTERNS = [
   // Authentication/authorization errors
   'invalid api key',
   'invalid_api_key',
@@ -63,28 +66,38 @@ const NON_RETRYABLE_PATTERNS = [
   'invalid_request_error',
   '404',
   'not found',
-
-  // Explicit API limits (not transient)
-  'You have reached your specified API usage limits',
 ] as const;
 
 export interface ErrorClassification {
   retryable: boolean;
   reason: string;
-  category: 'transient' | 'permanent' | 'unknown';
+  category: 'transient' | 'permanent' | 'escalate' | 'unknown';
 }
 
 /**
- * Classify an error message as retryable or non-retryable.
+ * Classify an error message into one of three tiers.
  *
- * Priority: non-retryable patterns are checked FIRST because some messages
- * contain both patterns (e.g., "400 invalid_request_error" contains "400"
- * which could match a generic retryable pattern).
+ * Priority order:
+ * 1. Escalate patterns (billing/quota — needs human attention, not retries)
+ * 2. Non-retryable patterns (auth errors, client errors — permanent failures)
+ * 3. Retryable patterns (network, 5xx, rate limits — transient)
+ * 4. Unknown — defaults to retryable
  */
 export function classifyError(errorMessage: string): ErrorClassification {
   const lower = errorMessage.toLowerCase();
 
-  // Check non-retryable patterns first (higher priority)
+  // Check escalate patterns first (highest priority — account-level issues)
+  for (const pattern of ESCALATE_PATTERNS) {
+    if (lower.includes(pattern.toLowerCase())) {
+      return {
+        retryable: false,
+        reason: `Matches escalate pattern: "${pattern}"`,
+        category: 'escalate',
+      };
+    }
+  }
+
+  // Check non-retryable patterns (permanent failures)
   for (const pattern of NON_RETRYABLE_PATTERNS) {
     if (lower.includes(pattern.toLowerCase())) {
       return {

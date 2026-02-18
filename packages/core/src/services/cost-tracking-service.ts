@@ -21,6 +21,7 @@ export interface AgentCostRecord {
   tokensOutput: number;
   cachedTokens: number;
   complexity?: 'simple' | 'standard' | 'complex';
+  callSource?: string;
 }
 
 /**
@@ -50,6 +51,7 @@ export async function recordAgentCost(record: AgentCostRecord): Promise<void> {
       cachedTokens: record.cachedTokens,
       apiCostUsd: cost.totalCostUsd.toFixed(4),
       estimatedBillableHours: billableHours.toFixed(2),
+      callSource: record.callSource ?? 'agent-task',
     });
 
     console.log(
