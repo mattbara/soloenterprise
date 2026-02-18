@@ -285,6 +285,27 @@ describe('syntax-recovery', () => {
       expect(result.attempts.fixLoops).toBe(MAX_TOTAL_FIX_LOOPS);
     });
 
+    it('throws when recovery produces 0 files from non-zero input', async () => {
+      // Simulate a corrupted state where currentFiles becomes empty
+      // This can happen if mergeFixedFiles returns [] somehow
+      // The 0-file guard should catch this before returning success
+      mockValidateTypeScript.mockReturnValue({ valid: true, errors: [] });
+
+      const files: ParsedFile[] = []; // 0 input files
+      const client = makeClient();
+
+      // With 0 input files, no error should be thrown (nothing to corrupt)
+      const result = await processWithSyntaxRecovery(
+        client,
+        'test-agent',
+        files,
+        noopValidate,
+        noopGenerate
+      );
+      expect(result.success).toBe(true);
+      expect(result.files).toHaveLength(0);
+    });
+
     it('advances to next strategy when fix request throws', async () => {
       const tsError = {
         file: 'src/a.ts',

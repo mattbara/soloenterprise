@@ -1,13 +1,13 @@
 import { db } from "@/lib/db";
-import { projects } from "@soloenterprise/db/schema";
-import { desc } from "drizzle-orm";
+import { projects, projectScopes } from "@soloenterprise/db/schema";
+import { desc, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 export const dynamic = "force-dynamic";
 
 async function createProject(formData: FormData) {
   "use server";
-  
+
   const name = formData.get("name") as string;
   const description = formData.get("description") as string;
 
@@ -25,7 +25,31 @@ async function createProject(formData: FormData) {
 export default async function ProjectsPage() {
   const allProjects = await db.query.projects.findMany({
     orderBy: [desc(projects.createdAt)],
+    with: {
+      scope: true,
+    },
   });
+
+  // Resolve scopes via projectScopes.projectId for projects without direct scope link
+  const unscopedProjectIds = allProjects
+    .filter((p) => !p.scope)
+    .map((p) => p.id);
+
+  const scopeByProjectId: Record<string, { id: string; status: string }> = {};
+  if (unscopedProjectIds.length > 0) {
+    const scopes = await db.query.projectScopes.findMany({
+      where: inArray(projectScopes.projectId, unscopedProjectIds),
+      columns: { id: true, projectId: true, status: true },
+    });
+    for (const scope of scopes) {
+      if (scope.projectId) {
+        scopeByProjectId[scope.projectId] = {
+          id: scope.id,
+          status: scope.status,
+        };
+      }
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -82,29 +106,44 @@ export default async function ProjectsPage() {
               No projects yet. Create one above!
             </li>
           ) : (
-            allProjects.map((project) => (
-              <li key={project.id} className="px-6 py-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-sm font-medium text-gray-900">{project.name}</h3>
-                    <p className="text-sm text-gray-500">{project.description || "No description"}</p>
+            allProjects.map((project) => {
+              const scopeInfo = project.scope
+                ? { id: project.scope.id, status: project.scope.status }
+                : scopeByProjectId[project.id] || null;
+
+              return (
+                <li key={project.id} className="px-6 py-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-900">{project.name}</h3>
+                      <p className="text-sm text-gray-500">{project.description || "No description"}</p>
+                    </div>
+                    <div className="flex items-center space-x-4">
+                      {scopeInfo && (
+                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                          scopeInfo.status === "approved" ? "bg-green-100 text-green-800" :
+                          scopeInfo.status === "draft" ? "bg-yellow-100 text-yellow-800" :
+                          "bg-gray-100 text-gray-800"
+                        }`}>
+                          scope: {scopeInfo.status}
+                        </span>
+                      )}
+                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                        project.status === "active" ? "bg-green-100 text-green-800" :
+                        project.status === "completed" ? "bg-blue-100 text-blue-800" :
+                        project.status === "paused" ? "bg-yellow-100 text-yellow-800" :
+                        "bg-gray-100 text-gray-800"
+                      }`}>
+                        {project.status}
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        {new Date(project.createdAt!).toLocaleDateString()}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex items-center space-x-4">
-                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                      project.status === "active" ? "bg-green-100 text-green-800" :
-                      project.status === "completed" ? "bg-blue-100 text-blue-800" :
-                      project.status === "paused" ? "bg-yellow-100 text-yellow-800" :
-                      "bg-gray-100 text-gray-800"
-                    }`}>
-                      {project.status}
-                    </span>
-                    <span className="text-xs text-gray-400">
-                      {new Date(project.createdAt!).toLocaleDateString()}
-                    </span>
-                  </div>
-                </div>
-              </li>
-            ))
+                </li>
+              );
+            })
           )}
         </ul>
       </div>

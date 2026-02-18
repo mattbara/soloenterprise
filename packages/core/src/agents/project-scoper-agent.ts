@@ -332,6 +332,7 @@ async function processScoperTask(job: Job<TaskJobData>): Promise<{
     try {
       await db.insert(projectScopes).values({
         briefId,
+        projectId: projectId || undefined,
         scopeData,
         clientDocument: parseResult.clientDocument || null,
         estimatedTasks,
