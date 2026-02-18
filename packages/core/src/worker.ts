@@ -89,6 +89,15 @@ async function start() {
 
   const { publishTaskEvent } = await import('./services/task-events');
   const { resolveCompletedDependency, handleFailedDependency, unblockDependentTasks } = await import('./services/dependency-resolver');
+  const { resumeAllQueues } = await import('./utils/rate-limit-guard');
+
+  // Safety net: resume any queues left paused from a previous crash
+  try {
+    await resumeAllQueues();
+    console.log('[Worker] Rate limit guard: all queues confirmed resumed on startup');
+  } catch (err) {
+    console.warn('[Worker] Failed to resume queues on startup (non-fatal):', err);
+  }
 
   // Helper to setup worker event handlers
   function setupWorkerEvents(worker: Worker, type: WorkerType) {
