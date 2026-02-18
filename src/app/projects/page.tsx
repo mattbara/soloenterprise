@@ -1,52 +1,64 @@
 import { db } from "@/lib/db";
-import { tasks, questions, fileLocks, projectScopes } from "@soloenterprise/db/schema";
-import { count, eq, inArray } from "drizzle-orm";
-import { DashboardContent } from "@/components/DashboardContent";
-import { getAllProjectsWithProgress } from "@/lib/utils/project-progress";
+import { projects, clients, projectBriefs, projectScopes } from "@soloenterprise/db/schema";
+import { desc, eq, inArray } from "drizzle-orm";
+import { ProjectsHubClient } from "./projects-hub-client";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProjectsPage() {
-  // Fetch projects with progress (single efficient query)
-  const projectsWithProgress = await getAllProjectsWithProgress();
+  const allProjects = await db.query.projects.findMany({
+    orderBy: [desc(projects.createdAt)],
+    with: {
+      scope: true,
+      client: true,
+    },
+  });
 
-  // Fetch overview stats (parallel queries)
-  const [pendingTasks, runningTasks, waitingHuman, pendingQuestions, activeLocks] =
-    await Promise.all([
-      db
-        .select({ count: count() })
-        .from(tasks)
-        .where(inArray(tasks.status, ["pending", "queued"])),
-      db
-        .select({ count: count() })
-        .from(tasks)
-        .where(eq(tasks.status, "running")),
-      db
-        .select({ count: count() })
-        .from(tasks)
-        .where(eq(tasks.status, "waiting_human")),
-      db
-        .select({ count: count() })
-        .from(questions)
-        .where(eq(questions.status, "pending")),
-      db.select({ count: count() }).from(fileLocks),
-    ]);
+  const allClients = await db.query.clients.findMany({
+    columns: { id: true, name: true },
+    orderBy: [desc(clients.createdAt)],
+  });
 
-  const stats = {
-    projects: projectsWithProgress.length,
-    pendingTasks: pendingTasks[0].count,
-    runningTasks: runningTasks[0].count,
-    waitingHuman: waitingHuman[0].count,
-    pendingQuestions: pendingQuestions[0].count,
-    activeLocks: activeLocks[0].count,
-  };
+  // For projects without a direct scope link, resolve scope via brief chain:
+  // project.clientId → brief.clientId → scope.briefId
+  const projectIds = allProjects.map((p) => p.id);
+  const clientIds = allProjects
+    .filter((p) => !p.scope && p.clientId)
+    .map((p) => p.clientId!);
+
+  let briefScopeMap: Record<string, { id: string; status: string }> = {};
+  if (clientIds.length > 0) {
+    const briefs = await db.query.projectBriefs.findMany({
+      where: inArray(projectBriefs.clientId, clientIds),
+      with: { scope: true },
+    });
+    // Map clientId → latest scope (briefs are 1:1 with projects via clientId in the pipeline)
+    for (const brief of briefs) {
+      if (brief.scope && brief.clientId) {
+        briefScopeMap[brief.clientId] = {
+          id: brief.scope.id,
+          status: brief.scope.status,
+        };
+      }
+    }
+  }
+
+  // Enrich projects with brief-resolved scope
+  const enriched = allProjects.map((p) => ({
+    ...p,
+    briefScope: p.scope
+      ? { id: p.scope.id, status: p.scope.status }
+      : p.clientId && briefScopeMap[p.clientId]
+        ? briefScopeMap[p.clientId]
+        : null,
+  }));
+
+  const serialized = JSON.parse(JSON.stringify(enriched));
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-900">Projects</h1>
-      </div>
-      <DashboardContent projects={projectsWithProgress} stats={stats} />
-    </div>
+    <ProjectsHubClient
+      projects={serialized}
+      companies={allClients}
+    />
   );
 }

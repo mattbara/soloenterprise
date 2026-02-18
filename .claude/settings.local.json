@@ -61,7 +61,19 @@
       "Bash(/Users/matteobaratella/Projects/PERSONAL_PROJECTS/SoloEnterprise/soloenterprise/skills/project-scoper/SKILL-project-scoper-core.md:*)",
       "Bash(/Users/matteobaratella/Projects/PERSONAL_PROJECTS/SoloEnterprise/soloenterprise/skills/project-scoper/SKILL-project-scoper-patterns.md:*)",
       "Bash(/Users/matteobaratella/Projects/PERSONAL_PROJECTS/SoloEnterprise/soloenterprise/skills/project-scoper/SKILL-project-scoper-examples.md:*)",
-      "Bash(xargs -I {} sh -c 'echo \"\"\"\"=== {} ===\"\"\"\" && head -30 {}')"
+      "Bash(xargs -I {} sh -c 'echo \"\"\"\"=== {} ===\"\"\"\" && head -30 {}')",
+      "Bash(gh pr list:*)",
+      "Bash(git show:*)",
+      "Bash(sed:*)",
+      "Bash(for file in \"src/app/page.tsx\" \"src/app/projects/[id]/page.tsx\" \"src/components/RecentTasks.tsx\" \"packages/core/src/agents/backend-agent.ts\" \"packages/core/src/agents/orchestrator-agent.ts\" \"packages/core/src/queue/task-queue.ts\" \"packages/core/src/agents/utils/orchestrator-command-executor.ts\" \"packages/core/src/services/dependency-resolver.ts\" \"packages/core/src/agents/utils/token-pricing.ts\" \"packages/db/src/schema.ts\")",
+      "Bash(do)",
+      "Bash(if git ls-files)",
+      "Bash(echo \" $f\" done done)",
+      "Bash(git status:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(gh pr create:*)",
+      "Bash(node:*)",
+      "Bash(git -C /Users/matteobaratella/Projects/PERSONAL_PROJECTS/SoloEnterprise/soloenterprise checkout:*)"
     ]
   }
 }
