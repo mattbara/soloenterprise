@@ -89,7 +89,7 @@ async function start() {
 
   const { publishTaskEvent } = await import('./services/task-events');
   const { resolveCompletedDependency, handleFailedDependency, unblockDependentTasks } = await import('./services/dependency-resolver');
-  const { resumeAllQueues } = await import('./utils/rate-limit-guard');
+  const { resumeAllQueues, isRateLimitError, handleRateLimit } = await import('./utils/rate-limit-guard');
 
   // Safety net: resume any queues left paused from a previous crash
   try {
@@ -130,20 +130,35 @@ async function start() {
       activeJobCount = Math.max(0, activeJobCount - 1);
       console.log(`[Worker] Task failed on ${type}: ${error?.message}, active jobs: ${activeJobCount}`);
 
-      // Publish task failed event for SSE subscribers
       const taskId = job?.data?.taskId;
-      if (taskId) {
-        await publishTaskEvent({
-          type: 'task-failed',
-          taskId,
-          status: 'failed',
-          timestamp: Date.now(),
-        });
-        console.log(`[Worker] Published task-failed event for ${taskId}`);
+      if (!taskId) return;
 
-        // Mark dependent tasks as blocked since this task failed
-        await handleFailedDependency(taskId);
+      // Rate limit interception: check BEFORE markTaskFailed to avoid burning a retry
+      const rateLimitType = isRateLimitError(error?.message ?? '');
+      if (rateLimitType) {
+        console.log(`[Worker] Rate limit detected (${rateLimitType}) for task ${taskId}, delegating to rate-limit-guard`);
+        try {
+          await handleRateLimit(taskId, type as any, error?.message ?? '', rateLimitType);
+        } catch (rlErr) {
+          console.error(`[Worker] Rate limit handler failed, falling through to normal failure:`, rlErr);
+          // Fall through to normal failure handling below
+          await publishTaskEvent({ type: 'task-failed', taskId, status: 'failed', timestamp: Date.now() });
+          await handleFailedDependency(taskId);
+        }
+        return; // Don't burn a retry — rate-limit-guard re-queues the task
       }
+
+      // Normal failure path
+      await publishTaskEvent({
+        type: 'task-failed',
+        taskId,
+        status: 'failed',
+        timestamp: Date.now(),
+      });
+      console.log(`[Worker] Published task-failed event for ${taskId}`);
+
+      // Mark dependent tasks as blocked since this task failed
+      await handleFailedDependency(taskId);
     });
 
     worker.on('active', () => {

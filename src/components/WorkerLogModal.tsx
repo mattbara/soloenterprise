@@ -4,10 +4,11 @@ import { useState, useEffect, useRef } from "react";
 
 interface WorkerLogModalProps {
   workerType: string;
+  logEndpoint?: string;
   onClose: () => void;
 }
 
-export function WorkerLogModal({ workerType, onClose }: WorkerLogModalProps) {
+export function WorkerLogModal({ workerType, logEndpoint, onClose }: WorkerLogModalProps) {
   const [logs, setLogs] = useState<string>("");
   const [taskName, setTaskName] = useState<string | null>(null);
   const [taskStatus, setTaskStatus] = useState<string | null>(null);
@@ -20,7 +21,8 @@ export function WorkerLogModal({ workerType, onClose }: WorkerLogModalProps) {
   const fetchLogs = async () => {
     try {
       setError(null);
-      const response = await fetch(`/api/workers/${workerType}/logs`);
+      const endpoint = logEndpoint || `/api/workers/${workerType}/logs`;
+      const response = await fetch(endpoint);
       if (!response.ok) {
         const data = await response.json();
         setError(data.error || "Failed to load logs");

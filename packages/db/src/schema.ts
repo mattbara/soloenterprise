@@ -122,6 +122,9 @@ export const projects = pgTable('projects', {
   // Status
   status: projectStatusEnum('status').notNull().default('planning'),
   
+  // AI-generated description (from scoping agent)
+  aiDescription: text('ai_description'),
+
   // Configuration
   config: jsonb('config').$type<{
     techStack?: string[];
@@ -129,7 +132,7 @@ export const projects = pgTable('projects', {
     repository?: string;
     branch?: string;
   }>().default({}),
-  
+
   // Consulting pipeline (Phase 6)
   clientId: uuid('client_id').references((): any => clients.id),
   scopeId: uuid('scope_id').references((): any => projectScopes.id),
@@ -450,6 +453,7 @@ export const clients = pgTable('clients', {
   name: text('name').notNull(),
   contactName: text('contact_name'),
   contactEmail: text('contact_email'),
+  whatsappContact: text('whatsapp_contact'),
   notes: text('notes'),
   status: text('status').notNull().default('active'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
@@ -460,11 +464,17 @@ export const clients = pgTable('clients', {
 // PROJECT BRIEFS
 // ============================================================================
 
+export interface BriefQuestion {
+  question: string;
+  answer?: string;
+}
+
 export const projectBriefs = pgTable('project_briefs', {
   id: uuid('id').primaryKey().defaultRandom(),
   clientId: uuid('client_id').references(() => clients.id),
   title: text('title').notNull(),
   rawContent: text('raw_content').notNull(),
+  briefQuestions: jsonb('brief_questions').$type<BriefQuestion[]>(),
   status: text('status').notNull().default('received'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
