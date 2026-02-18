@@ -48,6 +48,7 @@ interface Task {
 
 interface RecentTasksProps {
   tasks: Task[];
+  projectName?: string;
 }
 
 interface GeneratedFile {
@@ -55,7 +56,7 @@ interface GeneratedFile {
   content: string;
 }
 
-export function RecentTasks({ tasks }: RecentTasksProps) {
+export function RecentTasks({ tasks, projectName }: RecentTasksProps) {
   const router = useRouter();
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [copied, setCopied] = useState(false);
