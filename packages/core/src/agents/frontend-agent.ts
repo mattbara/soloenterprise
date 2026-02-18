@@ -10,7 +10,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { db } from '@soloenterprise/db';
 import { artifacts, questions, tasks } from '@soloenterprise/db/schema';
 import { eq } from 'drizzle-orm';
-import { updateTaskStatus, getTask, type TaskJobData } from '../services/task-service';
+import { updateTaskStatus, getTask, claimTaskForProcessing, type TaskJobData } from '../services/task-service';
 import { parseAgentOutput, validateParsedFiles } from './utils/output-parser';
 import { writeGeneratedFiles } from './utils/file-writer';
 import { validateGeneratedFiles } from './utils/file-validator';
@@ -191,6 +191,7 @@ function getArtifactType(filePath: string): 'code' | 'test' | 'config' | 'doc' |
  */
 async function processFrontendTask(job: Job<TaskJobData>): Promise<{
   success: boolean;
+  noop?: boolean;
   summary?: string;
   artifactIds?: string[];
   error?: string;
@@ -198,10 +199,14 @@ async function processFrontendTask(job: Job<TaskJobData>): Promise<{
   const { taskId, projectId, name, description, context } = job.data;
   const logger = new TaskLogger(taskId);
 
-  logger.log('FrontendAgent', `Processing task ${taskId}: ${name}`);
+  // Claim guard: atomic queued → running transition
+  const claim = await claimTaskForProcessing(taskId);
+  if (!claim.claimed) {
+    logger.log('FrontendAgent', `Task ${taskId} already claimed (status: ${claim.currentStatus}), skipping`);
+    return { success: false, noop: true, summary: `Task already claimed by another worker (status: ${claim.currentStatus})` };
+  }
 
-  // Update status to running
-  await updateTaskStatus(taskId, 'running');
+  logger.log('FrontendAgent', `Processing task ${taskId}: ${name}`);
 
   try {
     // Load SKILL layers based on task complexity

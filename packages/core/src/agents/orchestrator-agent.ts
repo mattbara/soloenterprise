@@ -10,7 +10,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { db } from '@soloenterprise/db';
 import { questions, tasks } from '@soloenterprise/db/schema';
 import { eq } from 'drizzle-orm';
-import { updateTaskStatus, getTask, type TaskJobData } from '../services/task-service';
+import { updateTaskStatus, getTask, claimTaskForProcessing, type TaskJobData } from '../services/task-service';
 import { loadSkillsForOrchestrator, type OrchestratorAction } from './utils/skill-loader';
 import { buildCachedSystemPrompt, extractCacheMetrics, logCacheMetrics } from './utils/cache-helper';
 import { buildOrchestratorContext, getEmptyOrchestratorContextResult, type OrchestratorContextResult } from './utils/orchestrator-context-loader';
@@ -163,16 +163,21 @@ function buildPrompt(
  */
 async function processOrchestratorTask(job: Job<TaskJobData>): Promise<{
   success: boolean;
+  noop?: boolean;
   summary?: string;
   error?: string;
 }> {
   const { taskId, projectId, name, description, context } = job.data;
   const logger = new TaskLogger(taskId);
 
-  logger.log('OrchestratorAgent', `Processing task ${taskId}: ${name}`);
+  // Claim guard: atomic queued → running transition
+  const claim = await claimTaskForProcessing(taskId);
+  if (!claim.claimed) {
+    logger.log('OrchestratorAgent', `Task ${taskId} already claimed (status: ${claim.currentStatus}), skipping`);
+    return { success: false, noop: true, summary: `Task already claimed by another worker (status: ${claim.currentStatus})` };
+  }
 
-  // Update status to running
-  await updateTaskStatus(taskId, 'running');
+  logger.log('OrchestratorAgent', `Processing task ${taskId}: ${name}`);
 
   try {
     // Load SKILL layers based on detected action
