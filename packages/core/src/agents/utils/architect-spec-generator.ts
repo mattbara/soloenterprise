@@ -1,12 +1,11 @@
 /**
  * Architect Spec Generator
  *
- * Generates technical specifications for complex tasks BEFORE they enter the BullMQ queue.
- * Uses Opus to produce precise specs that junior agents (Haiku/Sonnet) follow.
+ * Generates technical specifications for ALL tasks BEFORE they enter the BullMQ queue.
+ * Every task gets a spec — foundational tasks (0 deps) receive enhanced prompts
+ * emphasizing public API contract definition to prevent downstream divergence.
  *
- * Guardrail #9: Tasks with `database-task` or `full-feature` profiles MUST have a tech spec.
- * Tasks with dependencies ALWAYS get a tech spec regardless of profile.
- * Tasks with `simple-endpoint` or `bug-fix` profiles and no dependencies skip this step.
+ * Guardrail #9: Every task gets a spec. Cost is managed via model tiering, NOT by skipping.
  */
 
 import Anthropic from '@anthropic-ai/sdk';
@@ -121,19 +120,34 @@ If this task depends on outputs from other tasks:
 
 const MAX_DEPENDENCY_CHARS = 60_000; // ~15,000 tokens
 
+/**
+ * Additional prompt context for foundational/root tasks (0 dependencies).
+ * These tasks define contracts that downstream tasks consume — their specs
+ * are the MOST important because divergence here cascades everywhere.
+ */
+const FOUNDATIONAL_TASK_NOTE = `
+## Foundational Task — No Upstream Dependencies
+
+This is a **root/foundational task**. Other tasks WILL depend on your output.
+You MUST define the public API contract explicitly:
+
+- **List every export** — functions, components, types, constants, and their signatures
+- **Specify exact file paths** for each export (e.g., \`src/components/AnimatedCard.tsx\`)
+- **Define prop types / function parameters** with TypeScript types
+- **State what this module does NOT export** if there is ambiguity risk
+- If this task builds a shared module (e.g., animation utilities, data constants), treat the spec as the **binding contract** that all downstream consumers will follow`;
+
 // ============================================================================
 // Core Logic
 // ============================================================================
 
 /**
- * Generate a technical spec for a task, if needed.
+ * Generate a technical spec for a task.
  *
- * Returns null if:
- * - Task already has a spec
- * - Task profile is simple-endpoint/bug-fix AND has no dependencies
+ * Every task gets a spec. Foundational tasks (0 deps) get enhanced prompts
+ * emphasizing public API contract definition.
  *
- * Returns { spec, tokens } on success.
- * Returns null on API failure (graceful degradation — task proceeds without spec).
+ * Returns null only if: task not found, already has spec, or API failure.
  */
 export async function generateTechSpec(
   taskId: string
@@ -156,20 +170,10 @@ export async function generateTechSpec(
     return null;
   }
 
-  // 3. Determine if spec is needed
+  // 3. Determine profile and dependencies
   const profile = selectContextProfile(task.description, { agentType: task.agentType });
   const deps = (task.dependsOn as string[] | null) ?? [];
   const hasDeps = deps.length > 0;
-
-  const needsSpec =
-    profile === 'database-task' ||
-    profile === 'full-feature' ||
-    hasDeps;
-
-  if (!needsSpec) {
-    logger.log('ArchitectSpec', `Skipping spec for task ${taskId} (profile=${profile}, deps=${deps.length})`);
-    return null;
-  }
 
   logger.log('ArchitectSpec', `Generating spec for task ${taskId} (${task.agentType}, profile=${profile}, deps=${deps.length})`);
 
@@ -289,6 +293,10 @@ export async function generateTechSpec(
     if (existingFiles.length > 0) {
       userParts.push(`\n## EXISTING FILES FROM DEPENDENCIES (DO NOT RECREATE)\n- ${existingFiles.join('\n- ')}`);
     }
+  }
+
+  if (!hasDeps) {
+    userParts.push(FOUNDATIONAL_TASK_NOTE);
   }
 
   userParts.push('\nWrite the technical specification for this task.');
