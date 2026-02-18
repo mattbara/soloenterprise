@@ -115,6 +115,8 @@ describe('Agent Registry Guard — Pre-pass filtering', () => {
 
     mocks.projectFindFirst.mockResolvedValue({ id: PROJECT_ID });
     mocks.enqueueTask.mockResolvedValue(undefined);
+    // Dedup query: no existing child tasks by default
+    mocks.taskFindMany.mockResolvedValue([]);
     // Questions insert succeeds (returning is called for task inserts only)
     mocks.insertReturning.mockImplementation(() => {
       // Should NOT be called for devops tasks

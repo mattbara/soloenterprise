@@ -122,6 +122,9 @@ describe('Bug #5: Cross-session dependency resolution', () => {
     // Project always exists
     mocks.projectFindFirst.mockResolvedValue({ id: PROJECT_ID });
 
+    // Dedup query: no existing child tasks by default
+    mocks.taskFindMany.mockResolvedValue([]);
+
     // Default: enqueue succeeds
     mocks.enqueueTask.mockResolvedValue(undefined);
   });
@@ -184,6 +187,8 @@ describe('Bug #5: Cross-session dependency resolution', () => {
       return [{ id: `new-uuid-${insertCall}` }];
     });
 
+    // Dedup query (consumed first)
+    mocks.taskFindMany.mockResolvedValueOnce([]);
     // Prefix lookup — exactly 1 match
     mocks.taskFindMany.mockResolvedValueOnce([{ id: EXISTING_PREFIX_FULL }]);
 
@@ -232,6 +237,8 @@ describe('Bug #5: Cross-session dependency resolution', () => {
       return [{ id: `new-uuid-${insertCall}` }];
     });
 
+    // Dedup query (consumed first)
+    mocks.taskFindMany.mockResolvedValueOnce([]);
     // Prefix lookup — no matches
     mocks.taskFindMany.mockResolvedValueOnce([]);
 
@@ -274,6 +281,8 @@ describe('Bug #5: Cross-session dependency resolution', () => {
 
     // Full UUID lookup — exists
     mocks.taskFindFirst.mockResolvedValueOnce({ id: EXISTING_FULL_UUID });
+    // Dedup query (consumed first)
+    mocks.taskFindMany.mockResolvedValueOnce([]);
     // Prefix lookup — exactly 1 match
     mocks.taskFindMany.mockResolvedValueOnce([{ id: EXISTING_PREFIX_FULL }]);
     // Second prefix lookup — no match (nonexistent)
@@ -335,6 +344,8 @@ describe('Bug #5: Cross-session dependency resolution', () => {
       return [{ id: `new-uuid-${insertCall}`, name: `Task ${insertCall}` }];
     });
 
+    // Dedup query (consumed first)
+    mocks.taskFindMany.mockResolvedValueOnce([]);
     // Prefix lookup — 2 matches (ambiguous)
     mocks.taskFindMany.mockResolvedValueOnce([
       { id: '3c9240e8-aaaa-bbbb-cccc-111111111111' },
@@ -380,6 +391,9 @@ describe('Bug #6: Status update placeholder ID resolution', () => {
 
     // Project always exists
     mocks.projectFindFirst.mockResolvedValue({ id: PROJECT_ID });
+
+    // Dedup query: no existing child tasks by default
+    mocks.taskFindMany.mockResolvedValue([]);
 
     // Default: enqueue succeeds
     mocks.enqueueTask.mockResolvedValue(undefined);
