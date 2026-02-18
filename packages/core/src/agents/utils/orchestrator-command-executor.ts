@@ -171,9 +171,36 @@ async function createTasks(
   }
 
   // =========================================================================
-  // PASS 1: Create all tasks WITHOUT dependencies (empty dependsOn)
+  // PRE-PASS 2: Query existing tasks for deduplication
+  // =========================================================================
+  const existingTasks = await db.query.tasks.findMany({
+    where: and(
+      eq(tasks.projectId, projectId),
+      eq(tasks.parentTaskId, parentTaskId),
+    ),
+    columns: { id: true, name: true },
+  });
+  const existingTaskNames = new Map(existingTasks.map(t => [t.name, t.id]));
+
+  if (existingTaskNames.size > 0) {
+    logger.log('CommandExecutor', `Found ${existingTaskNames.size} existing child tasks for dedup check`);
+  }
+
+  // =========================================================================
+  // PASS 1: Create all tasks WITHOUT dependencies (empty dependsOn), skip duplicates
   // =========================================================================
   for (const taskDef of validTaskDefs) {
+    // Dedup: skip if a task with the same name already exists under this parent
+    const existingId = existingTaskNames.get(taskDef.name);
+    if (existingId) {
+      // Populate idMapping with existing task ID so dependencies still resolve
+      const placeholderId = taskDef.id ?? taskDef.name;
+      idMapping.set(placeholderId, existingId);
+      created.push(existingId);
+      logger.log('CommandExecutor', `Dedup: task "${taskDef.name}" already exists as ${existingId}, skipping insert`);
+      continue;
+    }
+
     try {
       const [task] = await db
         .insert(tasks)

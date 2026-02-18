@@ -17,7 +17,7 @@ import { tasks, questions } from '@soloenterprise/db/schema';
 import { eq } from 'drizzle-orm';
 
 // Queue names per agent type
-const QUEUE_NAMES = {
+export const QUEUE_NAMES = {
   orchestrator: 'orchestrator-tasks',
   backend: 'backend-tasks',
   frontend: 'frontend-tasks',
@@ -28,7 +28,7 @@ const QUEUE_NAMES = {
   'client-reporter': 'client-reporter-tasks',
 } as const;
 
-type AgentType = keyof typeof QUEUE_NAMES;
+export type AgentType = keyof typeof QUEUE_NAMES;
 
 // Job data structure
 export interface TaskJobData {
@@ -49,6 +49,7 @@ export interface TaskJobResult {
   artifactIds?: string[];
   prUrl?: string;
   error?: string;
+  noop?: boolean; // True when agent claim guard skips processing (another worker owns the task)
 }
 
 // Redis connection
@@ -107,7 +108,8 @@ export function getQueue(agentType: AgentType): Queue<TaskJobData, TaskJobResult
 export async function enqueueTask(
   taskId: string,
   agentType: AgentType,
-  priority: 'critical' | 'high' | 'medium' | 'low' = 'medium'
+  priority: 'critical' | 'high' | 'medium' | 'low' = 'medium',
+  delayMs?: number
 ): Promise<Job<TaskJobData, TaskJobResult>> {
   // Fetch task from database
   const task = await db.query.tasks.findFirst({
@@ -150,6 +152,7 @@ export async function enqueueTask(
     {
       priority: priorityMap[priority],
       jobId,
+      ...(delayMs ? { delay: delayMs } : {}),
     }
   );
 
@@ -302,10 +305,16 @@ export function createWorker(
     {
       connection: getRedisConnection(),
       concurrency: 1, // One task at a time per worker
+      lockDuration: 600_000,     // 10 min — prevents premature stall detection for long-running agent tasks
+      stalledInterval: 300_000,  // 5 min — check for stalled jobs every 5 minutes
     }
   );
 
   worker.on('completed', async (job, result) => {
+    if (result.noop) {
+      console.log(`[Worker:${agentType}] Job ${job.id} no-op (task claimed by another worker), skipping markTaskCompleted`);
+      return;
+    }
     console.log(`[Worker:${agentType}] Job ${job.id} completed`);
     await markTaskCompleted(job.data.taskId, result);
   });
