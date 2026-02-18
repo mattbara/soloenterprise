@@ -7,7 +7,7 @@
 
 import { db } from '@soloenterprise/db';
 import { tasks, projects } from '@soloenterprise/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { Queue } from 'bullmq';
 import { getSharedRedisConnection, closeSharedRedisConnection } from '../utils/index';
 import { publishTaskEvent, type TaskEvent } from './task-events';
@@ -167,6 +167,38 @@ export async function updateTaskStatus(
     status,
     timestamp: Date.now(),
   });
+}
+
+/**
+ * Atomically claim a task for processing (queued → running).
+ * Uses UPDATE...WHERE status='queued' RETURNING to prevent double-processing.
+ * If the task is not in 'queued' status, another worker already claimed it.
+ */
+export async function claimTaskForProcessing(taskId: string): Promise<{
+  claimed: boolean;
+  currentStatus: string;
+}> {
+  // Atomic: only succeeds if task is still in 'queued' status
+  const claimed = await db.update(tasks)
+    .set({
+      status: 'running',
+      startedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(and(eq(tasks.id, taskId), eq(tasks.status, 'queued')))
+    .returning({ id: tasks.id });
+
+  if (claimed.length > 0) {
+    return { claimed: true, currentStatus: 'running' };
+  }
+
+  // Claim failed — fetch current status for logging
+  const current = await db.query.tasks.findFirst({
+    where: eq(tasks.id, taskId),
+    columns: { status: true },
+  });
+
+  return { claimed: false, currentStatus: current?.status ?? 'unknown' };
 }
 
 /**

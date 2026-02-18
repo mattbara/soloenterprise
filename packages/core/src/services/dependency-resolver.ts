@@ -7,7 +7,7 @@
 
 import { db } from '@soloenterprise/db';
 import { tasks } from '@soloenterprise/db/schema';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { enqueueTask } from '../queue/task-queue';
 import { generateTechSpec } from '../agents/utils/architect-spec-generator';
 import { TaskLogger } from '../utils/task-logger';
@@ -27,6 +27,22 @@ export async function resolveCompletedDependency(completedTaskId: string): Promi
   logger.log('DependencyResolver',` Checking tasks blocked by ${completedTaskId}`);
 
   try {
+    // DB status check: verify the task is actually completed in DB
+    // BullMQ can fire 'completed' even when DB status is 'failed' (race condition)
+    const completedTask = await db.query.tasks.findFirst({
+      where: eq(tasks.id, completedTaskId),
+      columns: { id: true, status: true },
+    });
+
+    if (!completedTask || completedTask.status !== 'completed') {
+      const actualStatus = completedTask?.status ?? 'not found';
+      logger.warn('DependencyResolver',
+        `Task ${completedTaskId} has DB status "${actualStatus}" but BullMQ reported completion. Delegating to handleFailedDependency.`
+      );
+      await handleFailedDependency(completedTaskId);
+      return;
+    }
+
     // Find all pending tasks that might be waiting on dependencies
     const pendingTasks = await db.query.tasks.findMany({
       where: eq(tasks.status, 'pending'),
@@ -68,6 +84,18 @@ export async function resolveCompletedDependency(completedTaskId: string): Promi
 
       if (allDepsCompleted) {
         logger.log('DependencyResolver',` All ${deps.length} dependencies met for task ${task.id}, queuing...`);
+
+        // Atomic claim: only transition pending→queued if still pending
+        // Prevents double-queue when two deps resolve concurrently
+        const claimed = await db.update(tasks)
+          .set({ status: 'queued' as const, updatedAt: new Date() })
+          .where(and(eq(tasks.id, task.id), eq(tasks.status, 'pending')))
+          .returning({ id: tasks.id });
+
+        if (claimed.length === 0) {
+          logger.log('DependencyResolver',` Task ${task.id} already claimed by another resolver, skipping`);
+          continue;
+        }
 
         // Generate architect tech spec before queuing (dependencies just resolved)
         try {
@@ -150,6 +178,7 @@ export async function handleFailedDependency(failedTaskId: string): Promise<void
 
     if (blockedCount > 0) {
       logger.log('DependencyResolver',` Blocked ${blockedCount} task(s) due to failed dependency ${failedTaskId}`);
+      logger.warn('DependencyResolver',` ${blockedCount} downstream task(s) are now blocked due to failed task ${failedTaskId}. Manual intervention required.`);
     }
   } catch (error) {
     logger.error('DependencyResolver',` Error handling failed dependency: ${error instanceof Error ? error.message : String(error)}`);
@@ -165,6 +194,20 @@ export async function unblockDependentTasks(completedTaskId: string): Promise<vo
   logger.log('DependencyResolver',` Checking for blocked tasks to unblock after ${completedTaskId} completed`);
 
   try {
+    // DB status check: verify the triggering task is actually completed
+    const triggeringTask = await db.query.tasks.findFirst({
+      where: eq(tasks.id, completedTaskId),
+      columns: { id: true, status: true },
+    });
+
+    if (!triggeringTask || triggeringTask.status !== 'completed') {
+      const actualStatus = triggeringTask?.status ?? 'not found';
+      logger.warn('DependencyResolver',
+        `Skipping unblock — task ${completedTaskId} has DB status "${actualStatus}", not "completed"`
+      );
+      return;
+    }
+
     // Find blocked tasks that were blocked by this specific task
     const blockedTasks = await db.query.tasks.findMany({
       where: eq(tasks.status, 'blocked'),
@@ -196,10 +239,10 @@ export async function unblockDependentTasks(completedTaskId: string): Promise<vo
       const allDepsCompleted = depStatuses.every(d => d.status === 'completed');
 
       if (allDepsCompleted) {
-        // Unblock and queue
-        await db.update(tasks)
+        // Atomic transition: blocked → queued (prevents double-queue)
+        const claimed = await db.update(tasks)
           .set({
-            status: 'pending',
+            status: 'queued' as const,
             updatedAt: new Date(),
             context: {
               ...(context || {}),
@@ -209,7 +252,13 @@ export async function unblockDependentTasks(completedTaskId: string): Promise<vo
               unblockedAt: new Date().toISOString(),
             },
           })
-          .where(eq(tasks.id, task.id));
+          .where(and(eq(tasks.id, task.id), eq(tasks.status, 'blocked')))
+          .returning({ id: tasks.id });
+
+        if (claimed.length === 0) {
+          logger.log('DependencyResolver',` Task ${task.id} already unblocked by another resolver, skipping`);
+          continue;
+        }
 
         // Generate architect tech spec before queuing (dependencies just resolved)
         try {
