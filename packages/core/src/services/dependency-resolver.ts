@@ -133,6 +133,8 @@ export async function resolveCompletedDependency(completedTaskId: string): Promi
     }
   } catch (error) {
     logger.error('DependencyResolver',` Error resolving dependencies: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    logger.close();
   }
 }
 
@@ -182,6 +184,8 @@ export async function handleFailedDependency(failedTaskId: string): Promise<void
     }
   } catch (error) {
     logger.error('DependencyResolver',` Error handling failed dependency: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    logger.close();
   }
 }
 
@@ -281,5 +285,7 @@ export async function unblockDependentTasks(completedTaskId: string): Promise<vo
     }
   } catch (error) {
     logger.error('DependencyResolver',` Error unblocking dependent tasks: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    logger.close();
   }
 }

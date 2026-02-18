@@ -3,6 +3,7 @@ import {
   FolderKanban,
   Building2,
   MessageCircleQuestion,
+  BarChart3,
   AlertTriangle,
   type LucideIcon,
 } from "lucide-react";
@@ -18,5 +19,6 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Companies", href: "/companies", icon: Building2 },
   { label: "Projects", href: "/projects", icon: FolderKanban },
   { label: "Questions", href: "/questions", icon: MessageCircleQuestion },
+  { label: "Metrics", href: "/metrics", icon: BarChart3 },
   { label: "Errors", href: "/errors", icon: AlertTriangle },
 ];

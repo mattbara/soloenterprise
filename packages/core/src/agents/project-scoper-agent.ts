@@ -162,6 +162,7 @@ async function processScoperTask(job: Job<TaskJobData>): Promise<{
       success: false,
       error: 'Missing briefId in job context',
     });
+    logger.close();
     return { success: false, error: 'Missing briefId in job context' };
   }
 
@@ -394,6 +395,8 @@ async function processScoperTask(job: Job<TaskJobData>): Promise<{
     });
 
     return { success: false, error: errorMessage };
+  } finally {
+    logger.close();
   }
 }
 

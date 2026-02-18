@@ -15,7 +15,7 @@ import { parseAgentOutput, validateParsedFiles } from './utils/output-parser';
 import { writeGeneratedFiles } from './utils/file-writer';
 import { validateGeneratedFiles } from './utils/file-validator';
 import { loadSkillsForTask, type TaskComplexity } from './utils/skill-loader';
-import { processWithSyntaxRecovery, type SyntaxError } from './utils/syntax-recovery';
+import { processWithSyntaxRecovery, type SyntaxError, type CostTrackingCallback } from './utils/syntax-recovery';
 import { buildContextWithProfile, getEmptyContextResult, type ProfiledContextResult } from './utils/context-loader';
 import type { ContextProfileName } from './utils/context-profiles';
 import { buildCachedSystemPrompt, extractCacheMetrics, logCacheMetrics } from './utils/cache-helper';
@@ -209,6 +209,7 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
   const claim = await claimTaskForProcessing(taskId);
   if (!claim.claimed) {
     logger.log('BackendAgent', `Task ${taskId} already claimed (status: ${claim.currentStatus}), skipping`);
+    logger.close();
     return { success: false, noop: true, summary: `Task already claimed by another worker (status: ${claim.currentStatus})` };
   }
 
@@ -440,6 +441,20 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
       }));
     };
 
+    // Cost tracking callback for syntax recovery
+    const onRecoveryCost: CostTrackingCallback = async (usage) => {
+      await recordAgentCost({
+        projectId,
+        taskId,
+        agentType: 'backend',
+        model: usage.callSource === 'syntax-fix' ? 'claude-3-5-haiku-latest' : MODEL,
+        tokensInput: usage.inputTokens,
+        tokensOutput: usage.outputTokens,
+        cachedTokens: usage.cachedTokens,
+        callSource: usage.callSource,
+      });
+    };
+
     // Create fresh generation function for full retries
     const generateFresh = async (): Promise<typeof parseResult.files> => {
       logger.log('BackendAgent', 'Generating fresh response (full retry)...');
@@ -450,6 +465,15 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
         system: cachedSystem,
         messages: [{ role: 'user', content: userPrompt }],
       });
+
+      // Track full retry cost
+      await onRecoveryCost({
+        inputTokens: retryResponse.usage?.input_tokens ?? 0,
+        outputTokens: retryResponse.usage?.output_tokens ?? 0,
+        cachedTokens: (retryResponse.usage as unknown as Record<string, number>)?.cache_read_input_tokens ?? 0,
+        callSource: 'full-retry',
+      });
+
       const retryText = retryResponse.content.find(c => c.type === 'text');
       const retryResponseText = retryText?.type === 'text' ? retryText.text : '';
       const retryParsed = parseAgentOutput(retryResponseText);
@@ -463,7 +487,8 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
       'BackendAgent',
       parseResult.files,
       validateFiles,
-      generateFresh
+      generateFresh,
+      onRecoveryCost
     );
 
     logger.log('BackendAgent', `Recovery complete: success=${recoveryResult.success}, fixLoops=${recoveryResult.attempts.fixLoops}, fullRetries=${recoveryResult.attempts.fullRetries}`);
@@ -586,6 +611,8 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
       success: false,
       error: errorMessage,
     };
+  } finally {
+    logger.close();
   }
 }
 

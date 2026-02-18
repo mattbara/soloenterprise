@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { projectScopes, projects } from "@soloenterprise/db/schema";
-import { eq, and } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { spawn } from "child_process";
 
 /**
  * POST /api/scopes/:id/approve — Approve or reject a scope
  *
- * Body: { action: 'approve' | 'reject', approvedBy?: string }
+ * Body: { action: 'approve' | 'reject', approvedBy?: string, additionalContext?: string }
+ *
+ * On approve: links scope to project, starts workers if stopped, creates orchestrator task.
  */
 export async function POST(
   request: Request,
@@ -15,7 +18,7 @@ export async function POST(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { action, approvedBy } = body;
+    const { action, approvedBy, additionalContext } = body;
 
     if (action !== "approve" && action !== "reject") {
       return NextResponse.json(
@@ -31,9 +34,12 @@ export async function POST(
       );
     }
 
-    // Fetch the scope
+    // Fetch the scope with brief
     const scope = await db.query.projectScopes.findFirst({
       where: eq(projectScopes.id, id),
+      with: {
+        brief: true,
+      },
     });
 
     if (!scope) {
@@ -64,20 +70,134 @@ export async function POST(
       .where(eq(projectScopes.id, id))
       .returning();
 
-    // On approval, link scope to project via projects.scopeId
-    if (action === "approve" && scope.projectId) {
+    if (action === "reject") {
+      // Link scope to project so the UI can resolve "rejected" status (prevents orphan "scoping" state)
+      let rejectedProjectId: string | null = null;
       try {
-        await db
-          .update(projects)
-          .set({ scopeId: id, updatedAt: new Date() })
-          .where(eq(projects.id, scope.projectId));
-        console.log(`[Scopes API] Linked scope ${id} to project ${scope.projectId}`);
-      } catch (linkError) {
-        console.error(`[Scopes API] Failed to link scope to project:`, linkError);
+        let project = scope.projectId
+          ? await db.query.projects.findFirst({ where: eq(projects.id, scope.projectId) })
+          : null;
+
+        if (!project && scope.brief?.clientId) {
+          project = await db.query.projects.findFirst({
+            where: and(
+              eq(projects.clientId, scope.brief.clientId),
+              eq(projects.name, scope.brief.title)
+            ),
+          });
+        }
+
+        if (project) {
+          rejectedProjectId = project.id;
+          // Bidirectional link so scope is always discoverable
+          await db.update(projectScopes).set({ projectId: project.id, updatedAt: new Date() }).where(eq(projectScopes.id, id));
+          await db.update(projects).set({ scopeId: scope.id, updatedAt: new Date() }).where(eq(projects.id, project.id));
+        }
+      } catch (err) {
+        console.error("[Reject] Failed to link scope to project:", err);
       }
+
+      return NextResponse.json({ ...updated, projectId: rejectedProjectId });
     }
 
-    return NextResponse.json(updated);
+    // ========== PIPELINE WIRING (approve only) ==========
+
+    // 1. Find the project linked to this scope — prefer direct projectId, fallback to brief matching
+    let project = scope.projectId
+      ? await db.query.projects.findFirst({
+          where: eq(projects.id, scope.projectId),
+        })
+      : null;
+
+    if (!project && scope.brief?.clientId) {
+      project = await db.query.projects.findFirst({
+        where: and(
+          eq(projects.clientId, scope.brief.clientId),
+          eq(projects.name, scope.brief.title)
+        ),
+      });
+    }
+
+    let orchestratorTaskId: string | null = null;
+    let workersStarted = false;
+
+    if (project) {
+      // 2. Bidirectional link: project ↔ scope, set project to active
+      await db
+        .update(projects)
+        .set({
+          scopeId: scope.id,
+          status: "active",
+          updatedAt: new Date(),
+        })
+        .where(eq(projects.id, project.id));
+
+      await db
+        .update(projectScopes)
+        .set({ projectId: project.id, updatedAt: new Date() })
+        .where(eq(projectScopes.id, scope.id));
+
+      // 3. Check worker statuses and start if needed
+      try {
+        const { getAllWorkerStatuses } = await import("@soloenterprise/core/services");
+        const statuses = await getAllWorkerStatuses();
+        const allStopped = Object.values(statuses).every(
+          (s: any) => s.status === "stopped" || s.status === "unknown"
+        );
+
+        if (allStopped) {
+          const child = spawn("pnpm", ["worker"], {
+            detached: true,
+            stdio: "ignore",
+            cwd: process.cwd(),
+            env: { ...process.env },
+          });
+          child.unref();
+          workersStarted = true;
+          console.log(`[Approve] Started all workers (PID: ${child.pid})`);
+        }
+      } catch (err) {
+        console.error("[Approve] Failed to check/start workers:", err);
+      }
+
+      // 4. Create orchestrator task
+      try {
+        const { createTask } = await import("@soloenterprise/core/services");
+
+        const scopeData = scope.scopeData as any;
+        const taskName = `Orchestrate: ${project.name}`;
+        const taskDescription = scopeData?.summary
+          ? `Execute project scope: ${scopeData.summary}`
+          : `Execute approved scope for project ${project.name}`;
+
+        const result = await createTask(project.id, {
+          name: taskName,
+          description: taskDescription,
+          agentType: "orchestrator",
+          priority: "high",
+          context: {
+            scopeId: scope.id,
+            scopeData: scope.scopeData,
+            clientDocument: scope.clientDocument,
+            ...(additionalContext ? { additionalContext } : {}),
+          },
+        });
+
+        orchestratorTaskId = result.taskId;
+        console.log(`[Approve] Created orchestrator task ${orchestratorTaskId} for project ${project.id}`);
+      } catch (err) {
+        console.error("[Approve] Failed to create orchestrator task:", err);
+      }
+    } else {
+      console.warn(`[Approve] No project found for scope ${id} — scope approved but no orchestrator task created`);
+    }
+
+    return NextResponse.json({
+      ...updated,
+      orchestratorTaskId,
+      workersStarted,
+      projectId: project?.id ?? null,
+    });
   } catch (error) {
     console.error("Failed to update scope:", error);
     return NextResponse.json(

@@ -140,6 +140,7 @@ async function processReporterTask(job: Job<TaskJobData>): Promise<{
       success: false,
       error: 'Missing projectId in job data',
     });
+    logger.close();
     return { success: false, error: 'Missing projectId in job data' };
   }
 
@@ -307,6 +308,8 @@ async function processReporterTask(job: Job<TaskJobData>): Promise<{
     });
 
     return { success: false, error: errorMessage };
+  } finally {
+    logger.close();
   }
 }
 

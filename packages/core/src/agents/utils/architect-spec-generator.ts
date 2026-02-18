@@ -18,6 +18,7 @@ import { fileURLToPath } from 'url';
 import { selectContextProfile } from './context-profiles';
 import { TaskLogger } from '../../utils/task-logger';
 import { summarizeArtifact, shouldSummarize, estimateTokens } from './artifact-summarizer';
+import { recordAgentCost } from '../../services/cost-tracking-service';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -167,6 +168,7 @@ export async function generateTechSpec(
   // 2. Skip if spec already exists
   if (task.technicalSpec) {
     logger.log('ArchitectSpec', `Task ${taskId} already has a tech spec, skipping`);
+    logger.close();
     return null;
   }
 
@@ -185,10 +187,12 @@ export async function generateTechSpec(
   let totalSummaryTokens = 0;
   let hasSummarizedDeps = false;
 
+  // Hoisted so the file-list builder below can reuse without a second DB query
+  const depTasks = hasDeps
+    ? await db.query.tasks.findMany({ where: inArray(tasks.id, deps) })
+    : [];
+
   if (hasDeps) {
-    const depTasks = await db.query.tasks.findMany({
-      where: inArray(tasks.id, deps),
-    });
 
     let totalChars = 0;
 
@@ -273,12 +277,10 @@ export async function generateTechSpec(
     userParts.push(`\n## Dependency Artifacts (${depCount} files)\n${dependencyContext}`);
 
     // Build flat file list so architect cannot miss existing files
+    // Reuses depTasks loaded in step 4 above — no second DB query
     const existingFiles: string[] = [];
     if (hasDeps) {
-      const depTasksForFiles = await db.query.tasks.findMany({
-        where: inArray(tasks.id, deps),
-      });
-      for (const depTask of depTasksForFiles) {
+      for (const depTask of depTasks) {
         if (depTask.status !== 'completed') continue;
         const taskDir = getGeneratedTaskDir(depTask.id);
         if (!existsSync(taskDir)) continue;
@@ -343,6 +345,7 @@ When writing specs that reference these dependencies:
 
     if (!spec) {
       logger.warn('ArchitectSpec', `Empty response for task ${taskId}`);
+      logger.close();
       return null;
     }
 
@@ -381,9 +384,307 @@ When writing specs that reference these dependencies:
       })
     );
 
+    // Track cost (previously untracked — Opus calls were invisible)
+    await recordAgentCost({
+      projectId: task.projectId,
+      taskId,
+      agentType: 'architect',
+      model: MODEL,
+      tokensInput: inputTokens,
+      tokensOutput: outputTokens,
+      cachedTokens: (response.usage as unknown as Record<string, number>)?.cache_read_input_tokens ?? 0,
+      callSource: 'architect-spec',
+    });
+
+    logger.close();
     return { spec, tokens: totalTokens };
   } catch (err) {
     logger.error('ArchitectSpec', `API call failed for task ${taskId}: ${err instanceof Error ? err.message : String(err)}`);
+    logger.close();
     return null;
+  }
+}
+
+// ============================================================================
+// Batch Spec Generation
+// ============================================================================
+
+const BATCH_SPEC_DELIMITER_START = '---SPEC:';
+const BATCH_SPEC_DELIMITER_END = '---END-SPEC---';
+
+/**
+ * Parse a batch response into per-task specs using delimiters.
+ * Returns null if parsing fails (triggers fallback to individual calls).
+ */
+function parseBatchResponse(responseText: string, taskIds: string[]): Map<string, string> | null {
+  const specs = new Map<string, string>();
+
+  for (const taskId of taskIds) {
+    const startMarker = `${BATCH_SPEC_DELIMITER_START}${taskId}---`;
+    const startIdx = responseText.indexOf(startMarker);
+    if (startIdx === -1) return null;
+
+    const contentStart = startIdx + startMarker.length;
+    const endIdx = responseText.indexOf(BATCH_SPEC_DELIMITER_END, contentStart);
+    if (endIdx === -1) return null;
+
+    const spec = responseText.slice(contentStart, endIdx).trim();
+    if (!spec) return null;
+
+    specs.set(taskId, spec);
+  }
+
+  return specs.size === taskIds.length ? specs : null;
+}
+
+/**
+ * Generate tech specs for multiple tasks in a single API call.
+ *
+ * Batches sibling tasks (created by orchestrator in one run) to:
+ * - Deduplicate shared dependency artifacts across tasks
+ * - Reduce Opus API calls from N to 1
+ *
+ * Falls back to individual generateTechSpec() calls if batch parsing fails.
+ */
+export async function generateTechSpecBatch(
+  taskIds: string[]
+): Promise<{ results: Map<string, { spec: string; tokens: number }>; batchUsed: boolean }> {
+  const results = new Map<string, { spec: string; tokens: number }>();
+
+  if (taskIds.length === 0) {
+    return { results, batchUsed: false };
+  }
+
+  // Single task — just use the regular function
+  if (taskIds.length === 1) {
+    const result = await generateTechSpec(taskIds[0]);
+    if (result) {
+      results.set(taskIds[0], result);
+    }
+    return { results, batchUsed: false };
+  }
+
+  // Load all tasks
+  const allTasks = await db.query.tasks.findMany({
+    where: inArray(tasks.id, taskIds),
+  });
+
+  // Filter: skip tasks that already have specs
+  const tasksNeedingSpecs = allTasks.filter(t => !t.technicalSpec);
+  if (tasksNeedingSpecs.length === 0) {
+    console.log('[ArchitectSpec] All tasks already have specs, skipping batch');
+    return { results, batchUsed: false };
+  }
+
+  // If only 1 task needs a spec after filtering, use individual
+  if (tasksNeedingSpecs.length === 1) {
+    const result = await generateTechSpec(tasksNeedingSpecs[0].id);
+    if (result) {
+      results.set(tasksNeedingSpecs[0].id, result);
+    }
+    return { results, batchUsed: false };
+  }
+
+  console.log(`[ArchitectSpec] Batch: generating specs for ${tasksNeedingSpecs.length} tasks in one API call`);
+
+  // Collect ALL unique dependency IDs across all tasks
+  const allDepIds = new Set<string>();
+  for (const task of tasksNeedingSpecs) {
+    const deps = (task.dependsOn as string[] | null) ?? [];
+    for (const dep of deps) {
+      allDepIds.add(dep);
+    }
+  }
+
+  // Load dependency artifacts ONCE (deduplicated)
+  let sharedDependencyContext = '';
+  let depArtifactCount = 0;
+
+  if (allDepIds.size > 0) {
+    const depTasks = await db.query.tasks.findMany({
+      where: inArray(tasks.id, [...allDepIds]),
+    });
+
+    let totalChars = 0;
+
+    for (const depTask of depTasks) {
+      if (depTask.status !== 'completed') continue;
+      const taskDir = getGeneratedTaskDir(depTask.id);
+      if (!existsSync(taskDir)) continue;
+
+      const files = getAllFilesSync(taskDir);
+      for (const filePath of files) {
+        const fileName = filePath.split('/').pop() ?? '';
+        if (fileName === 'manifest.json' || fileName.startsWith('.')) continue;
+        if (totalChars >= MAX_DEPENDENCY_CHARS) break;
+
+        try {
+          const content = readFileSync(filePath, 'utf-8');
+          const relativePath = filePath.replace(taskDir + '/', '');
+
+          let displayContent: string;
+          let marker = '';
+
+          if (shouldSummarize(relativePath, content)) {
+            const summary = summarizeArtifact(relativePath, content);
+            displayContent = summary.summary;
+            marker = ' (API Surface Summary)';
+          } else {
+            displayContent = content;
+          }
+
+          const block = `\n### Dependency: "${depTask.name}" (${depTask.id}) — ${relativePath}${marker}\n\`\`\`\n${displayContent}\n\`\`\`\n`;
+
+          if (totalChars + block.length > MAX_DEPENDENCY_CHARS) break;
+
+          sharedDependencyContext += block;
+          totalChars += block.length;
+          depArtifactCount++;
+        } catch {
+          // Skip unreadable files
+        }
+      }
+    }
+  }
+
+  // Build batch prompt
+  const batchParts: string[] = [
+    '# Batch Technical Specification Request',
+    `Generate a separate spec for EACH of the ${tasksNeedingSpecs.length} tasks below. Use shared dependencies.`,
+  ];
+
+  if (sharedDependencyContext) {
+    batchParts.push(`\n## Shared Dependencies (${depArtifactCount} artifacts)\n${sharedDependencyContext}`);
+  }
+
+  for (const task of tasksNeedingSpecs) {
+    const profile = selectContextProfile(task.description, { agentType: task.agentType });
+    const deps = (task.dependsOn as string[] | null) ?? [];
+
+    batchParts.push(`\n## Task: ${task.name} (ID: ${task.id})`);
+    batchParts.push(`Agent: ${task.agentType} | Profile: ${profile} | Dependencies: ${deps.length}`);
+    batchParts.push(`Description: ${task.description}`);
+
+    const ctx = task.context as Record<string, unknown> | null;
+    if (ctx?.requirements) {
+      batchParts.push(`Requirements: ${ctx.requirements}`);
+    }
+
+    if (!deps.length) {
+      batchParts.push(FOUNDATIONAL_TASK_NOTE);
+    }
+  }
+
+  batchParts.push('\n## Output Format');
+  batchParts.push('For EACH task, output the spec between these exact delimiters:');
+  batchParts.push('```');
+  batchParts.push(`${BATCH_SPEC_DELIMITER_START}<task-id>---`);
+  batchParts.push('<spec content>');
+  batchParts.push(BATCH_SPEC_DELIMITER_END);
+  batchParts.push('```');
+  batchParts.push(`\nGenerate specs for ALL ${tasksNeedingSpecs.length} tasks now.`);
+
+  const batchPrompt = batchParts.join('\n');
+
+  try {
+    const client = getArchitectClient();
+
+    const response = await client.messages.create({
+      model: MODEL,
+      max_tokens: 8192, // Larger for batch
+      temperature: 0,
+      system: [
+        {
+          type: 'text',
+          text: ARCHITECT_SYSTEM_PROMPT,
+          cache_control: { type: 'ephemeral' },
+        },
+      ],
+      messages: [{ role: 'user', content: batchPrompt }],
+    });
+
+    const textBlock = response.content.find(b => b.type === 'text');
+    const responseText = textBlock?.type === 'text' ? textBlock.text : '';
+
+    const inputTokens = response.usage?.input_tokens ?? 0;
+    const outputTokens = response.usage?.output_tokens ?? 0;
+    const totalTokens = inputTokens + outputTokens;
+
+    // Track cost
+    // Use the first task's projectId for cost tracking (all tasks share a project)
+    await recordAgentCost({
+      projectId: tasksNeedingSpecs[0].projectId,
+      taskId: tasksNeedingSpecs[0].id,
+      agentType: 'architect',
+      model: MODEL,
+      tokensInput: inputTokens,
+      tokensOutput: outputTokens,
+      cachedTokens: (response.usage as unknown as Record<string, number>)?.cache_read_input_tokens ?? 0,
+      callSource: 'architect-spec-batch',
+    });
+
+    console.log(
+      'TOKEN_BASELINE',
+      JSON.stringify({
+        type: 'architect-spec-batch',
+        taskIds: tasksNeedingSpecs.map(t => t.id),
+        timestamp: new Date().toISOString(),
+        inputTokens,
+        outputTokens,
+        totalTokens,
+        taskCount: tasksNeedingSpecs.length,
+        sharedDependencyArtifacts: depArtifactCount,
+      })
+    );
+
+    // Parse batch response
+    const specs = parseBatchResponse(responseText, tasksNeedingSpecs.map(t => t.id));
+
+    if (!specs) {
+      console.warn('[ArchitectSpec] Batch parsing failed, falling back to individual calls');
+      // Fallback: call individual generateTechSpec for each task
+      for (const task of tasksNeedingSpecs) {
+        const result = await generateTechSpec(task.id);
+        if (result) {
+          results.set(task.id, result);
+        }
+      }
+      return { results, batchUsed: false };
+    }
+
+    // Save each spec to DB
+    const tokensPerTask = Math.ceil(totalTokens / tasksNeedingSpecs.length);
+
+    for (const [taskId, spec] of specs) {
+      await db
+        .update(tasks)
+        .set({
+          technicalSpec: spec,
+          techSpecGeneratedAt: new Date(),
+          techSpecTokens: tokensPerTask,
+        })
+        .where(eq(tasks.id, taskId));
+
+      results.set(taskId, { spec, tokens: tokensPerTask });
+    }
+
+    console.log(
+      `[ArchitectSpec] Batch complete: ${specs.size} specs generated in 1 API call ` +
+      `(~${totalTokens} tokens, ${depArtifactCount} shared deps)`
+    );
+
+    return { results, batchUsed: true };
+  } catch (err) {
+    console.error(`[ArchitectSpec] Batch API call failed: ${err instanceof Error ? err.message : String(err)}`);
+    console.warn('[ArchitectSpec] Falling back to individual spec generation');
+
+    // Fallback: individual calls
+    for (const task of tasksNeedingSpecs) {
+      const result = await generateTechSpec(task.id);
+      if (result) {
+        results.set(task.id, result);
+      }
+    }
+    return { results, batchUsed: false };
   }
 }
