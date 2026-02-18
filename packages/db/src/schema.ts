@@ -546,7 +546,7 @@ export const costTracking = pgTable('cost_tracking', {
   cachedTokens: integer('cached_tokens').default(0),
   apiCostUsd: numeric('api_cost_usd', { precision: 10, scale: 4 }),
   estimatedBillableHours: numeric('estimated_billable_hours', { precision: 6, scale: 2 }),
-  callSource: varchar('call_source', { length: 50 }).default('agent-task'),
+  callSource: text('call_source').default('agent-task'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
 
