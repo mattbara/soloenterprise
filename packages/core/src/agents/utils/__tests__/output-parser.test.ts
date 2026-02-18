@@ -194,7 +194,7 @@ describe('parseAgentOutput — question detection', () => {
       ].join('\n');
 
       const result = parseAgentOutput(response);
-      expect(result.hasQuestions).toBe(false, `Should reject: "${variant}"`);
+      expect(result.hasQuestions).toBe(false);
     }
   });
 

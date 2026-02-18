@@ -218,8 +218,8 @@ cp packages/core/generated/tasks/{task-id}/src/file.ts src/file.ts
 
 **This applies to everyone and everything: agents, developers, CI/CD, Claude Code. No shortcuts.**
 
-### 9. Architect Layer Required for Complex Tasks
+### 9. Architect Layer Required for ALL Tasks
 
-Tasks with complexity profile `database-task` or `full-feature` MUST have a technical spec generated before agent execution. Tasks with `simple-endpoint` or `bug-fix` profiles MAY skip the architect step to save cost and time.
+**Every task gets an architect tech spec. No exceptions.** Foundational tasks (wave 1, 0 dependencies) are the MOST important to spec — they define contracts that everything downstream consumes. Skipping specs on root tasks causes API divergence and import mismatches.
 
-The architect step is NOT optional for tasks with dependencies — if a task depends on other tasks, the architect MUST read dependency artifacts to generate an informed spec.
+Cost is managed through model tiering (Sonnet for simple profiles, Opus for complex), NOT by skipping specs. The architect step adapts its prompt: dependency artifact context for tasks with deps, and "define your public API contract" guidance for root tasks.

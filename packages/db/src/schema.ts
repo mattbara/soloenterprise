@@ -191,6 +191,8 @@ export const tasks = pgTable('tasks', {
     // Syntax recovery tracking
     syntaxRecoveryAttempts?: { fixLoops: number; fullRetries: number; fixTokensUsed: number };
     finalSyntaxErrors?: Array<{ file: string; line?: number; message: string }>;
+    // Rate limit tracking
+    rateLimitHits?: number;
   }>().default({}),
   
   // Output
