@@ -132,8 +132,8 @@ export function ScopeReviewPanel({
 
       <div className="flex gap-6 min-h-0 flex-1">
         {/* Left (35%): Scope Document + Notes + Actions */}
-        <div className="w-[35%] shrink-0 flex flex-col gap-4 min-h-0">
-          <div className="bg-white shadow rounded-lg p-4 flex-1 overflow-y-auto min-h-0">
+        <div className="w-[35%] shrink-0 min-w-0 flex flex-col gap-4 min-h-0">
+          <div className="bg-white shadow rounded-lg p-4 flex-1 overflow-y-auto overflow-x-hidden break-words min-h-0">
             <h2 className="text-lg font-semibold text-gray-900 mb-3">Scope Document</h2>
             <MarkdownRenderer content={scopeMarkdown} />
           </div>
@@ -194,9 +194,9 @@ export function ScopeReviewPanel({
         </div>
 
         {/* Right (65%): Client Document — fills viewport, scrolls internally */}
-        <div className="w-[65%] min-h-0 flex flex-col">
+        <div className="w-[65%] min-w-0 min-h-0 flex flex-col">
           <h2 className="text-lg font-semibold text-gray-900 mb-3 shrink-0">Client Document</h2>
-          <div className="bg-white shadow rounded-lg p-6 flex-1 overflow-y-auto">
+          <div className="bg-white shadow rounded-lg p-6 flex-1 overflow-y-auto break-words overflow-x-hidden">
             <MarkdownRenderer content={clientDocument || "No client document available."} />
           </div>
         </div>
