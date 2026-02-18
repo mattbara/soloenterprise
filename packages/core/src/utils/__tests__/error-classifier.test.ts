@@ -1,8 +1,10 @@
 /**
  * Tests for Error Classifier
  *
- * Validates that errors are correctly classified as retryable (transient)
- * or non-retryable (permanent) for the auto-retry system.
+ * Validates 3-tier error classification:
+ * - transient (retryable): network, 5xx, rate limits
+ * - permanent (non-retryable): auth errors, client errors
+ * - escalate (non-retryable): billing/quota — needs human attention
  */
 
 import { describe, it, expect } from 'vitest';
@@ -71,40 +73,60 @@ describe('classifyError', () => {
     });
   });
 
-  describe('non-retryable (permanent) errors', () => {
-    it('classifies credit limit error as non-retryable', () => {
+  describe('escalate (billing/quota) errors', () => {
+    it('classifies credit limit error as escalate', () => {
       const result = classifyError(
         '400 {"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API."}}'
       );
       expect(result.retryable).toBe(false);
-      expect(result.category).toBe('permanent');
+      expect(result.category).toBe('escalate');
     });
 
-    it('classifies API usage limit as non-retryable', () => {
+    it('classifies API usage limit as escalate', () => {
       const result = classifyError(
         '400 {"type":"error","error":{"type":"invalid_request_error","message":"You have reached your specified API usage limits. You will regain access on 2026-03-01."}}'
       );
       expect(result.retryable).toBe(false);
-      expect(result.category).toBe('permanent');
+      expect(result.category).toBe('escalate');
     });
 
+    it('classifies billing error as escalate', () => {
+      const result = classifyError('Payment required — billing issue on your account');
+      expect(result.retryable).toBe(false);
+      expect(result.category).toBe('escalate');
+    });
+
+    it('classifies quota exceeded as escalate', () => {
+      const result = classifyError('Request failed: quota exceeded for this billing period');
+      expect(result.retryable).toBe(false);
+      expect(result.category).toBe('escalate');
+    });
+
+    it('prioritizes escalate over non-retryable when both patterns match', () => {
+      // Message contains "credit balance is too low" (escalate) AND "invalid_request_error" (non-retryable)
+      const result = classifyError(
+        '400 {"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low"}}'
+      );
+      expect(result.retryable).toBe(false);
+      expect(result.category).toBe('escalate');
+    });
+  });
+
+  describe('non-retryable (permanent) errors', () => {
     it('classifies invalid API key as non-retryable', () => {
       const result = classifyError('401 invalid_api_key');
       expect(result.retryable).toBe(false);
       expect(result.category).toBe('permanent');
     });
 
-    it('classifies billing error as non-retryable', () => {
-      const result = classifyError('Payment required — billing issue on your account');
+    it('classifies 403 forbidden as non-retryable', () => {
+      const result = classifyError('403 Forbidden');
       expect(result.retryable).toBe(false);
       expect(result.category).toBe('permanent');
     });
 
-    it('prioritizes non-retryable over retryable when both patterns match', () => {
-      // This message contains "invalid_request_error" (non-retryable) AND "500" could be in a request ID
-      const result = classifyError(
-        '400 {"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low"}}'
-      );
+    it('classifies invalid_request_error as non-retryable', () => {
+      const result = classifyError('400 invalid_request_error: prompt is too long');
       expect(result.retryable).toBe(false);
       expect(result.category).toBe('permanent');
     });
