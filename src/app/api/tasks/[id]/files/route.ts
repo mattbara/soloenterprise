@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { readdir, readFile, stat } from "fs/promises";
 import { join } from "path";
+import { GENERATED_TASKS_DIR } from "@soloenterprise/core";
 
 interface GeneratedFile {
   path: string;
@@ -26,15 +27,8 @@ export async function GET(
     );
   }
 
-  // Task files are stored in packages/core/generated/tasks/{taskId}
-  const taskDir = join(
-    process.cwd(),
-    "packages",
-    "core",
-    "generated",
-    "tasks",
-    taskId
-  );
+  // Task files are stored in tmpdir (outside project tree to avoid Turbopack HMR)
+  const taskDir = join(GENERATED_TASKS_DIR, taskId);
 
   try {
     // Check if directory exists

@@ -17,6 +17,7 @@ import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { selectContextProfile } from './context-profiles';
 import { TaskLogger } from '../../utils/task-logger';
+import { getGeneratedTaskDir as getGeneratedTaskDirFn } from '../../utils/generated-dir';
 import { summarizeArtifact, shouldSummarize, estimateTokens } from './artifact-summarizer';
 import { recordAgentCost } from '../../services/cost-tracking-service';
 
@@ -50,7 +51,7 @@ function getArchitectClient(): Anthropic {
 // ============================================================================
 
 function getGeneratedTaskDir(taskId: string): string {
-  return resolve(__dirname, '../../../generated/tasks', taskId);
+  return getGeneratedTaskDirFn(taskId);
 }
 
 function getAllFilesSync(dir: string): string[] {

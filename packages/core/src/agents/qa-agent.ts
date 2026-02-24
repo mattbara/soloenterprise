@@ -375,10 +375,7 @@ async function processQATask(job: Job<TaskJobData>): Promise<{
           summary: 'Task requires human input - questions pending',
         });
 
-        return {
-          success: false,
-          summary: 'Task requires human input - questions pending',
-        };
+        throw new Error('Task requires human input - questions pending');
       } else {
         // Files generated = agent made its decisions. Discard phantom questions.
         const questionSnippets = parseResult.questionsContent
@@ -429,10 +426,7 @@ async function processQATask(job: Job<TaskJobData>): Promise<{
         outputs: { rawResponse: responseText },
       });
 
-      return {
-        success: false,
-        summary: 'Clarification needed - no test output generated',
-      };
+      throw new Error('Clarification needed - no test output generated');
     }
 
     logger.log('QAAgent', `Validating ${parseResult.files.length} files with syntax recovery...`);
@@ -538,10 +532,7 @@ async function processQATask(job: Job<TaskJobData>): Promise<{
         },
       });
 
-      return {
-        success: false,
-        error: `Generated tests have syntax errors after recovery attempts`,
-      };
+      throw new Error(`Generated tests have syntax errors after recovery attempts: ${errorSummary}`);
     }
 
     // Write final validated files
@@ -608,16 +599,13 @@ async function processQATask(job: Job<TaskJobData>): Promise<{
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     logger.error('QAAgent', `Task ${taskId} failed: ${errorMessage}`);
 
-    // Update task status to failed
+    // Update task status to failed (may already be set by throw sites above)
     await updateTaskStatus(taskId, 'failed', {
       success: false,
       error: errorMessage,
     });
 
-    return {
-      success: false,
-      error: errorMessage,
-    };
+    throw error; // Re-throw so BullMQ marks job as failed
   } finally {
     logger.close();
   }

@@ -90,6 +90,9 @@ async function start() {
   const { publishTaskEvent } = await import('./services/task-events');
   const { resolveCompletedDependency, handleFailedDependency, unblockDependentTasks } = await import('./services/dependency-resolver');
   const { resumeAllQueues, isRateLimitError, handleRateLimit } = await import('./utils/rate-limit-guard');
+  const { db } = await import('@soloenterprise/db');
+  const { tasks } = await import('@soloenterprise/db/schema');
+  const { eq } = await import('drizzle-orm');
 
   // Safety net: resume any queues left paused from a previous crash
   try {
@@ -132,6 +135,24 @@ async function start() {
 
       const taskId = job?.data?.taskId;
       if (!taskId) return;
+
+      // Check DB status — if waiting_human, the agent intentionally paused the task.
+      // Don't treat as failure or cascade to dependents.
+      try {
+        const task = await db.query.tasks.findFirst({
+          where: eq(tasks.id, taskId),
+          columns: { status: true },
+        });
+
+        if (task?.status === 'waiting_human') {
+          console.log(`[Worker] Task ${taskId} is waiting_human, not treating as failure`);
+          await publishTaskEvent({ type: 'task-waiting' as any, taskId, status: 'waiting_human', timestamp: Date.now() });
+          return;
+        }
+      } catch (dbErr) {
+        console.warn(`[Worker] Failed to check task status for waiting_human guard: ${dbErr}`);
+        // Fall through to normal failure handling
+      }
 
       // Rate limit interception: check BEFORE markTaskFailed to avoid burning a retry
       const rateLimitType = isRateLimitError(error?.message ?? '');

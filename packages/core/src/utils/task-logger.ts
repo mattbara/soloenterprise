@@ -10,9 +10,7 @@
 
 import { mkdirSync, appendFileSync } from 'fs';
 import { resolve, dirname } from 'path';
-import { tmpdir } from 'os';
-
-const LOG_ROOT = resolve(tmpdir(), 'soloenterprise-logs', 'tasks');
+import { GENERATED_TASKS_DIR } from './generated-dir';
 
 const FLUSH_INTERVAL_MS = 5000;
 
@@ -88,6 +86,6 @@ export class TaskLogger {
   }
 
   static getLogFilePath(taskId: string): string {
-    return resolve(LOG_ROOT, taskId, 'task.log');
+    return resolve(GENERATED_TASKS_DIR, taskId, 'task.log');
   }
 }

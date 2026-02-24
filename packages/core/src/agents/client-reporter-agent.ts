@@ -26,14 +26,12 @@ import { parseReportOutput } from './utils/report-parser';
 import { buildCachedSystemPrompt, extractCacheMetrics, logCacheMetrics } from './utils/cache-helper';
 import { getSharedRedisConnection, closeSharedRedisConnection } from '../utils/index';
 import { TaskLogger } from '../utils/task-logger';
+import { getGeneratedReportDir } from '../utils/generated-dir';
 import { recordAgentCost } from '../services/cost-tracking-service';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const QUEUE_NAME = 'client-reporter-tasks';
-
-// Reports output directory (sandboxed under generated/)
-const REPORTS_DIR = resolve(__dirname, '../../../generated/reports');
 
 // ============================================================================
 // Token Baseline Logging
@@ -242,11 +240,11 @@ async function processReporterTask(job: Job<TaskJobData>): Promise<{
         error: 'Malformed response — no report content found',
       });
 
-      return { success: false, error: 'Malformed response from Claude' };
+      throw new Error('Malformed response — no report content found');
     }
 
     // Write outputs to filesystem
-    const reportDir = resolve(REPORTS_DIR, projectId);
+    const reportDir = getGeneratedReportDir(projectId);
     const dateStr = new Date().toISOString().split('T')[0];
 
     try {
@@ -307,7 +305,7 @@ async function processReporterTask(job: Job<TaskJobData>): Promise<{
       error: errorMessage,
     });
 
-    return { success: false, error: errorMessage };
+    throw error; // Re-throw so BullMQ marks job as failed
   } finally {
     logger.close();
   }

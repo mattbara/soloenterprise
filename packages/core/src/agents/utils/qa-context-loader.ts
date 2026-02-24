@@ -16,6 +16,7 @@ import { existsSync, readdirSync, statSync, readFileSync } from 'fs';
 import { db } from '@soloenterprise/db';
 import { tasks } from '@soloenterprise/db/schema';
 import { eq, inArray } from 'drizzle-orm';
+import { getGeneratedTaskDir as getGeneratedTaskDirFromUtils } from '../../utils/generated-dir';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MAX_LINES = 500;
@@ -53,8 +54,7 @@ function getRepoRoot(): string {
  * Get the generated files directory for a task.
  */
 function getGeneratedTaskDir(taskId: string): string {
-  // From packages/core/src/agents/utils -> packages/core/generated/tasks/{taskId}
-  return resolve(__dirname, '../../../generated/tasks', taskId);
+  return getGeneratedTaskDirFromUtils(taskId);
 }
 
 /**

@@ -368,10 +368,7 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
           summary: 'Task requires human input - questions pending',
         });
 
-        return {
-          success: false,
-          summary: 'Task requires human input - questions pending',
-        };
+        throw new Error('Task requires human input - questions pending');
       } else {
         // Files generated = agent made its decisions. Discard phantom questions.
         const questionSnippets = parseResult.questionsContent
@@ -422,10 +419,7 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
         outputs: { rawResponse: responseText },
       });
 
-      return {
-        success: false,
-        summary: 'Clarification needed - no code output generated',
-      };
+      throw new Error('Clarification needed - no code output generated');
     }
 
     logger.log('BackendAgent', `Validating ${parseResult.files.length} files with syntax recovery...`);
@@ -531,10 +525,7 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
         },
       });
 
-      return {
-        success: false,
-        error: `Generated code has syntax errors after recovery attempts`,
-      };
+      throw new Error(`Generated code has syntax errors after recovery attempts: ${errorSummary}`);
     }
 
     // Write final validated files
@@ -601,16 +592,13 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     logger.error('BackendAgent', `Task ${taskId} failed: ${errorMessage}`);
 
-    // Update task status to failed
+    // Update task status to failed (may already be set by throw sites above)
     await updateTaskStatus(taskId, 'failed', {
       success: false,
       error: errorMessage,
     });
 
-    return {
-      success: false,
-      error: errorMessage,
-    };
+    throw error; // Re-throw so BullMQ marks job as failed
   } finally {
     logger.close();
   }

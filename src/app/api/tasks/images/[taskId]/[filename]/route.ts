@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { readFile } from "fs/promises";
 import { resolve } from "path";
+import { GENERATED_UPLOADS_DIR } from "@soloenterprise/core";
 
 const MIME_MAP: Record<string, string> = {
   ".png": "image/png",
@@ -28,15 +29,10 @@ export async function GET(
     return NextResponse.json({ error: "Invalid parameters" }, { status: 400 });
   }
 
-  const filePath = resolve(
-    process.cwd(),
-    "packages/core/generated/uploads",
-    taskId,
-    filename
-  );
+  const filePath = resolve(GENERATED_UPLOADS_DIR, taskId, filename);
 
   // Ensure resolved path is within uploads directory
-  const uploadsBase = resolve(process.cwd(), "packages/core/generated/uploads");
+  const uploadsBase = GENERATED_UPLOADS_DIR;
   if (!filePath.startsWith(uploadsBase)) {
     return NextResponse.json({ error: "Invalid path" }, { status: 400 });
   }
