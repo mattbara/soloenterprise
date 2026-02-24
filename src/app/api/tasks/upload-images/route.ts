@@ -7,6 +7,7 @@ import sharp from "sharp";
 import { writeFile, mkdir, unlink } from "fs/promises";
 import { resolve } from "path";
 import { randomUUID } from "crypto";
+import { GENERATED_UPLOADS_DIR } from "@soloenterprise/core";
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB per file
 const MAX_DIMENSION = 1568; // Claude's optimal image size
@@ -54,11 +55,7 @@ function sanitizeFilename(name: string): string {
 }
 
 function getUploadsDir(taskId: string): string {
-  return resolve(
-    process.cwd(),
-    "packages/core/generated/uploads",
-    taskId
-  );
+  return resolve(GENERATED_UPLOADS_DIR, taskId);
 }
 
 export async function POST(request: Request) {
@@ -213,11 +210,9 @@ export async function DELETE(request: Request) {
 
     // Delete file from disk
     try {
-      const filePath = resolve(
-        process.cwd(),
-        "packages/core",
-        url
-      );
+      // url is like "generated/uploads/{taskId}/{filename}" — strip prefix
+      const subPath = url.replace(/^generated\//, "");
+      const filePath = resolve(GENERATED_UPLOADS_DIR, "..", subPath);
       await unlink(filePath);
     } catch {
       // File may already be gone — not a hard error

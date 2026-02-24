@@ -85,10 +85,7 @@ async function processEchoTask(job: Job<TaskJobData>): Promise<{
       error: errorMessage,
     });
 
-    return {
-      success: false,
-      error: errorMessage,
-    };
+    throw error; // Re-throw so BullMQ marks job as failed
   }
 }
 

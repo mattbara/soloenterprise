@@ -20,6 +20,7 @@ import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { TaskLogger } from '../../utils/task-logger';
+import { GENERATED_ROOT } from '../../utils/generated-dir';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -111,8 +112,9 @@ const MAX_IMAGES = 20;
 function loadImageAsBase64(relativePath: string): { data: string; mediaType: string } | null {
   try {
     // relativePath is like "generated/uploads/{taskId}/{filename}"
-    // Resolve from packages/core/ since that's where generated/ lives
-    const fullPath = resolve(__dirname, '../../..', relativePath);
+    // Strip "generated/" prefix and resolve from GENERATED_ROOT
+    const subPath = relativePath.replace(/^generated\//, '');
+    const fullPath = resolve(GENERATED_ROOT, subPath);
     const buffer = readFileSync(fullPath);
     const data = buffer.toString('base64');
 

@@ -257,10 +257,7 @@ async function processOrchestratorTask(job: Job<TaskJobData>): Promise<{
         summary: `Circuit breaker: ${questionCount} question rounds exceeded (max: ${maxQuestionRounds})`,
       });
 
-      return {
-        success: false,
-        summary: `Circuit breaker triggered after ${questionCount} question rounds`,
-      };
+      throw new Error(`Circuit breaker triggered after ${questionCount} question rounds`);
     }
 
     // Build user prompt with enriched description (thread scope data from context loader)
@@ -374,7 +371,12 @@ async function processOrchestratorTask(job: Job<TaskJobData>): Promise<{
 
     if (!parseResult.success) {
       logger.warn('OrchestratorAgent', `Failed to parse response: ${parseResult.error}`);
-      // Don't fail the task — store raw response for debugging
+      await updateTaskStatus(taskId, 'failed', {
+        success: false,
+        error: `YAML parse failure: ${parseResult.error}`,
+        outputs: { rawResponse: responseText },
+      });
+      throw new Error(`YAML parse failure: ${parseResult.error}`);
     } else {
       logger.log('OrchestratorAgent', `Parsed: action=${parseResult.action}, tasks=${parseResult.tasks.length}, questions=${parseResult.questions.length}`);
     }
@@ -424,10 +426,7 @@ async function processOrchestratorTask(job: Job<TaskJobData>): Promise<{
         },
       });
 
-      return {
-        success: false,
-        summary: 'No-output guard: orchestrator produced no actionable output',
-      };
+      throw new Error('No-output guard: orchestrator produced no actionable output');
     }
 
     // Check if orchestrator needs human input (has questions in parsed output)
@@ -462,10 +461,7 @@ async function processOrchestratorTask(job: Job<TaskJobData>): Promise<{
         },
       });
 
-      return {
-        success: false,
-        summary: `Orchestrator needs human input - ${parseResult.questions.length} question(s) pending`,
-      };
+      throw new Error(`Orchestrator needs human input - ${parseResult.questions.length} question(s) pending`);
     }
 
     logger.log('OrchestratorAgent', `Task ${taskId} completed successfully`);
@@ -506,16 +502,13 @@ async function processOrchestratorTask(job: Job<TaskJobData>): Promise<{
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     logger.error('OrchestratorAgent', `Task ${taskId} failed: ${errorMessage}`);
 
-    // Update task status to failed
+    // Update task status to failed (may already be set by throw sites above)
     await updateTaskStatus(taskId, 'failed', {
       success: false,
       error: errorMessage,
     });
 
-    return {
-      success: false,
-      error: errorMessage,
-    };
+    throw error; // Re-throw so BullMQ marks job as failed
   } finally {
     logger.close();
   }

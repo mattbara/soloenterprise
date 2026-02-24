@@ -21,14 +21,12 @@ import { buildScoperContext } from './utils/scoper-context-loader';
 import { buildCachedSystemPrompt, extractCacheMetrics, logCacheMetrics } from './utils/cache-helper';
 import { getSharedRedisConnection, closeSharedRedisConnection } from '../utils/index';
 import { TaskLogger } from '../utils/task-logger';
+import { getGeneratedReportDir } from '../utils/generated-dir';
 import { recordAgentCost } from '../services/cost-tracking-service';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const QUEUE_NAME = 'scoper-tasks';
-
-// Reports output directory (sandboxed under generated/)
-const REPORTS_DIR = resolve(__dirname, '../../../generated/reports');
 
 // ============================================================================
 // Token Baseline Logging
@@ -278,7 +276,7 @@ async function processScoperTask(job: Job<TaskJobData>): Promise<{
         outputs: { rawResponse: responseText },
       });
 
-      return { success: false, error: 'Malformed response from Claude' };
+      throw new Error('Malformed response — no scope or client document tags found');
     }
 
     // Parse YAML scope into JSON
@@ -298,7 +296,7 @@ async function processScoperTask(job: Job<TaskJobData>): Promise<{
     }
 
     // Write outputs to filesystem
-    const reportDir = resolve(REPORTS_DIR, briefId);
+    const reportDir = getGeneratedReportDir(briefId);
     try {
       await mkdir(reportDir, { recursive: true });
 
@@ -394,7 +392,7 @@ async function processScoperTask(job: Job<TaskJobData>): Promise<{
       error: errorMessage,
     });
 
-    return { success: false, error: errorMessage };
+    throw error; // Re-throw so BullMQ marks job as failed
   } finally {
     logger.close();
   }

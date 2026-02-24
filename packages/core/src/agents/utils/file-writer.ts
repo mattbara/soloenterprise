@@ -6,8 +6,9 @@
  */
 
 import { mkdir, writeFile } from 'fs/promises';
-import { dirname, join, resolve } from 'path';
+import { dirname, join } from 'path';
 import type { ParsedFile } from './output-parser';
+import { GENERATED_TASKS_DIR } from '../../utils/generated-dir';
 
 export interface FileWriteResult {
   taskDir: string;
@@ -37,10 +38,7 @@ export async function writeGeneratedFiles(
   agentType: string,
   baseDir?: string
 ): Promise<FileWriteResult> {
-  // Determine base directory - default to project root's generated/
-  const projectRoot = findProjectRoot();
-  const generatedDir = baseDir ?? join(projectRoot, 'generated');
-  const taskDir = join(generatedDir, 'tasks', taskId);
+  const taskDir = baseDir ? join(baseDir, 'tasks', taskId) : join(GENERATED_TASKS_DIR, taskId);
 
   // Create task directory
   await mkdir(taskDir, { recursive: true });
@@ -82,53 +80,13 @@ export async function writeGeneratedFiles(
 }
 
 /**
- * Finds the project root directory.
- * Looks for common markers like package.json, .git, etc.
- */
-function findProjectRoot(): string {
-  // Start from the current working directory
-  let currentDir = process.cwd();
-
-  // Check common root markers
-  const markers = ['package.json', '.git', 'pnpm-workspace.yaml'];
-
-  // Walk up the directory tree
-  for (let i = 0; i < 10; i++) {
-    const hasMarker = markers.some((marker) => {
-      try {
-        // Simple existence check would require fs.existsSync
-        // For now, assume cwd is close to project root
-        return true;
-      } catch {
-        return false;
-      }
-    });
-
-    if (hasMarker) {
-      break;
-    }
-
-    const parentDir = dirname(currentDir);
-    if (parentDir === currentDir) {
-      // Reached filesystem root
-      break;
-    }
-    currentDir = parentDir;
-  }
-
-  return currentDir;
-}
-
-/**
  * Cleans up generated files for a task.
  * Useful for retrying tasks or cleanup after completion.
  */
 export async function cleanupGeneratedFiles(taskId: string, baseDir?: string): Promise<void> {
   const { rm } = await import('fs/promises');
 
-  const projectRoot = findProjectRoot();
-  const generatedDir = baseDir ?? join(projectRoot, 'generated');
-  const taskDir = join(generatedDir, 'tasks', taskId);
+  const taskDir = baseDir ? join(baseDir, 'tasks', taskId) : join(GENERATED_TASKS_DIR, taskId);
 
   try {
     await rm(taskDir, { recursive: true, force: true });
@@ -143,7 +101,5 @@ export async function cleanupGeneratedFiles(taskId: string, baseDir?: string): P
  * Gets the path to the task's generated directory.
  */
 export function getTaskGeneratedDir(taskId: string, baseDir?: string): string {
-  const projectRoot = findProjectRoot();
-  const generatedDir = baseDir ?? join(projectRoot, 'generated');
-  return join(generatedDir, 'tasks', taskId);
+  return baseDir ? join(baseDir, 'tasks', taskId) : join(GENERATED_TASKS_DIR, taskId);
 }
