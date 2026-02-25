@@ -4,15 +4,8 @@
 @import "./base.css";
 
 @theme {
-  /* Wipe default color palette — we define our own */
-  --color-*: initial;
-
-  /* Keep black/white */
-  --color-black: #000;
-  --color-white: #fff;
-
   /* === Neutral scale (for backgrounds, borders, text) === */
-  /* Using zinc as base — adjust oklch values to match your current design */
+  /* Using zinc as base — extends default Tailwind palette */
   --color-neutral-50: oklch(0.985 0 0);
   --color-neutral-100: oklch(0.967 0.001 286.375);
   --color-neutral-200: oklch(0.920 0.004 286.32);
