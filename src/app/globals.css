@@ -1,28 +1,10 @@
 @import "tailwindcss";
-
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+@import "@soloenterprise/theme/dashboard";
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }
 
 /* Visible thin scrollbar for task list */
@@ -35,16 +17,16 @@ body {
 }
 
 .task-list-scroll::-webkit-scrollbar-thumb {
-  background-color: #d1d5db;
+  background-color: var(--color-neutral-300);
   border-radius: 3px;
 }
 
 .task-list-scroll::-webkit-scrollbar-thumb:hover {
-  background-color: #9ca3af;
+  background-color: var(--color-neutral-400);
 }
 
 /* Firefox */
 .task-list-scroll {
   scrollbar-width: thin;
-  scrollbar-color: #d1d5db transparent;
+  scrollbar-color: var(--color-neutral-300) transparent;
 }

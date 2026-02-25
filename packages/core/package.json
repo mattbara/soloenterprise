@@ -10,7 +10,8 @@
     "./queue": "./src/queue/index.ts",
     "./locks": "./src/locks/index.ts",
     "./services": "./src/services/index.ts",
-    "./agents": "./src/agents/index.ts"
+    "./agents": "./src/agents/index.ts",
+    "./scaffolder": "./src/scaffolder/index.ts"
   },
   "scripts": {
     "build": "tsc",

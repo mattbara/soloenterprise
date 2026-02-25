@@ -76,6 +76,12 @@ soloenterprise/
 │   │       ├── tasks/{task-id}/   # Generated code per task
 │   │       └── reports/{project-id}/   # Client-facing reports
 │   │
+│   ├── theme/                     # @soloenterprise/theme - TW4 design tokens
+│   │   ├── package.json           # Workspace package with CSS exports
+│   │   ├── base.css               # Foundation: spacing, typography, radii, motion
+│   │   ├── dashboard.css          # SoloEnterprise brand + shadcn/ui bridge
+│   │   └── client-template.css    # Agent-generated project template theme
+│   │
 │   └── db/                        # @soloenterprise/db - Database layer
 │       └── src/
 │           ├── schema.ts          # Drizzle schema definitions
@@ -89,7 +95,8 @@ soloenterprise/
 │   ├── frontend/
 │   │   ├── SKILL-frontend-core.md
 │   │   ├── SKILL-frontend-examples.md
-│   │   └── SKILL-frontend-patterns.md
+│   │   ├── SKILL-frontend-patterns.md
+│   │   └── SKILL-frontend-theming.md
 │   ├── orchestrator/
 │   │   ├── SKILL-orchestrator-core.md
 │   │   ├── SKILL-orchestrator-assignment.md

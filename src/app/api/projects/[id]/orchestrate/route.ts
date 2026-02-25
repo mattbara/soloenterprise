@@ -30,9 +30,9 @@ export async function POST(
     // Find scope — direct link or via scopeId
     let scope = project.scope;
     if (!scope && project.scopeId) {
-      scope = await db.query.projectScopes.findFirst({
+      scope = (await db.query.projectScopes.findFirst({
         where: eq(projectScopes.id, project.scopeId),
-      });
+      })) ?? null;
     }
 
     if (!scope || scope.status !== "approved") {

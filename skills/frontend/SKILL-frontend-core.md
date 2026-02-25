@@ -178,6 +178,19 @@ Request human input for:
 - Adding new npm packages
 - Missing designs or specifications
 
+---
+
+## Scaffold Mode
+
+When your prompt contains a `--- SCAFFOLD ---` section, scaffold files have been pre-generated with correct imports, types, and TODO markers.
+
+**Your job in Scaffold Mode:**
+1. Fill in all `// TODO:` comments with working implementation
+2. Keep all imports and function signatures unchanged (they are verified correct)
+3. Use ONLY imports listed in the `--- AVAILABLE IMPORTS ---` section
+4. Output complete files using `<file path="...">` tags — include the full file, not just changed parts
+5. Do NOT add new files unless the task explicitly requires them
+
 ## Model Configuration
 
 - **Model:** Claude Sonnet 4.5 (`claude-sonnet-4-5-20250929`)

@@ -22,6 +22,7 @@ import { buildCachedSystemPrompt, extractCacheMetrics, logCacheMetrics } from '.
 import { getSharedRedisConnection, closeSharedRedisConnection } from '../utils/index';
 import { TaskLogger } from '../utils/task-logger';
 import { recordAgentCost } from '../services/cost-tracking-service';
+import { generateScaffold, type ScaffoldResult } from '../scaffolder/index';
 
 const QUEUE_NAME = 'backend-tasks';
 
@@ -251,7 +252,26 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
       logger.log('BackendAgent', 'No tech spec for this task');
     }
 
-    const userPrompt = buildPrompt(name, description, context) + techSpecBlock;
+    // Scaffold pipeline: generate boilerplate locally (free), send to Claude with TODO markers
+    let scaffoldResult: ScaffoldResult | null = null;
+    try {
+      scaffoldResult = generateScaffold({
+        agentType: 'backend',
+        taskDescription: description,
+        taskName: name,
+        requirements: buildPrompt(name, description, context),
+        techSpec: taskRecord?.technicalSpec ?? undefined,
+      });
+      if (scaffoldResult.success && scaffoldResult.files.length > 0) {
+        logger.log('BackendAgent', `Scaffold generated: ${scaffoldResult.scaffoldType}, ${scaffoldResult.files.length} files`);
+      }
+    } catch (err) {
+      logger.warn('BackendAgent', 'Scaffold generation failed, continuing without it: ' + err);
+    }
+
+    const userPrompt = (scaffoldResult?.success && scaffoldResult.files.length > 0)
+      ? scaffoldResult.prompt + techSpecBlock
+      : buildPrompt(name, description, context) + techSpecBlock;
 
     logger.log('BackendAgent', 'Calling Claude API...');
 

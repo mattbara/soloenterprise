@@ -23,6 +23,7 @@ import { buildCachedSystemPrompt, extractCacheMetrics, logCacheMetrics } from '.
 import { getSharedRedisConnection, closeSharedRedisConnection } from '../utils/index';
 import { TaskLogger } from '../utils/task-logger';
 import { recordAgentCost } from '../services/cost-tracking-service';
+import { generateScaffold, type ScaffoldResult } from '../scaffolder/index';
 
 const QUEUE_NAME = 'qa-tasks';
 
@@ -258,8 +259,27 @@ async function processQATask(job: Job<TaskJobData>): Promise<{
       logger.log('QAAgent', 'No tech spec for this task');
     }
 
+    // Scaffold pipeline: generate test shells locally (free), send to Claude with TODO markers
+    let scaffoldResult: ScaffoldResult | null = null;
+    try {
+      scaffoldResult = generateScaffold({
+        agentType: 'qa',
+        taskDescription: description,
+        taskName: name,
+        requirements: buildPrompt(name, description, context),
+        techSpec: taskRecord?.technicalSpec ?? undefined,
+      });
+      if (scaffoldResult.success && scaffoldResult.files.length > 0) {
+        logger.log('QAAgent', `Scaffold generated: ${scaffoldResult.scaffoldType}, ${scaffoldResult.files.length} files`);
+      }
+    } catch (err) {
+      logger.warn('QAAgent', 'Scaffold generation failed, continuing without it: ' + err);
+    }
+
     // Build user prompt (task-specific, not cached)
-    const userPrompt = buildPrompt(name, description, context) + techSpecBlock;
+    const userPrompt = (scaffoldResult?.success && scaffoldResult.files.length > 0)
+      ? scaffoldResult.prompt + techSpecBlock
+      : buildPrompt(name, description, context) + techSpecBlock;
 
     logger.log('QAAgent', 'Calling Claude API...');
 

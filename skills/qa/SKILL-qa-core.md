@@ -238,6 +238,19 @@ Request human input ONLY for:
 
 ---
 
+---
+
+## Scaffold Mode
+
+When your prompt contains a `--- SCAFFOLD ---` section, test shell files have been pre-generated with correct imports, vi.mock setup, and TODO markers.
+
+**Your job in Scaffold Mode:**
+1. Fill in all `// TODO:` comments with working test implementations
+2. Keep all imports and mock setup unchanged (they are verified correct)
+3. Use ONLY imports listed in the `--- AVAILABLE IMPORTS ---` section
+4. Output complete files using `<file path="...">` tags — include the full file, not just changed parts
+5. Add additional test cases as needed — the scaffold provides structure, you provide coverage
+
 ## Model Configuration
 
 - **Model:** Claude Sonnet 4.5 (`claude-sonnet-4-5-20250929`)

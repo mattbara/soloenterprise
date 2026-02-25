@@ -1,0 +1,42 @@
+/* packages/theme/client-template.css */
+/* Template for agent-generated client projects */
+/* Agents override :root vars per client brand, @theme provides structure */
+
+@import "./base.css";
+
+@theme inline {
+  /* Use inline so utilities resolve to the :root var, not the @theme var */
+  /* This allows runtime overrides via :root */
+  --color-primary: var(--client-primary);
+  --color-primary-foreground: var(--client-primary-foreground);
+  --color-secondary: var(--client-secondary);
+  --color-secondary-foreground: var(--client-secondary-foreground);
+  --color-accent: var(--client-accent);
+  --color-surface: var(--client-surface);
+  --color-surface-foreground: var(--client-surface-foreground);
+  --color-muted: var(--client-muted);
+  --color-muted-foreground: var(--client-muted-foreground);
+  --color-border: var(--client-border);
+}
+
+@theme static {
+  /* Always emit these even if no class references them */
+  --color-success: oklch(0.723 0.219 149.579);
+  --color-warning: oklch(0.769 0.188 70.08);
+  --color-danger: oklch(0.637 0.237 25.331);
+  --color-info: oklch(0.685 0.169 237.323);
+}
+
+/* Default client brand — agents replace these values per project */
+:root {
+  --client-primary: oklch(0.623 0.214 259.815);
+  --client-primary-foreground: #fff;
+  --client-secondary: oklch(0.552 0.016 285.938);
+  --client-secondary-foreground: #fff;
+  --client-accent: oklch(0.707 0.165 254.624);
+  --client-surface: #fff;
+  --client-surface-foreground: oklch(0.141 0.005 285.823);
+  --client-muted: oklch(0.967 0.001 286.375);
+  --client-muted-foreground: oklch(0.552 0.016 285.938);
+  --client-border: oklch(0.920 0.004 286.32);
+}

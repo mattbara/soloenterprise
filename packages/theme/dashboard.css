@@ -1,0 +1,97 @@
+/* packages/theme/dashboard.css */
+/* SoloEnterprise dashboard brand — import AFTER base */
+
+@import "./base.css";
+
+@theme {
+  /* Wipe default color palette — we define our own */
+  --color-*: initial;
+
+  /* Keep black/white */
+  --color-black: #000;
+  --color-white: #fff;
+
+  /* === Neutral scale (for backgrounds, borders, text) === */
+  /* Using zinc as base — adjust oklch values to match your current design */
+  --color-neutral-50: oklch(0.985 0 0);
+  --color-neutral-100: oklch(0.967 0.001 286.375);
+  --color-neutral-200: oklch(0.920 0.004 286.32);
+  --color-neutral-300: oklch(0.871 0.006 286.286);
+  --color-neutral-400: oklch(0.705 0.015 286.067);
+  --color-neutral-500: oklch(0.552 0.016 285.938);
+  --color-neutral-600: oklch(0.442 0.017 285.786);
+  --color-neutral-700: oklch(0.370 0.013 285.805);
+  --color-neutral-800: oklch(0.274 0.006 286.033);
+  --color-neutral-900: oklch(0.210 0.006 285.885);
+  --color-neutral-950: oklch(0.141 0.005 285.823);
+
+  /* === Brand colors === */
+  /* TODO: Replace with actual SoloEnterprise brand palette */
+  --color-brand-50: oklch(0.97 0.014 254.604);
+  --color-brand-100: oklch(0.932 0.032 255.585);
+  --color-brand-200: oklch(0.882 0.059 254.128);
+  --color-brand-300: oklch(0.809 0.105 251.813);
+  --color-brand-400: oklch(0.707 0.165 254.624);
+  --color-brand-500: oklch(0.623 0.214 259.815);
+  --color-brand-600: oklch(0.546 0.245 262.881);
+  --color-brand-700: oklch(0.488 0.243 264.376);
+  --color-brand-800: oklch(0.424 0.199 265.638);
+  --color-brand-900: oklch(0.379 0.146 265.522);
+  --color-brand-950: oklch(0.282 0.091 267.935);
+
+  /* === Semantic colors === */
+  --color-success-500: oklch(0.723 0.219 149.579);
+  --color-warning-500: oklch(0.769 0.188 70.08);
+  --color-danger-500: oklch(0.637 0.237 25.331);
+  --color-info-500: oklch(0.685 0.169 237.323);
+
+  /* === shadcn/ui mapping === */
+  /* These connect to shadcn's CSS variable system */
+  /* Use @theme static so they're always emitted even if not in class names */
+}
+
+/* shadcn/ui CSS variable bridge — NOT in @theme because these are runtime vars */
+:root {
+  --background: var(--color-white);
+  --foreground: var(--color-neutral-950);
+  --card: var(--color-white);
+  --card-foreground: var(--color-neutral-950);
+  --popover: var(--color-white);
+  --popover-foreground: var(--color-neutral-950);
+  --primary: var(--color-brand-600);
+  --primary-foreground: var(--color-white);
+  --secondary: var(--color-neutral-100);
+  --secondary-foreground: var(--color-neutral-900);
+  --muted: var(--color-neutral-100);
+  --muted-foreground: var(--color-neutral-500);
+  --accent: var(--color-neutral-100);
+  --accent-foreground: var(--color-neutral-900);
+  --destructive: var(--color-danger-500);
+  --destructive-foreground: var(--color-white);
+  --border: var(--color-neutral-200);
+  --input: var(--color-neutral-200);
+  --ring: var(--color-brand-500);
+  --radius: var(--radius-md);
+}
+
+.dark {
+  --background: var(--color-neutral-950);
+  --foreground: var(--color-neutral-50);
+  --card: var(--color-neutral-900);
+  --card-foreground: var(--color-neutral-50);
+  --popover: var(--color-neutral-900);
+  --popover-foreground: var(--color-neutral-50);
+  --primary: var(--color-brand-500);
+  --primary-foreground: var(--color-white);
+  --secondary: var(--color-neutral-800);
+  --secondary-foreground: var(--color-neutral-50);
+  --muted: var(--color-neutral-800);
+  --muted-foreground: var(--color-neutral-400);
+  --accent: var(--color-neutral-800);
+  --accent-foreground: var(--color-neutral-50);
+  --destructive: var(--color-danger-500);
+  --destructive-foreground: var(--color-white);
+  --border: var(--color-neutral-800);
+  --input: var(--color-neutral-800);
+  --ring: var(--color-brand-400);
+}

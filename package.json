@@ -28,6 +28,7 @@
     "@neondatabase/serverless": "^0.9.5",
     "@soloenterprise/core": "workspace:^",
     "@soloenterprise/db": "workspace:^",
+    "@soloenterprise/theme": "workspace:^",
     "dotenv": "^16.4.0",
     "drizzle-orm": "^0.30.0",
     "lucide-react": "^0.564.0",

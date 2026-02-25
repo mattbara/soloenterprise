@@ -1,11 +1,31 @@
 # Phase 6.9: Code Scaffolder + Local Validation Pipeline
 
-**Date:** 2026-02-24
-**Branch:** `phase-6.9/code-scaffolder`
-**Status:** SPEC — NOT STARTED
+**Date:** 2026-02-25
+**Branch:** `phase69/scaffolding`
+**Status:** COMPLETE
 **Prerequisite:** Phases 6.6-6.8 complete
 **Duration:** 5-7 days
 **Effort:** L | **Impact:** High
+
+---
+
+## Completed Pre-work (2026-02-25)
+
+### Tailwind CSS v4 Theme Infrastructure
+
+New workspace package `packages/theme/` (`@soloenterprise/theme`) provides centralized design tokens for all frontends:
+
+| File | Purpose |
+|------|---------|
+| `base.css` | Foundation: spacing, typography, radii, motion, breakpoints |
+| `dashboard.css` | SoloEnterprise brand: neutral + brand color scales, semantic colors, shadcn/ui variable bridge (light + dark) |
+| `client-template.css` | Agent-generated projects: runtime-overridable `--client-*` CSS vars, semantic color names |
+
+**Dashboard wiring:** `src/app/globals.css` imports `@soloenterprise/theme/dashboard` (replaces inline `@theme`).
+
+**Frontend agent SKILL:** `skills/frontend/SKILL-frontend-theming.md` — loaded for any task involving styling, colors, layout, or component creation. Enforces semantic color usage, forbids raw values in JSX, documents shadcn/ui integration patterns.
+
+**No `tailwind.config.js`** — all theming is CSS-first via `@theme` blocks (TW4 standard).
 
 ---
 
@@ -294,4 +314,54 @@ When you receive a code scaffold (marked with `--- SCAFFOLD ---`):
 - DevOps PR pipeline (Phase 7)
 - SKILL file auto-updates from failures (Phase 9.5)
 
-Do NOT create any implementation files. This is a specification document only.
+---
+
+## Implementation Summary (2026-02-25)
+
+### Files Created (19 source + 8 test = 27 files)
+
+**Source files (`packages/core/src/scaffolder/`):**
+| File | LOC | Purpose |
+|------|-----|---------|
+| `drizzle-schema-parser.ts` | ~230 | Regex parser for Drizzle schema.ts |
+| `import-resolver.ts` | ~200 | Builds ImportMap from known packages + schema |
+| `zod-from-drizzle.ts` | ~190 | Generates Zod schemas from parsed Drizzle info |
+| `type-generator.ts` | ~80 | Generates TypeScript types from Zod schemas |
+| `backend-route.ts` | ~170 | Hono route + validators + types scaffolder |
+| `backend-service.ts` | ~110 | CRUD service stubs scaffolder |
+| `frontend-page.ts` | ~200 | Next.js App Router page scaffolder |
+| `frontend-form.ts` | ~200 | React Hook Form + Zod client component |
+| `test-shell.ts` | ~160 | Vitest test file from existing source |
+| `test-shell-tdd.ts` | ~160 | Vitest tests from spec only (TDD) |
+| `report-template.ts` | ~90 | Markdown report pre-fill |
+| `scope-template.ts` | ~80 | YAML scope skeleton |
+| `local-validator.ts` | ~100 | TS syntax + import validation |
+| `prompt-builder.ts` | ~100 | Scaffold → prompt formatter |
+| `scaffold-orchestrator.ts` | ~250 | Main entry point + heuristic detection |
+| `index.ts` | ~40 | Barrel exports |
+
+**Test files (`packages/core/src/scaffolder/__tests__/`):**
+| File | Tests |
+|------|-------|
+| `drizzle-schema-parser.test.ts` | 12 |
+| `import-resolver.test.ts` | 16 |
+| `zod-from-drizzle.test.ts` | 16 |
+| `backend-route.test.ts` | 5 |
+| `test-shell-tdd.test.ts` | 9 |
+| `local-validator.test.ts` | 9 |
+| `scaffold-orchestrator.test.ts` | 16 |
+| `prompt-builder.test.ts` | 9 |
+
+### Modified Files (7)
+- `packages/core/package.json` — added `"./scaffolder"` export
+- `packages/core/src/agents/backend-agent.ts` — scaffold pipeline integration
+- `packages/core/src/agents/frontend-agent.ts` — scaffold pipeline integration
+- `packages/core/src/agents/qa-agent.ts` — scaffold pipeline integration
+- `skills/backend/SKILL-backend-core.md` — Scaffold Mode section
+- `skills/frontend/SKILL-frontend-core.md` — Scaffold Mode section
+- `skills/qa/SKILL-qa-core.md` — Scaffold Mode section
+
+### Test Results
+- **92 new scaffolder tests** — all passing
+- **601 total tests** — zero regressions
+- All 13 tables and 8 enums parsed from real schema.ts

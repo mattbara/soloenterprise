@@ -528,6 +528,7 @@ If validation fails, errors sent back to Claude with the failing code. One retry
 | Backend Framework | Hono | Fast, modern, TypeScript-native |
 | Frontend Framework | Next.js 14 | App Router, RSC, familiar |
 | UI Components | shadcn/ui | Customizable, accessible |
+| Theming | Tailwind CSS v4 + `@soloenterprise/theme` | CSS-first config, semantic tokens |
 | Testing | Vitest 4.x + Playwright | Fast + comprehensive |
 | ORM | Drizzle | Type-safe, SQL-like |
 
@@ -971,4 +972,4 @@ Before proceeding:
 
 ---
 
-*Document version 2.2 — Added Code Scaffolder + Local Validation component (Phase 6.9) to architecture diagram and component details (2026-02-24).*
+*Document version 2.3 — Added `packages/theme/` (TW4 shared theme package) to tech stack. Dashboard, client templates, and shadcn/ui bridge all use CSS-first `@theme` configuration (2026-02-25).*
