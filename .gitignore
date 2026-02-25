@@ -55,5 +55,8 @@ drizzle/
 # Generated files (agent outputs)
 generated/
 
+# External repos (local clones)
+soloenterprise-templates/
+
 # OS
 Thumbs.db
