@@ -156,6 +156,30 @@ Checklist:
 - [ ] Uses correct agent type string in loadSkillsForTask
 - [ ] Token metrics logged with cache stats
 - [ ] Exports createXxxWorker and shutdownXxxWorker
+- [ ] Uses two-stage pipeline (scaffold → Claude → validate) if engineering agent
+
+### B1.5: Scaffolder Integration (if applicable)
+
+If the new agent generates code (engineering agents only — not business agents):
+
+Location: `packages/core/src/scaffolder/`
+
+Check if existing scaffolders cover the agent's output patterns. If not, create a new scaffolder:
+```typescript
+// packages/core/src/scaffolder/{type}-scaffold.ts
+export async function scaffold{Type}Task(
+  task: Task,
+  importMap: ImportMap,
+  schema?: ZodSchemaOutput[]
+): Promise<string>;
+```
+
+Checklist:
+- [ ] Check if existing scaffolders (backend-route, frontend-page, test-shell) cover this agent's needs
+- [ ] If not, create new scaffolder following existing patterns
+- [ ] Register scaffolder in `packages/core/src/scaffolder/index.ts`
+- [ ] Update agent worker to use two-stage pipeline (scaffold → Claude → validate)
+- [ ] Add SKILL file "Scaffold Mode" section for the new agent
 
 ### B2: Context Loader (If Different from Backend)
 
@@ -227,7 +251,37 @@ Add script:
 
 - [ ] Worker script added to package.json
 
-### B8: TypeScript Verification
+### B8: Scaffolder Integration (Two-Stage Pipeline)
+
+If this is an engineering agent (writes code), integrate with the scaffolder pipeline:
+
+Location: `packages/core/src/scaffolder/`
+
+The two-stage pipeline: scaffold locally (free) → Claude fills business logic (paid) → validate locally (free).
+
+```typescript
+// In your agent's processTask function:
+// 1. Generate scaffold from spec + import map
+const scaffold = await generateScaffold(task, importMap);
+
+// 2. Pass scaffold to Claude as part of system prompt
+const systemPrompt = buildPromptWithScaffold(skills, spec, scaffold);
+
+// 3. After Claude response, validate locally
+const validation = await localValidator.validate(generatedFiles, taskDir);
+if (!validation.passed) {
+  // Retry with validation errors as context
+}
+```
+
+- [ ] Agent calls scaffolder before Claude API call (if engineering agent)
+- [ ] Agent passes scaffold output in system prompt
+- [ ] Agent runs local validator on Claude output before writing files
+- [ ] SKILL core file includes "Scaffold Mode" section
+
+**Skip if:** This is a business agent (scoper, reporter) — they produce documents, not code.
+
+### B9: TypeScript Verification
 
 - [ ] Run `pnpm tsc --noEmit` - all types pass
 
@@ -349,6 +403,8 @@ Probe for weaknesses:
 | Business SKILL files | `skills/{agent-type}/SKILL-{type}-*.md` |
 | Report outputs | `generated/reports/{project-id}/` |
 | Project context loader | `packages/core/src/agents/utils/project-context-loader.ts` |
+| Scaffolder modules | `packages/core/src/scaffolder/` |
+| Test runner sandbox | `packages/core/src/test-runner/` |
 
 ---
 
@@ -362,4 +418,4 @@ Probe for weaknesses:
 
 ---
 
-*Version 2.0 — Added business operations agents section — 2026-02-07*
+*Version 3.0 — Added scaffolder integration step (B8) for two-stage pipeline. Added scaffolder/test-runner to file locations. — 2026-02-24*

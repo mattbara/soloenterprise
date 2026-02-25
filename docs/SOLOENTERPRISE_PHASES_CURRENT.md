@@ -1,7 +1,7 @@
 # SoloEnterprise: Project Phases
 
-**Last Updated:** 2026-02-16
-**Current Phase:** Phase 6.6 (Dashboard Navigation Overhaul) — Next
+**Last Updated:** 2026-02-24
+**Current Phase:** Phase 6.9 (Code Scaffolder + Local Validation) — Next
 **Branch:** `development`
 
 ---
@@ -14,9 +14,11 @@
 | 5–5.7 Orchestrator + Validation + Architect + Image Extractor | ✅ COMPLETE | — | — | — |
 | 6. Project Scoper Agent | ✅ COMPLETE | — | — | — |
 | 6.5 Client Reporter Agent | ✅ COMPLETE | — | — | — |
-| **6.6 Dashboard Navigation Overhaul** | **🔵 NEXT** | **S** | **Medium** | **2-3 days** |
-| 6.7 Projects Management UI | ⬜ NOT STARTED | M | High | 3-5 days |
-| 6.8 Scope Review UI | ⬜ NOT STARTED | S | Medium | 2-3 days |
+| 6.6 Dashboard Navigation Overhaul | ✅ COMPLETE | — | — | — |
+| 6.7 Projects Management UI | ✅ COMPLETE | — | — | — |
+| 6.8 Scope Review UI | ✅ COMPLETE | — | — | — |
+| **6.9 Code Scaffolder + Local Validation** | **🔵 NEXT** | **L** | **High** | **5-7 days** |
+| 6.10 Sandbox Test Execution Pipeline | ⬜ NOT STARTED | M | High | 3-5 days |
 | 7. DevOps Agent + Principal Reviewer | ⬜ NOT STARTED | L | Critical | 1-2 weeks |
 | 7.5 QA Production Readiness | ⬜ NOT STARTED | L | High | 1 week |
 | 7.7 Tool/Service Separation Refactor | ⬜ NOT STARTED | M | High | 3-5 days |
@@ -26,7 +28,7 @@
 | 9.5 Institutional Memory & Knowledge Persistence | ⬜ NOT STARTED | L | High | 1-2 weeks |
 | 10+ Business Automation (PM, Design, GTM, Ops) | 🔮 FUTURE | — | — | TBD |
 
-**Remaining Estimate:** 8-13 weeks (Phases 6.6–9.5)
+**Remaining Estimate:** 9-15 weeks (Phases 6.9–9.5)
 
 ---
 
@@ -128,13 +130,11 @@ Each layer builds on the previous. Orchestrator receives layer 3 as input. Layer
 
 ---
 
-## Phase 6.6: Dashboard Navigation Overhaul
+## Phase 6.6: Dashboard Navigation Overhaul ✅ COMPLETE
 
 **Effort:** S | **Impact:** Medium
-**Duration:** 2-3 days
-**Status:** NOT STARTED
+**Status:** COMPLETE — merged via PRs #15, #26, #27 (2026-02-18)
 **Branch:** `phase-6.6/navigation-overhaul`
-**Prerequisite:** None (independent of Phase 6.5)
 
 ### Scope
 
@@ -180,13 +180,11 @@ Replace top header navigation with sidebar layout. Cosmetic restructure — no n
 
 ---
 
-## Phase 6.7: Projects Management UI
+## Phase 6.7: Projects Management UI ✅ COMPLETE
 
 **Effort:** M | **Impact:** High
-**Duration:** 3-5 days
-**Status:** NOT STARTED
-**Branch:** `phase-6.7/projects-ui`
-**Prerequisite:** Phase 6.6 (sidebar must exist for navigation context)
+**Status:** COMPLETE — delivered alongside Phase 6.6 (2026-02-18)
+**Branch:** `phase-6.6/navigation-overhaul` (bundled)
 
 ### Scope
 
@@ -259,13 +257,11 @@ Full-page overlay (shadcn `Dialog`):
 
 ---
 
-## Phase 6.8: Scope Review UI
+## Phase 6.8: Scope Review UI ✅ COMPLETE
 
 **Effort:** S | **Impact:** Medium
-**Duration:** 2-3 days
-**Status:** NOT STARTED
-**Branch:** `phase-6.8/scope-review`
-**Prerequisite:** Phase 6.7 (projects table must exist, brief=`complete` badge must be clickable)
+**Status:** COMPLETE — delivered alongside Phase 6.6 (2026-02-18)
+**Branch:** `phase-6.6/navigation-overhaul` (bundled)
 
 ### Scope
 
@@ -307,13 +303,365 @@ Full-page overlay rendering the scoper's output:
 
 ---
 
+## Phase 6.6-6.8: Dashboard + Projects + Scope Review ✅ COMPLETE
+
+**Status:** COMPLETE — merged via PRs #15, #26, #27 (2026-02-18)
+
+### Delivered
+
+- ✅ Sidebar navigation replacing top header (shadcn/ui + lucide-react)
+- ✅ Company → Projects hierarchy with full CRUD
+- ✅ Structured brief intake form (7+ guided fields)
+- ✅ Project detail with activity panel and worker status
+- ✅ Scope review page with approve/reject actions
+- ✅ Metrics dashboard
+- ✅ Cross-company projects hub
+- ✅ Cancel agent / cancel all tasks per project
+
+### What Changed from Original Plan
+
+- Company layer added (projects grouped under clients — architecturally better than flat table)
+- Delete replaced with cancel operations
+- Brief form is structured (not just textarea)
+
+---
+
+## Phase 6.9: Code Scaffolder + Local Validation Pipeline
+
+**Effort:** L | **Impact:** High
+**Duration:** 5-7 days
+**Status:** NOT STARTED
+**Branch:** `phase-6.9/code-scaffolder`
+**Prerequisite:** Phases 6.6-6.8 complete
+
+### Scope
+
+Two-stage code generation pipeline: scaffold locally (free) → Claude fills business logic (API cost) → validate locally (free). Reduces output tokens by 40-60% and prevents most retry-causing failures.
+
+### Key Components
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| Import Resolver | `packages/core/src/scaffolder/import-resolver.ts` | Prevents hallucinated imports |
+| Zod from Drizzle | `packages/core/src/scaffolder/zod-from-drizzle.ts` | Auto-generate validation schemas |
+| Type Generator | `packages/core/src/scaffolder/type-generator.ts` | Request/response TypeScript interfaces |
+| Backend Route Scaffold | `packages/core/src/scaffolder/backend-route.ts` | Hono route shell with TODOs |
+| Test Shell (standard) | `packages/core/src/scaffolder/test-shell.ts` | Vitest test file from source code |
+| Test Shell (TDD) | `packages/core/src/scaffolder/test-shell-tdd.ts` | Vitest test file from spec only (no source code) |
+| Local Validator | `packages/core/src/scaffolder/local-validator.ts` | tsc + eslint + vitest validation gate |
+
+### SKILL File Updates
+
+- SKILL-backend-core.md, SKILL-frontend-core.md, SKILL-qa-core.md — add "Scaffold Mode" section
+
+### Design Decision: TDD Mode
+
+The test-shell-tdd scaffolder generates tests from spec alone (no source code). This enables Phase 8's TDD workflow where QA runs BEFORE implementation agents. Designing it now avoids retrofitting later.
+
+### Checklist
+
+- [ ] Import resolver scans project and produces ImportMap
+- [ ] Zod schema generator reads Drizzle schema.ts
+- [ ] Type generator produces TS interfaces from Zod
+- [ ] Backend route scaffolder with Hono patterns
+- [ ] Frontend page scaffolder with Next.js patterns
+- [ ] Test shell scaffolder (standard mode — from source)
+- [ ] Test shell scaffolder (TDD mode — from spec only)
+- [ ] Local validator runs tsc + eslint
+- [ ] Agent workers modified to two-stage pipeline
+- [ ] SKILL files updated with Scaffold Mode section
+- [ ] Baseline tests 1-5 pass
+- [ ] Stress tests 6-10 pass
+
+### What's NOT in This Phase
+
+- Playwright / E2E testing (Phase 6.10)
+- TDD workflow orchestrator wiring (Phase 8)
+- DevOps PR pipeline (Phase 7)
+
+---
+
+## Phase 6.10: Sandbox Test Execution Pipeline
+
+**Effort:** M | **Impact:** High
+**Duration:** 3-5 days
+**Status:** NOT STARTED
+**Branch:** `phase-6.10/sandbox-test-runner`
+**Prerequisite:** Phase 6.9 (scaffolder + local-validator must exist)
+
+### Why This Phase Exists
+
+SoloEnterprise validates structure (tsc, eslint) but not behavior. A file can pass type-checking and still crash at runtime. Phase 6.10 makes generated Vitest tests actually EXECUTE against generated implementation code inside sandboxes. Tests must pass before a task is marked complete.
+
+This closes the gap: "you're validating structure but not behavior."
+
+### What Changed from Original Spec
+
+The original spec included Playwright (component testing + E2E). Both were cut:
+
+- **Playwright component testing** (`@playwright/experimental-ct`) requires a Vite/Webpack bundler setup inside the sandbox to mount React components. Sandboxes are loose files with no bundler — you'd need to scaffold an entire Vite project per sandbox. Use `@testing-library/react` + `jsdom` via Vitest instead (zero browser binary, same pipeline).
+- **Playwright E2E** requires a running server to navigate to. Sandbox code has no `package.json`, no `next dev`, no entry point. There's nothing to `page.goto()`.
+- **Coverage** adds Istanbul/V8 instrumentation complexity with zero value when the test corpus is agent-generated and there's no baseline.
+
+See **"Playwright Roadmap"** section below for when Playwright gets introduced.
+
+### Architecture
+
+#### Sandbox Test Runner
+
+The core challenge: generated code in `generated/tasks/{task-id}/` doesn't have its own `node_modules`, `tsconfig`, or test runner config. It's just loose files.
+
+Solution: A shared test harness that sandboxes reference via generated configs.
+
+```
+packages/core/src/test-runner/
+├── index.ts                    # Public exports
+├── sandbox-runner.ts           # Orchestrates test execution in sandbox
+├── vitest-sandbox-config.ts    # Generates vitest.config for a sandbox
+├── mock-harness.ts             # Stubs for @soloenterprise/*, next/*, external deps
+├── import-resolver.ts          # Path alias setup for sandbox → monorepo resolution
+└── result-parser.ts            # Parses vitest JSON output into structured results
+```
+
+#### Core Interface
+
+```typescript
+interface TestExecutionResult {
+  passed: boolean;
+  totalTests: number;
+  passedTests: number;
+  failedTests: number;
+  skippedTests: number;
+  failures: TestFailure[];
+  duration: number;  // milliseconds
+}
+
+interface TestFailure {
+  testName: string;
+  file: string;
+  error: string;
+  expected?: string;
+  received?: string;
+}
+
+export async function executeTestsInSandbox(
+  sandboxPath: string,
+  options: {
+    timeout?: number;       // Default: 30000ms
+    testFiles?: string[];   // Specific test files, or all *.test.ts
+  }
+): Promise<TestExecutionResult>;
+```
+
+#### How Sandbox Execution Works
+
+1. **Config generation** — Creates a temporary `vitest.config.ts` pointing at the sandbox directory, with path aliases resolving `@soloenterprise/*` and `@/*` back to the monorepo or mock stubs
+2. **Mock harness injection** — Provides mock modules for runtime dependencies that can't resolve in a sandbox (database, Redis, external APIs, Next.js internals)
+3. **Subprocess execution** — Runs `vitest run --reporter=json` in a child process with the generated config, enforcing timeout
+4. **Output parsing** — Parses Vitest JSON reporter output into structured `TestExecutionResult`
+5. **Cleanup** — Removes temporary config files
+
+#### Import Resolution (The Hard Part)
+
+Generated sandbox files reference imports that don't exist in the sandbox:
+
+```typescript
+// These all need to resolve when vitest runs inside the sandbox:
+import { db } from "@soloenterprise/db";
+import { Button } from "@/components/ui/button";
+import { useRouter } from "next/navigation";
+import { eq } from "drizzle-orm";
+```
+
+**Resolution strategy:**
+
+| Import Pattern | Resolution |
+|---------------|------------|
+| `@soloenterprise/db` | Mock harness — stub with mock db client |
+| `@soloenterprise/db/schema` | Real — alias to `packages/db/src/schema.ts` (types only) |
+| `@soloenterprise/core/*` | Mock harness — stub services |
+| `@/*` (Next.js app imports) | Mock harness — stubs for components/hooks |
+| `next/navigation` | Mock harness — `useRouter`, `redirect`, etc. |
+| `next/image` | Mock harness — passthrough div |
+| `drizzle-orm` | Real — alias to `node_modules/drizzle-orm` |
+| External packages (zod, etc.) | Real — alias to monorepo `node_modules` |
+
+The `import-resolver.ts` generates a `resolve.alias` map for the Vitest config based on scanning the sandbox files for import statements.
+
+#### Mock Harness
+
+```typescript
+// packages/core/src/test-runner/mock-harness.ts
+
+// Pre-built mock modules that the generated vitest config aliases to.
+// Each mock provides the minimum surface area to not crash at import time.
+
+export const mockDb = {
+  query: new Proxy({}, { get: () => ({ findMany: async () => [], findFirst: async () => null }) }),
+  select: () => ({ from: () => ({ where: () => ({ limit: () => ({ then: (r: Function) => r([]) }) }) }) }),
+  insert: () => ({ values: () => ({ returning: async () => [{ id: 1 }] }) }),
+  update: () => ({ set: () => ({ where: async () => ({ rowCount: 1 }) }) }),
+  delete: () => ({ where: async () => ({ rowCount: 1 }) }),
+};
+
+export const mockRouter = {
+  push: vi.fn(),
+  replace: vi.fn(),
+  refresh: vi.fn(),
+  back: vi.fn(),
+  forward: vi.fn(),
+  prefetch: vi.fn(),
+};
+
+// ... etc for each mock module
+```
+
+Tests that need real DB behavior should mock at the test level (the QA agent already generates `vi.mock()` calls). The harness just prevents import-time crashes.
+
+### Worker Pipeline Update
+
+```
+BEFORE 6.10 (Phase 6.9):
+  Scaffold → Claude API → Validate (tsc/lint) → Done
+
+AFTER 6.10:
+  Scaffold → Claude API → Validate (tsc/lint) → Execute Tests → Done
+                                                      ↓ (if fails)
+                                                 Retry with errors → Execute Tests → Done or Escalate
+```
+
+Test execution is task-type-aware:
+
+| Task Type | Test Runner | Action |
+|-----------|-------------|--------|
+| Backend route | Vitest (unit + integration) | Run all `*.test.ts` in sandbox |
+| Frontend component | Vitest + jsdom + RTL | Run all `*.test.ts` with jsdom env |
+| Full feature | Vitest (both) | Run all tests |
+| Bug fix | Vitest (affected files) | Run only test files matching modified sources |
+| Scoper/Reporter | Skip | No executable tests — business document output |
+
+### QA SKILL File Updates
+
+Update `skills/qa/SKILL-qa-patterns.md`:
+- Add "Sandbox-Executable Tests" section — constraints for tests that will actually run
+- Import rules: only import from `@soloenterprise/db/schema` (types), mock everything else
+- Must include `vi.mock()` for any service/db dependency
+- Test file naming: `{source-file}.test.ts` (co-located)
+
+Update `skills/qa/SKILL-qa-core.md`:
+- Add note: "All generated tests MUST be executable in sandbox isolation"
+- List available mock stubs the test harness provides
+
+### Dependencies to Install
+
+```bash
+pnpm add -D @testing-library/react @testing-library/jest-dom jsdom
+```
+
+These are lightweight dev dependencies. No Chromium binary, no browser download.
+
+> **Note:** `vitest` and `@testing-library/react` are already available or trivially added. The mock harness is pure TypeScript — no external runtime dependencies.
+
+### Checklist
+
+- [ ] Sandbox runner executes Vitest in sandbox subprocess
+- [ ] Vitest config generator creates valid config with path aliases per sandbox
+- [ ] Import resolver scans sandbox files and generates alias map
+- [ ] Mock harness provides stubs for `@soloenterprise/db`, `@soloenterprise/core`, `next/*`
+- [ ] Result parser handles Vitest JSON reporter output
+- [ ] Worker pipeline extended with test execution stage (after tsc/lint)
+- [ ] Retry-with-errors: test failures fed back to Claude for fix attempt
+- [ ] Timeout handling: hanging tests killed and reported as failure
+- [ ] QA SKILL files updated with sandbox-executable test constraints
+- [ ] Baseline tests 1-5 pass
+- [ ] Stress tests 6-10 pass
+
+### Test Plan
+
+**Baseline Tests (1-5)**
+
+1. **Vitest sandbox execution** — given sandbox with valid test + implementation, tests pass, returns `{ passed: true }`
+2. **Vitest failure reporting** — given sandbox with failing test, returns structured `TestFailure[]` with test name, file, error, expected/received
+3. **Frontend component test** — given React component + RTL test (jsdom env), Vitest runs and passes
+4. **Config generation** — generates valid `vitest.config.ts` with correct path aliases for a sandbox containing `@soloenterprise/*` and `@/*` imports
+5. **Timeout handling** — test with infinite loop is killed after timeout, reported as failure (not hang)
+
+**Stress Tests (6-10)**
+
+6. **Real agent output** — take actual backend-agent output from Phase 5.5, run generated tests against it
+7. **Frontend component** — take actual frontend-agent output, run RTL component test via Vitest+jsdom
+8. **Concurrent sandboxes** — two test runners in different sandboxes simultaneously, no interference (separate configs, separate processes)
+9. **Missing dependency** — sandbox imports module that doesn't exist and isn't mocked, error message is clear and actionable (not cryptic Vitest internals)
+10. **Full pipeline** — scaffold → Claude → validate (tsc/lint) → execute tests → all pass (end-to-end)
+
+### What's NOT in This Phase
+
+- **Playwright** (any form) — see Playwright Roadmap below
+- **Coverage reporting** — no baseline metrics exist, premature
+- **TDD workflow wiring** — Phase 8
+- **Adversarial code review** — Phase 7 (Reviewer agent)
+- **CI/CD pipeline integration** — Phase 7 (DevOps)
+
+---
+
+## Playwright Roadmap: When and Where
+
+Playwright is NOT in Phase 6.10. Here's exactly when each Playwright capability gets introduced and why.
+
+### Phase 7: Playwright in CI (DevOps Agent)
+
+**What:** Playwright installed in generated client projects as part of the CI/CD pipeline scaffold.
+
+**Why now:** Phase 7 creates deployable greenfield projects with GitHub Actions. Playwright runs in CI against the deployed preview URL — this is the correct use of E2E testing. The DevOps agent scaffolds the `playwright.config.ts`, installs Chromium in CI, and wires `npx playwright test` into the GitHub Actions workflow.
+
+**Scope:**
+- Playwright config scaffolded into client project repos (not SoloEnterprise itself)
+- Chromium installed in CI only (not local dev)
+- E2E tests run against preview deployment URLs created by the DevOps agent
+- QA agent generates Playwright E2E tests as part of client project test suites
+
+**QA SKILL updates at this point:**
+- `SKILL-qa-patterns.md` — Playwright E2E patterns (page object model, fixtures, waiting strategies)
+- `SKILL-qa-examples.md` — Full Playwright E2E example (login flow, form submission, navigation)
+
+### Phase 7.5: Playwright for Production QA
+
+**What:** Visual regression testing, accessibility testing, and Lighthouse integration — all via Playwright.
+
+**Why now:** Phase 7.5 requires preview deployment URLs (from Phase 7) to run Lighthouse and visual regression. This is the first time there's an actual deployed URL to test against.
+
+**Scope:**
+- `@playwright/test` screenshot comparison for visual regression
+- `@axe-core/playwright` for WCAG 2.1 AA accessibility checks
+- Lighthouse CI against preview URLs
+- Production readiness gate (all tests must pass before handover)
+
+### Phase 8: Playwright in Multi-Agent Verification
+
+**What:** Orchestrator's verification gate can optionally run Playwright E2E tests as a final check after all agents complete their tasks.
+
+**Why now:** Only after multi-agent integration produces complete, deployable applications does end-to-end browser testing become meaningful. Individual task sandboxes produce fragments — only the assembled project has navigable pages.
+
+### Summary Table
+
+| Phase | Playwright Capability | Prerequisite |
+|-------|----------------------|--------------|
+| 6.10 | **None** — Vitest only | Phase 6.9 scaffolder |
+| 7 | E2E tests in CI for client projects | Preview deployments |
+| 7.5 | Visual regression + accessibility + Lighthouse | Preview URLs from Phase 7 |
+| 8 | Orchestrator verification gate (optional E2E) | Complete assembled projects |
+
+**The rule is simple: Playwright needs a running application to test. Until Phase 7 creates deployed preview URLs, there's nothing for Playwright to navigate.**
+
+---
+
 ## Phase 7: DevOps Agent + Principal Reviewer
 
 **Effort:** L | **Impact:** Critical
 **Duration:** 1-2 weeks
 **Status:** NOT STARTED
 **Branch:** `phase-7/devops-agent`
-**Prerequisite:** Phase 6.8 complete
+**Prerequisite:** Phase 6.10 complete
 **Model:** Claude Sonnet (infrastructure automation)
 
 ### Strategic Context
@@ -820,4 +1168,4 @@ Log `cache_read_input_tokens`, `cache_creation_input_tokens` on every response. 
 
 ---
 
-*Version 9.0 — Restructured from v8.0. Phase 6.1 split into 6.6/6.7/6.8. SSE dropped. Tool/Service refactor added as Phase 7.7. Cost tracking consolidated. Batch API and context compaction deferred. Effort+Impact ratings added. — 2026-02-16*
+*Version 10.1 — Rewrote Phase 6.10: stripped Playwright (deferred to Phase 7+), scoped to Vitest sandbox execution only. Added Playwright Roadmap section. — 2026-02-25*

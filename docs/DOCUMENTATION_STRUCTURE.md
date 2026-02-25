@@ -57,6 +57,20 @@ soloenterprise/
 │   │   │   │   ├── task-service.ts
 │   │   │   │   ├── cost-tracking-service.ts
 │   │   │   │   └── worker-registry.ts
+│   │   │   ├── scaffolder/        # Code scaffold generators (Phase 6.9)
+│   │   │   │   ├── import-resolver.ts
+│   │   │   │   ├── zod-from-drizzle.ts
+│   │   │   │   ├── type-generator.ts
+│   │   │   │   ├── backend-route.ts
+│   │   │   │   ├── frontend-page.ts
+│   │   │   │   ├── test-shell.ts
+│   │   │   │   ├── test-shell-tdd.ts
+│   │   │   │   └── local-validator.ts
+│   │   │   ├── test-runner/       # Sandbox test execution (Phase 6.10)
+│   │   │   │   ├── sandbox-runner.ts
+│   │   │   │   ├── vitest-sandbox-config.ts
+│   │   │   │   ├── playwright-sandbox-config.ts
+│   │   │   │   └── result-parser.ts
 │   │   │   └── worker.ts          # BullMQ worker entry point
 │   │   └── generated/             # Sandboxed agent outputs
 │   │       ├── tasks/{task-id}/   # Generated code per task
@@ -125,6 +139,8 @@ soloenterprise/
 | Consulting Pipeline | docs/ | Business workflow | Human |
 | Client Reports | generated/reports/ | Client deliverables | Client Reporter Agent |
 | Project Scopes | generated/reports/ | Structured specs | Project Scoper Agent |
+| Scaffold Spec | docs/ | Code scaffolder architecture | Human |
+| Playwright Spec | docs/ | E2E test execution architecture | Human |
 | Package READMEs | packages/core/, packages/db/ | Package docs | Relevant Agent |
 
 ---

@@ -1,6 +1,6 @@
 # SoloEnterprise: Consulting Pipeline
 
-**Last Updated:** 2026-02-07
+**Last Updated:** 2026-02-24
 **Purpose:** End-to-end workflow for running client projects through SoloEnterprise.
 
 ---
@@ -179,6 +179,26 @@ The Orchestrator:
 5. Escalates blockers to human
 
 This is the existing SoloEnterprise pipeline (Phases 0-5).
+
+### Code Generation Pipeline (Phase 6.9+)
+
+Agents no longer generate code from a blank page. The pipeline is:
+
+1. **Scaffold** — Mechanical code generation (imports, types, file structure, boilerplate) — free, no API call
+2. **Claude** — Fills in business logic, error handling, edge cases — API call (Sonnet)
+3. **Validate** — TypeScript compilation, linting, test execution — free, no API call
+4. **Retry** — If validation fails, errors sent back to Claude for one retry — API call (Sonnet)
+
+This reduces API costs by 40-60% per task and prevents the most common failure modes (wrong imports, type mismatches, missing error handling).
+
+### Test Execution (Phase 6.10+)
+
+Generated tests are not just syntax-checked — they actually execute against the generated implementation code:
+- **Unit tests** — Vitest runs inside the sandbox
+- **Component tests** — Playwright tests React components in isolation
+- **E2E tests** — Playwright tests full user flows in a browser
+
+Tests must pass before a task is marked complete. Failed tests trigger a retry with error context.
 
 ### Project Context in Agent Calls
 

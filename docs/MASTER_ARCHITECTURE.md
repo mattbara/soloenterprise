@@ -1,8 +1,8 @@
 # Product Factory: Master Architecture
 ## AI-Powered Development Team Orchestration System
 
-**Version:** 2.1
-**Last Updated:** 2026-02-16
+**Version:** 2.2
+**Last Updated:** 2026-02-24
 **Status:** Technical Specification
 
 ---
@@ -69,6 +69,20 @@ Product Factory is an orchestration system that coordinates multiple specialized
 │  │   │  (Sonnet 4.5) │  │  (Sonnet 4.5) │                                   │   │
 │  │   └───────────────┘  └───────────────┘                                   │   │
 │  └──────────────────────────────────────────────────────────────────────────┘   │
+│                                        │                                         │
+│                    ┌───────────────────────────────────────────────────────────┐   │
+│                    │              CODE SCAFFOLDER + VALIDATOR                 │   │
+│                    │                                                         │   │
+│                    │  ┌─────────────┐ ┌─────────────┐ ┌───────────────────┐  │   │
+│                    │  │   Import    │ │  Zod/Type   │ │  Local Validator  │  │   │
+│                    │  │  Resolver   │ │  Generator  │ │  (tsc/lint/test)  │  │   │
+│                    │  └─────────────┘ └─────────────┘ └───────────────────┘  │   │
+│                    │                                                         │   │
+│                    │  ┌─────────────┐ ┌─────────────┐ ┌───────────────────┐  │   │
+│                    │  │  Backend    │ │  Frontend   │ │   Test Shell      │  │   │
+│                    │  │  Scaffold   │ │  Scaffold   │ │  Scaffold (+ TDD) │  │   │
+│                    │  └─────────────┘ └─────────────┘ └───────────────────┘  │   │
+│                    └───────────────────────────────────────────────────────────┘   │
 │                                        │                                         │
 │                                        ▼                                         │
 │  ┌──────────────────────────────────────────────────────────────────────────┐   │
@@ -472,6 +486,26 @@ agent:
   # This agent ONLY reports - human decides what to do
 ```
 
+### 7. Code Scaffolder + Local Validation (Phase 6.9)
+
+The code generation pipeline uses a two-stage approach to reduce API costs and prevent failures:
+
+**Stage 1 — Local Scaffold (Free, No AI):**
+Mechanical code generation from templates. Reads Drizzle schema, generates Zod validators, type definitions, route shells, test structures. All with correct imports from the Import Resolver.
+
+**Stage 2 — Claude API (Costs Money):**
+Claude receives the scaffold + requirements. Only needs to fill in business logic (TODOs), not generate boilerplate. Output tokens reduced 40-60%.
+
+**Stage 3 — Local Validation (Free, No AI):**
+TypeScript compilation (`tsc --noEmit`), ESLint, and optionally Vitest. Catches errors before marking task complete.
+
+**Stage 4 — Retry (One Attempt):**
+If validation fails, errors sent back to Claude with the failing code. One retry allowed. If retry fails → 3-strike rule applies.
+
+**Location:** `packages/core/src/scaffolder/`
+
+**TDD Design:** The test scaffolder has a TDD mode (`test-shell-tdd.ts`) that generates tests from spec only — no source code required. This enables a future workflow (Phase 8) where QA generates tests before implementation agents run.
+
 ---
 
 ## Tech Stack
@@ -751,6 +785,41 @@ Orchestrator detects milestone done │
 
 ---
 
+### Code Scaffolder + Local Validation (Phase 6.9)
+
+The scaffolder layer sits between task assignment and Claude API calls. It generates boilerplate code locally (free), so Claude only fills in business logic (paid). After Claude responds, the local validator checks the output before writing files.
+
+**Two-Stage Pipeline:**
+```
+1. SCAFFOLD (local, free)
+   Import resolver → Zod/type generator → Route/component shell with TODOs
+
+2. CLAUDE FILLS BUSINESS LOGIC (API call, paid)
+   Agent receives scaffold + SKILL + spec → fills TODO markers
+
+3. VALIDATE (local, free)
+   tsc --noEmit → eslint → vitest (if test file) → pass/fail gate
+```
+
+**Key Components:**
+
+| Component | Purpose |
+|-----------|---------|
+| Import Resolver | Scans project, prevents hallucinated imports |
+| Zod from Drizzle | Auto-generates validation schemas from schema.ts |
+| Type Generator | Request/response TypeScript interfaces from Zod schemas |
+| Backend Route Scaffold | Hono route shell with typed params, error handling, TODOs |
+| Frontend Page Scaffold | Next.js page/component shell with props, hooks, TODOs |
+| Test Shell (standard) | Vitest test file generated from source code |
+| Test Shell (TDD) | Vitest test file generated from spec only (no source code) |
+| Local Validator | tsc + eslint + vitest validation gate |
+
+**Cost Impact:** Reduces output tokens by 40-60%. Scaffold is ~200 lines of boilerplate that Claude would otherwise generate. Validator catches syntax/type errors before retry, preventing wasted API calls.
+
+**TDD Mode:** The test-shell-tdd scaffolder generates tests from spec alone. This enables Phase 8's TDD workflow where QA runs BEFORE implementation agents.
+
+---
+
 ### Architect Layer (Phase 5.6)
 
 The architect layer sits between task decomposition and agent execution. After the orchestrator creates task records, each task passes through a per-task Opus 4.6 call that generates a detailed technical specification.
@@ -902,4 +971,4 @@ Before proceeding:
 
 ---
 
-*Document version 2.1 — Updated agent status, model versions, sequencing to reflect Phase 6.5 completion (2026-02-16).*
+*Document version 2.2 — Added Code Scaffolder + Local Validation component (Phase 6.9) to architecture diagram and component details (2026-02-24).*
