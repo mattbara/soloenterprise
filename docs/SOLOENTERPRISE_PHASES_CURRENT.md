@@ -1049,6 +1049,9 @@ class ModelRouter {
 - [ ] Create SKILL file authoring guide
 - [ ] Create troubleshooting runbook
 - [ ] Write ADRs (BullMQ, Neon, layered SKILLs, Opus for orchestrator, InfraProvider interface)
+- [ ] **Schema cleanup pass** — fix naming mismatches accumulated during rapid development:
+  - `tasks.assignedAgentId` column is typed as `taskStatusEnum` (should be `status`; actual agent ID is unused). Rename column + update all references.
+  - Audit all other column names vs. their types/enums for similar drift
 
 ---
 
