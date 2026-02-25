@@ -130,6 +130,43 @@ export function scaffoldTestShell(input: TestShellInput): ScaffoldedFile {
   };
 }
 
+/**
+ * Generate a placeholder test file when no source code is available.
+ * Creates describe blocks with it.todo() stubs and mock boilerplate.
+ */
+export function scaffoldPlaceholderTestShell(moduleName: string): ScaffoldedFile {
+  const testPath = `src/__tests__/${moduleName}.test.ts`;
+
+  const parts: string[] = [];
+
+  parts.push("import { describe, it, expect, vi, beforeEach } from 'vitest';");
+  parts.push('');
+  parts.push(`// TODO: Import the module under test once source files are available`);
+  parts.push(`// import { /* exports */ } from '../${moduleName}';`);
+  parts.push('');
+  parts.push(`// TODO: Add vi.mock() calls for dependencies`);
+  parts.push(`// vi.mock('@soloenterprise/db', () => ({ db: { query: vi.fn() } }));`);
+  parts.push('');
+  parts.push(`describe('${moduleName}', () => {`);
+  parts.push(`  beforeEach(() => {`);
+  parts.push(`    vi.clearAllMocks();`);
+  parts.push(`  });`);
+  parts.push('');
+  parts.push(`  it.todo('should handle the success case');`);
+  parts.push('');
+  parts.push(`  it.todo('should handle invalid input');`);
+  parts.push('');
+  parts.push(`  it.todo('should handle not found');`);
+  parts.push('');
+  parts.push(`  it.todo('should handle error cases');`);
+  parts.push(`});`);
+
+  return {
+    path: testPath,
+    content: parts.join('\n'),
+  };
+}
+
 // ============================================================================
 // Export Extraction
 // ============================================================================

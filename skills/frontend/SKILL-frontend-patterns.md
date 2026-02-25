@@ -98,6 +98,43 @@ export function useCreateUser() {
 }
 ```
 
+## Data Fetching Decision Tree
+
+**Priority order — use the first option that fits:**
+
+1. **Server Component** (default) — async function, fetch/ORM directly. Zero client JS.
+2. **`use()` + Suspense** — pass promise from server to client component.
+3. **TanStack Query** — client-side cache, refetch, optimistic updates.
+4. **useEffect** — last resort. Document why 1-3 don't apply.
+
+### Mutations
+
+- **Server Actions** (preferred for forms) — `'use server'` + `revalidatePath`
+- **TanStack `useMutation`** — client-side with cache invalidation
+- **`useActionState`** — form submission lifecycle (replaces useState + useEffect pattern)
+- **`useOptimistic`** — instant UI feedback during in-flight mutations
+
+```typescript
+// Server Action mutation (preferred)
+'use server';
+import { revalidatePath } from 'next/cache';
+
+export async function createItem(formData: FormData) {
+  await db.insert(items).values({ name: formData.get('name') });
+  revalidatePath('/items');
+}
+
+// useActionState (React 19 — replaces manual loading/error/success)
+import { useActionState } from 'react';
+const [state, formAction, isPending] = useActionState(createItem, initialState);
+
+// useOptimistic (React 19 — instant UI)
+import { useOptimistic } from 'react';
+const [optimistic, addOptimistic] = useOptimistic(items, (curr, newItem) => [...curr, newItem]);
+```
+
+See `docs/ANTIPATTERNS.md` for full examples and source citations.
+
 ## File Organization
 
 ```

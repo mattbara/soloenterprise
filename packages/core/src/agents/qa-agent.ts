@@ -260,6 +260,8 @@ async function processQATask(job: Job<TaskJobData>): Promise<{
     }
 
     // Scaffold pipeline: generate test shells locally (free), send to Claude with TODO markers
+    // Wire source file data from QA context so test-shell scaffolder can parse exports
+    const primarySource = qaContext.rawSourceFiles[0];
     let scaffoldResult: ScaffoldResult | null = null;
     try {
       scaffoldResult = generateScaffold({
@@ -268,9 +270,13 @@ async function processQATask(job: Job<TaskJobData>): Promise<{
         taskName: name,
         requirements: buildPrompt(name, description, context),
         techSpec: taskRecord?.technicalSpec ?? undefined,
+        sourceFilePath: primarySource?.path,
+        sourceContent: primarySource?.content,
       });
       if (scaffoldResult.success && scaffoldResult.files.length > 0) {
         logger.log('QAAgent', `Scaffold generated: ${scaffoldResult.scaffoldType}, ${scaffoldResult.files.length} files`);
+      } else {
+        logger.warn('QAAgent', `Scaffold skipped: success=${scaffoldResult.success}, files=${scaffoldResult.files.length}, type=${scaffoldResult.scaffoldType ?? 'none'}${scaffoldResult.error ? `, reason=${scaffoldResult.error}` : ''}`);
       }
     } catch (err) {
       logger.warn('QAAgent', 'Scaffold generation failed, continuing without it: ' + err);

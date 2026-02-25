@@ -130,6 +130,12 @@ const KNOWN_TABLES = [
   'artifacts',
   'deployments',
   'agent_sessions',
+  'clients',
+  'project_briefs',
+  'project_scopes',
+  'milestones',
+  'client_reports',
+  'cost_tracking',
 ];
 
 /**

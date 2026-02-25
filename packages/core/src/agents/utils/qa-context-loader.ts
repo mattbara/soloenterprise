@@ -36,6 +36,8 @@ export interface QAContextResult {
   hasExistingTests: boolean;
   hasSchema: boolean;
   dependencyArtifactsLoaded: number;
+  /** Raw source files (dependency artifacts + codebase) for scaffold wiring */
+  rawSourceFiles: Array<{ path: string; content: string }>;
 }
 
 interface DependencyArtifact {
@@ -414,6 +416,12 @@ export async function buildQAContext(
 
   console.log(`[QAContextLoader] Loaded ${sourceFiles.length} codebase files, ${dependencyArtifacts.length} dependency artifacts (~${dependencyTokens} tokens), total ~${tokens} tokens`);
 
+  // Expose raw source files for scaffold wiring (dependency artifacts first, then codebase)
+  const rawSourceFiles: Array<{ path: string; content: string }> = [
+    ...dependencyArtifacts.map(a => ({ path: a.filePath, content: a.content })),
+    ...sourceFiles,
+  ];
+
   return {
     content,
     tokens,
@@ -421,6 +429,7 @@ export async function buildQAContext(
     hasExistingTests: existingTestPatterns !== null,
     hasSchema: schema !== null,
     dependencyArtifactsLoaded: dependencyArtifacts.length,
+    rawSourceFiles,
   };
 }
 
@@ -435,5 +444,6 @@ export function getEmptyQAContextResult(): QAContextResult {
     hasExistingTests: false,
     hasSchema: false,
     dependencyArtifactsLoaded: 0,
+    rawSourceFiles: [],
   };
 }

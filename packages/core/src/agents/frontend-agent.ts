@@ -227,7 +227,7 @@ async function processFrontendTask(job: Job<TaskJobData>): Promise<{
     }
 
     logger.log('FrontendAgent', `Context profile: ${codebaseContext.profile}`);
-    logger.log('FrontendAgent', `Components loaded: ${codebaseContext.componentExamplesLoaded}, Hooks: ${codebaseContext.hookExamplesLoaded}`);
+    logger.log('FrontendAgent', `Components loaded: ${codebaseContext.componentExamplesLoaded}, Hooks: ${codebaseContext.hookExamplesLoaded}, API patterns: ${codebaseContext.apiPatternsLoaded}`);
     logger.log('FrontendAgent', `Context tokens: ~${codebaseContext.tokens}`);
 
     // Load tech spec from architect layer (if generated)
@@ -256,6 +256,8 @@ async function processFrontendTask(job: Job<TaskJobData>): Promise<{
       });
       if (scaffoldResult.success && scaffoldResult.files.length > 0) {
         logger.log('FrontendAgent', `Scaffold generated: ${scaffoldResult.scaffoldType}, ${scaffoldResult.files.length} files`);
+      } else {
+        logger.warn('FrontendAgent', `Scaffold skipped: success=${scaffoldResult.success}, files=${scaffoldResult.files.length}, type=${scaffoldResult.scaffoldType ?? 'none'}${scaffoldResult.error ? `, reason=${scaffoldResult.error}` : ''}`);
       }
     } catch (err) {
       logger.warn('FrontendAgent', 'Scaffold generation failed, continuing without it: ' + err);

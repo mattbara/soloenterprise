@@ -78,7 +78,13 @@
       "Bash(if grep -q \"context-snapshot\\\\|model-selector\\\\|architect.*batch\\\\|cost.?optim\" \"$f\")",
       "Bash(then)",
       "Bash(fi)",
-      "Bash(git -C /Users/matteobaratella/Projects/PERSONAL_PROJECTS/SoloEnterprise/soloenterprise worktree list:*)"
+      "Bash(git -C /Users/matteobaratella/Projects/PERSONAL_PROJECTS/SoloEnterprise/soloenterprise worktree list:*)",
+      "WebSearch",
+      "Bash(git log:*)",
+      "Bash(gh auth:*)",
+      "Bash(git mv:*)",
+      "Bash(xargs -I {} bash -c 'echo \"\"=== {} ===\"\" && cat {}')",
+      "WebFetch(domain:upstash.com)"
     ]
   }
 }

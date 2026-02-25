@@ -7,7 +7,8 @@
  */
 
 import { readFileSync } from 'fs';
-import { resolve } from 'path';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { parseDrizzleSchema, type DrizzleSchemaInfo } from './drizzle-schema-parser';
 import { resolveImports, type ImportMap } from './import-resolver';
 import { generateZodSchemasForTable, type ZodSchemaOutput } from './zod-from-drizzle';
@@ -15,7 +16,7 @@ import { generateTypesForTable } from './type-generator';
 import { scaffoldBackendRoute } from './backend-route';
 import { scaffoldBackendService } from './backend-service';
 import { scaffoldFrontendPage, type PageType } from './frontend-page';
-import { scaffoldTestShell } from './test-shell';
+import { scaffoldTestShell, scaffoldPlaceholderTestShell } from './test-shell';
 import { scaffoldTDDTestShell, type EndpointSpec } from './test-shell-tdd';
 import { scaffoldReportTemplate } from './report-template';
 import { scaffoldScopeTemplate } from './scope-template';
@@ -103,11 +104,13 @@ const BACKEND_SERVICE_KEYWORDS = [
 
 const FRONTEND_PAGE_KEYWORDS = [
   'page', 'view', 'screen', 'dashboard', 'list page', 'detail page',
-  'app router', 'server component',
+  'listing', 'display', 'app router', 'server component',
 ];
 
 const FRONTEND_FORM_KEYWORDS = [
-  'form', 'input', 'react hook form', 'validation form', 'create form', 'edit form',
+  'create form', 'edit form', 'submit form', 'form validation',
+  'react hook form', 'form field', 'form input', 'registration form',
+  'signup form', 'login form',
 ];
 
 const TEST_KEYWORDS = [
@@ -131,6 +134,9 @@ export function detectScaffoldType(description: string, agentType: AgentType): S
       return 'backend-route'; // default for backend
 
     case 'frontend':
+      // Check form first (multi-word phrases only, no false positives)
+      // then page (broader keywords). Form keywords are specific enough
+      // that if they match, it's intentional.
       if (matchesAny(lower, FRONTEND_FORM_KEYWORDS)) return 'frontend-form';
       if (matchesAny(lower, FRONTEND_PAGE_KEYWORDS)) return 'frontend-page';
       return 'frontend-page'; // default for frontend
@@ -180,10 +186,23 @@ function loadSchemaSource(schemaPath?: string): string | undefined {
 }
 
 function findDefaultSchemaPath(): string | null {
-  // Try common locations relative to CWD
+  // __dirname-based resolution (stable — anchored to this file's location)
+  // From packages/core/src/scaffolder -> repo root
+  let selfDir: string;
+  try {
+    selfDir = dirname(fileURLToPath(import.meta.url));
+  } catch {
+    // Fallback for CJS or test environments where import.meta.url is unavailable
+    selfDir = __dirname ?? process.cwd();
+  }
+  const repoRoot = resolve(selfDir, '../../../../');
+
   const candidates = [
-    resolve(process.cwd(), '..', 'db', 'src', 'schema.ts'),
+    // Stable: relative to this file's location
+    resolve(repoRoot, 'packages', 'db', 'src', 'schema.ts'),
+    // CWD-based fallbacks for client project sandboxes
     resolve(process.cwd(), 'packages', 'db', 'src', 'schema.ts'),
+    resolve(process.cwd(), '..', 'db', 'src', 'schema.ts'),
     resolve(process.cwd(), 'src', 'db', 'schema.ts'),
   ];
 
@@ -209,6 +228,7 @@ function findDefaultSchemaPath(): string | null {
  */
 export function generateScaffold(request: ScaffoldRequest): ScaffoldResult {
   const scaffoldType = request.scaffoldType ?? detectScaffoldType(request.taskDescription, request.agentType);
+  console.log(`[ScaffoldOrchestrator] DEBUG v2: generateScaffold called, agent=${request.agentType}, detected=${scaffoldType}`);
 
   // Early return for non-scaffoldable tasks
   if (scaffoldType === 'none') {
@@ -229,24 +249,40 @@ export function generateScaffold(request: ScaffoldRequest): ScaffoldResult {
     const importMap = resolveImports(schemaSource);
 
     let files: Array<{ path: string; content: string }> = [];
+    const diagnostics: string[] = [];
 
     switch (scaffoldType) {
       case 'backend-route': {
-        const resourceName = request.resourceName ?? extractResourceName(request.taskDescription);
-        if (resourceName && schema) {
-          const zodSchemas = generateZodSchemasForTable(resourceName, schema);
-          if (zodSchemas) {
-            const types = generateTypesForTable(zodSchemas);
-            files = scaffoldBackendRoute({
-              resourceName,
-              methods: ['GET', 'POST', 'PUT', 'DELETE'],
-              basePath: `/api/${resourceName}`,
-              zodSchemas,
-              types,
-              importMap,
-            });
-          }
+        const resourceName = request.resourceName ?? extractResourceName(request.taskDescription, request.techSpec);
+        if (!resourceName) {
+          diagnostics.push(`resourceName: could not extract from description "${request.taskDescription}"${request.techSpec ? ' or techSpec' : ''}`);
+          break;
         }
+
+        // Try real schema first, fall back to placeholders so we always produce files
+        let zodSchemas: ZodSchemaOutput | null = null;
+        if (schema) {
+          zodSchemas = generateZodSchemasForTable(resourceName, schema);
+          if (!zodSchemas) {
+            diagnostics.push(`table "${resourceName}" not found in schema, using placeholder schemas`);
+          }
+        } else {
+          diagnostics.push('schema not loaded, using placeholder schemas');
+        }
+
+        if (!zodSchemas) {
+          zodSchemas = placeholderZodSchemas(resourceName);
+        }
+
+        const types = generateTypesForTable(zodSchemas);
+        files = scaffoldBackendRoute({
+          resourceName,
+          methods: ['GET', 'POST', 'PUT', 'DELETE'],
+          basePath: `/api/${resourceName}`,
+          zodSchemas,
+          types,
+          importMap,
+        });
         break;
       }
 
@@ -262,42 +298,77 @@ export function generateScaffold(request: ScaffoldRequest): ScaffoldResult {
         break;
       }
 
-      case 'frontend-page': {
-        const resourceName = request.resourceName ?? extractResourceName(request.taskDescription);
-        if (resourceName) {
-          const pageType = detectPageType(request.taskDescription);
-          files = scaffoldFrontendPage({
-            resourceName,
-            pageType,
-            routeSegment: resourceName,
-            isDynamic: pageType === 'detail' || (pageType === 'form' && request.taskDescription.toLowerCase().includes('edit')),
-          });
+      case 'frontend-page':
+      case 'frontend-form': {
+        let resourceName = request.resourceName ?? extractResourceName(request.taskDescription, request.techSpec);
+        if (!resourceName) {
+          // Fallback: derive from task name (e.g., "Build Users Page" → "users")
+          resourceName = extractResourceName(request.taskName) ?? deriveResourceFallback(request.taskName);
+          diagnostics.push(`resourceName: could not extract from description, derived "${resourceName}" from taskName`);
         }
+
+        const pageType = scaffoldType === 'frontend-form' ? 'form' as PageType : detectPageType(request.taskDescription);
+        files = scaffoldFrontendPage({
+          resourceName,
+          pageType,
+          routeSegment: resourceName,
+          isDynamic: pageType === 'detail' || (pageType === 'form' && request.taskDescription.toLowerCase().includes('edit')),
+        });
         break;
       }
 
       case 'test-shell': {
+        console.log(`[ScaffoldOrchestrator] DEBUG: entered test-shell case, hasSource=${!!request.sourceContent}, hasPath=${!!request.sourceFilePath}`);
         if (request.sourceContent && request.sourceFilePath) {
           const testFile = scaffoldTestShell({
             sourceFilePath: request.sourceFilePath,
             sourceContent: request.sourceContent,
           });
+          console.log(`[ScaffoldOrchestrator] DEBUG: test-shell from source → "${testFile.path}", ${testFile.content.length} chars`);
+          files = [testFile];
+        } else {
+          // No source code available — generate placeholder test shell with TODO markers
+          const moduleName = request.resourceName
+            ?? extractResourceName(request.taskDescription, request.techSpec)
+            ?? extractResourceName(request.taskName)
+            ?? deriveResourceFallback(request.taskName);
+          diagnostics.push('no source file available, generating placeholder test shell');
+          const testFile = scaffoldPlaceholderTestShell(moduleName);
+          console.log(`[ScaffoldOrchestrator] DEBUG: test-shell placeholder → "${testFile.path}", module="${moduleName}", ${testFile.content.length} chars`);
           files = [testFile];
         }
         break;
       }
 
       case 'test-tdd': {
-        const resourceName = request.resourceName ?? extractResourceName(request.taskDescription);
-        if (resourceName && request.endpointSpecs) {
-          const zodSchemas = schema ? generateZodSchemasForTable(resourceName, schema) : undefined;
-          const testFile = scaffoldTDDTestShell({
-            resourceName,
-            expectedEndpoints: request.endpointSpecs,
-            zodSchemas: zodSchemas ?? undefined,
-          });
-          files = [testFile];
+        console.log('[ScaffoldOrchestrator] DEBUG: entered test-tdd case');
+        let resourceName = request.resourceName ?? extractResourceName(request.taskDescription, request.techSpec);
+        if (!resourceName) {
+          resourceName = extractResourceName(request.taskName) ?? deriveResourceFallback(request.taskName);
+          diagnostics.push(`resourceName: could not extract from description, derived "${resourceName}" from taskName`);
         }
+        console.log(`[ScaffoldOrchestrator] DEBUG: test-tdd resourceName="${resourceName}", hasEndpointSpecs=${!!request.endpointSpecs}`);
+
+        // Use provided endpoints or generate default CRUD endpoint specs
+        const endpointSpecs: EndpointSpec[] = request.endpointSpecs ?? [
+          { method: 'GET', path: `/api/${resourceName}`, description: `List ${resourceName}`, expectedStatus: [200] },
+          { method: 'GET', path: `/api/${resourceName}/:id`, description: `Get ${resourceName} by ID`, expectedStatus: [200, 404] },
+          { method: 'POST', path: `/api/${resourceName}`, description: `Create ${resourceName}`, expectedStatus: [201, 400] },
+          { method: 'PUT', path: `/api/${resourceName}/:id`, description: `Update ${resourceName}`, expectedStatus: [200, 400, 404] },
+          { method: 'DELETE', path: `/api/${resourceName}/:id`, description: `Delete ${resourceName}`, expectedStatus: [200, 404] },
+        ];
+        if (!request.endpointSpecs) {
+          diagnostics.push('no endpointSpecs provided, using default CRUD endpoints');
+        }
+
+        const zodSchemas = schema ? generateZodSchemasForTable(resourceName, schema) : undefined;
+        const testFile = scaffoldTDDTestShell({
+          resourceName,
+          expectedEndpoints: endpointSpecs,
+          zodSchemas: zodSchemas ?? undefined,
+        });
+        console.log(`[ScaffoldOrchestrator] DEBUG: test-tdd produced file at "${testFile.path}", content length=${testFile.content.length}`);
+        files = [testFile];
         break;
       }
 
@@ -321,6 +392,8 @@ export function generateScaffold(request: ScaffoldRequest): ScaffoldResult {
         break;
       }
     }
+
+    console.log(`[ScaffoldOrchestrator] DEBUG v2: after switch, scaffoldType=${scaffoldType}, files=${files.length}, diagnostics=[${diagnostics.join('; ')}]`);
 
     // Validate generated files
     const validation = validateGeneratedCode(files, {
@@ -346,6 +419,9 @@ export function generateScaffold(request: ScaffoldRequest): ScaffoldResult {
       validation,
       importMap,
       prompt,
+      error: files.length === 0 && diagnostics.length > 0
+        ? `0 files generated — ${diagnostics.join('; ')}`
+        : undefined,
     };
   } catch (err) {
     const importMap = resolveImports();
@@ -366,31 +442,87 @@ export function generateScaffold(request: ScaffoldRequest): ScaffoldResult {
 // ============================================================================
 
 /**
- * Extract resource/table name from task description.
- * Looks for common patterns like "Create users API" or "Build the projects endpoint".
+ * Extract resource/table name from task description (and optionally techSpec).
+ * Looks for common patterns like "Create users API", "REST API for managing bookings", etc.
  */
-function extractResourceName(description: string): string | null {
-  const lower = description.toLowerCase();
+export function extractResourceName(description: string, techSpec?: string): string | null {
+  const GENERIC_WORDS = ['the', 'a', 'an', 'new', 'basic', 'simple', 'rest', 'full', 'complete'];
 
   // Pattern: "Create/Build/Implement {resource} API/endpoint/route/service/page"
   const patterns = [
     /(?:create|build|implement|add|set up|scaffold)\s+(?:a\s+|the\s+)?(\w+)\s+(?:api|endpoint|route|service|page|form|crud|list|detail|dashboard)/i,
     /(\w+)\s+(?:api|endpoint|route|service|crud)\s+(?:endpoint|handler|routes?)/i,
     /(?:for|on)\s+(?:the\s+)?(\w+)\s+(?:table|resource|entity|model)/i,
+    // "REST API [endpoint] for [managing] [blog] {resource}" — allows optional words between API and for,
+    // and captures the LAST word before end/punctuation as resource (handles multi-word like "blog posts")
+    /(?:rest\s+)?(?:api|crud\s+operations?)(?:\s+\w+)*?\s+for\s+(?:managing\s+)?(?:\w+\s+)*?(\w+)\s*(?:$|[.,;!?]|\bwith\b|\busing\b|\bthat\b)/i,
+    // "Build the {resource} backend" / "{resource} management"
+    /(?:build|create|implement)\s+(?:a\s+|the\s+)?(\w+)\s+(?:backend|management|system)/i,
+    // "API/endpoint/route [endpoint] for {resource}" at end of string — allows optional words between
+    /(?:api|endpoint|route)(?:\s+\w+)*?\s+for\s+(?:\w+\s+)*?(\w+)\s*$/i,
+    // "{resource} management" standalone
+    /^(\w+)\s+management\b/i,
   ];
 
   for (const pattern of patterns) {
-    const match = lower.match(pattern);
+    const match = description.match(pattern);
     if (match) {
-      const name = match[1];
-      // Filter out generic words
-      if (!['the', 'a', 'an', 'new', 'basic', 'simple'].includes(name)) {
+      const name = match[1].toLowerCase();
+      if (!GENERIC_WORDS.includes(name)) {
         return name;
       }
     }
   }
 
+  // Tech spec fallback: look for "### Resource: {name}" or "Table: {name}"
+  if (techSpec) {
+    const specPatterns = [
+      /###\s*Resource:\s*(\w+)/i,
+      /\bTable:\s*(\w+)/i,
+      /\bResource(?:\s+name)?:\s*(\w+)/i,
+    ];
+    for (const pattern of specPatterns) {
+      const match = techSpec.match(pattern);
+      if (match) {
+        const name = match[1].toLowerCase();
+        if (!GENERIC_WORDS.includes(name)) {
+          return name;
+        }
+      }
+    }
+  }
+
   return null;
+}
+
+function toPascalCase(name: string): string {
+  return name.replace(/(^|_)([a-z])/g, (_, _p, c) => c.toUpperCase());
+}
+
+/**
+ * Generate placeholder Zod schemas when no Drizzle schema is available.
+ * Produces valid scaffolds with TODO markers for Claude to fill in.
+ */
+function placeholderZodSchemas(resourceName: string): ZodSchemaOutput {
+  const pascal = toPascalCase(resourceName);
+  return {
+    tableName: pascal,
+    insertSchema: `z.object({\n  // TODO: Define ${resourceName} fields from your schema\n  name: z.string(),\n})`,
+    updateSchema: `insert${pascal}Schema.partial()`,
+    selectSchema: `z.object({\n  id: z.string().uuid(),\n  // TODO: Define ${resourceName} fields from your schema\n  name: z.string(),\n  createdAt: z.string().datetime({ offset: true }),\n})`,
+    queryParamsSchema: `z.object({\n  limit: z.coerce.number().int().min(1).max(100).default(20),\n  offset: z.coerce.number().int().min(0).default(0),\n})`,
+  };
+}
+
+/**
+ * Last-resort resource name derivation from task name.
+ * Extracts the first non-generic noun, or returns 'resource' as absolute fallback.
+ */
+function deriveResourceFallback(taskName: string): string {
+  const STOP_WORDS = ['the', 'a', 'an', 'new', 'basic', 'simple', 'create', 'build', 'implement', 'add', 'set', 'up', 'page', 'form', 'view', 'screen'];
+  const words = taskName.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/);
+  const candidate = words.find(w => w.length > 2 && !STOP_WORDS.includes(w));
+  return candidate ?? 'resource';
 }
 
 function detectPageType(description: string): PageType {
