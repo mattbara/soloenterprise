@@ -283,6 +283,40 @@ export function generateScaffold(request: ScaffoldRequest): ScaffoldResult {
           types,
           importMap,
         });
+
+        // Multi-table detection: include Zod schemas for related tables as context
+        if (schema) {
+          const relatedTables = extractRelatedTableNames(
+            request.taskDescription,
+            schema,
+            resourceName,
+            request.techSpec,
+          );
+          if (relatedTables.length > 0) {
+            const relatedSchemaBlocks: string[] = [
+              "import { z } from 'zod';",
+              '',
+              '// Related table schemas — use these for joins, lookups, and foreign key validation.',
+              '// Do NOT duplicate these definitions. Import or reference as needed.',
+              '',
+            ];
+            for (const tableName of relatedTables) {
+              const relatedZod = generateZodSchemasForTable(tableName, schema);
+              if (relatedZod) {
+                const pascal = toPascalCase(tableName);
+                relatedSchemaBlocks.push(`// --- ${pascal} ---`);
+                relatedSchemaBlocks.push(`export const select${pascal}Schema = ${relatedZod.selectSchema};`);
+                relatedSchemaBlocks.push(`export const insert${pascal}Schema = ${relatedZod.insertSchema};`);
+                relatedSchemaBlocks.push('');
+              }
+            }
+            files.push({
+              path: `src/validators/${resourceName}-related-schemas.ts`,
+              content: relatedSchemaBlocks.join('\n'),
+            });
+            diagnostics.push(`related tables detected: ${relatedTables.join(', ')} (${relatedTables.length + 1} tables total)`);
+          }
+        }
         break;
       }
 
@@ -497,6 +531,36 @@ export function extractResourceName(description: string, techSpec?: string): str
 
 function toPascalCase(name: string): string {
   return name.replace(/(^|_)([a-z])/g, (_, _p, c) => c.toUpperCase());
+}
+
+/**
+ * Extract all table names referenced in the task description and tech spec
+ * that exist in the parsed schema. Excludes the primary resource.
+ * Used to include related table schemas as context for multi-table tasks.
+ */
+export function extractRelatedTableNames(
+  description: string,
+  schema: DrizzleSchemaInfo,
+  primaryResource: string,
+  techSpec?: string,
+): string[] {
+  const text = `${description} ${techSpec ?? ''}`.toLowerCase();
+  const schemaTableNames = schema.tables.map(t => t.name);
+  const found = new Set<string>();
+
+  for (const tableName of schemaTableNames) {
+    if (tableName === primaryResource) continue;
+
+    // Match table name as a word boundary (singular or as-is)
+    // e.g., "projects" matches "projects table", "project details", "projectId"
+    const singular = tableName.endsWith('s') ? tableName.slice(0, -1) : tableName;
+    const pattern = new RegExp(`\\b${singular}`, 'i');
+    if (pattern.test(text)) {
+      found.add(tableName);
+    }
+  }
+
+  return Array.from(found);
 }
 
 /**

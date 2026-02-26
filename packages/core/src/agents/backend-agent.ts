@@ -89,7 +89,7 @@ function getAnthropicClient(): Anthropic {
     if (!apiKey) {
       throw new Error('ANTHROPIC_API_KEY environment variable is required');
     }
-    anthropicClient = new Anthropic({ apiKey });
+    anthropicClient = new Anthropic({ apiKey, timeout: 120_000, maxRetries: 2 });
   }
   return anthropicClient;
 }
@@ -287,20 +287,33 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
     // Codebase context is NOT cached (varies per task)
     const cachedSystem = buildCachedSystemPrompt(skillContent, codebaseContext.content);
 
-    // Call Claude API with cached system prompt
+    // Call Claude API with cached system prompt + heartbeat so UI never looks idle
     const client = getAnthropicClient();
-    const response = await client.messages.create({
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
-      temperature: TEMPERATURE,
-      system: cachedSystem,
-      messages: [
-        {
-          role: 'user',
-          content: userPrompt,
-        },
-      ],
-    });
+    const apiStart = Date.now();
+    const heartbeat = setInterval(() => {
+      const elapsed = Math.round((Date.now() - apiStart) / 1000);
+      logger.log('BackendAgent', `Still waiting for Claude API response... (${elapsed}s)`);
+    }, 30_000);
+
+    let response: Anthropic.Message;
+    try {
+      response = await client.messages.create({
+        model: MODEL,
+        max_tokens: MAX_TOKENS,
+        temperature: TEMPERATURE,
+        system: cachedSystem,
+        messages: [
+          {
+            role: 'user',
+            content: userPrompt,
+          },
+        ],
+      });
+    } finally {
+      clearInterval(heartbeat);
+    }
+    const apiDuration = Math.round((Date.now() - apiStart) / 1000);
+    logger.log('BackendAgent', `Claude API responded in ${apiDuration}s`);
 
     // Extract text response
     const textContent = response.content.find((block) => block.type === 'text');

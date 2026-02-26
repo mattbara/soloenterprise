@@ -6,7 +6,7 @@
  */
 
 // Main entry point
-export { generateScaffold, detectScaffoldType } from './scaffold-orchestrator';
+export { generateScaffold, detectScaffoldType, extractRelatedTableNames } from './scaffold-orchestrator';
 export type { ScaffoldRequest, ScaffoldResult, ScaffoldType, AgentType } from './scaffold-orchestrator';
 
 // Schema parser
