@@ -29,7 +29,7 @@ describe('backend-route scaffolder', () => {
 
     return {
       resourceName: 'users',
-      methods: ['GET', 'POST', 'PUT', 'DELETE'] as const,
+      methods: ['GET', 'POST', 'PUT', 'DELETE'] as ('GET' | 'POST' | 'PUT' | 'DELETE')[],
       basePath: '/api/users',
       zodSchemas,
       types,

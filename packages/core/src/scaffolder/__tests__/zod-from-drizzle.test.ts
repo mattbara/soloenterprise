@@ -53,7 +53,8 @@ describe('zod-from-drizzle', () => {
       expect(insert).toContain('email: z.string(),');
 
       // Optional fields (has default or nullable)
-      expect(insert).toContain('status: z.enum([').and.toContain('.optional()');
+      expect(insert).toContain('status: z.enum([');
+      expect(insert).toContain('.optional()');
       expect(insert).toContain('isVerified: z.boolean().optional()');
       expect(insert).toContain('age: z.number().int().optional()');
       expect(insert).toContain('createdAt:');

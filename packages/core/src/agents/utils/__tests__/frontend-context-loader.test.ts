@@ -52,7 +52,8 @@ vi.mock('../frontend-context-profiles', () => ({
         maxExamples: 0,
       },
     };
-    return { ...(configs[profile] ?? configs['simple-component']) };
+    const config = configs[profile] ?? configs['simple-component'];
+    return { ...(config as Record<string, unknown>) };
   }),
 }));
 
