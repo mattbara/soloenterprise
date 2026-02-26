@@ -12,23 +12,16 @@
  * IMPORTANT: Do NOT use tmpdir() — macOS clears /tmp on reboot, causing data loss.
  */
 
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { resolve } from 'path';
 
 function getProjectFilesRoot(): string {
   if (process.env.SOLOENTERPRISE_PROJECT_FILES) {
     return resolve(process.env.SOLOENTERPRISE_PROJECT_FILES);
   }
-  // Stable anchor: this file lives at packages/core/src/utils/generated-dir.ts
-  // Resolve to monorepo root (5 levels up), then sibling project-files/
-  let selfDir: string;
-  try {
-    selfDir = dirname(fileURLToPath(import.meta.url));
-  } catch {
-    selfDir = __dirname ?? process.cwd();
-  }
-  const monorepoRoot = resolve(selfDir, '..', '..', '..', '..');
-  return resolve(monorepoRoot, '..', 'project-files');
+  // Use process.cwd() — stable across BullMQ workers AND Next.js server.
+  // Both run from the monorepo root. import.meta.url / __dirname breaks
+  // when Next.js bundles this file into .next/server/chunks/ (wrong depth).
+  return resolve(process.cwd(), 'packages', 'project-files');
 }
 
 /** Root directory for all generated output */

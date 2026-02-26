@@ -156,6 +156,18 @@ function matchesFrontendWord(text: string, keyword: string): boolean {
 export function selectFrontendContextProfile(taskDescription: string): FrontendContextProfileName {
   const lower = taskDescription.toLowerCase();
 
+  // Diagnostic: print all detected signals
+  const hasFormSignalDebug = lower.includes('form') || lower.includes('submit') || lower.includes('validation');
+  const hasApiSubmitDebug = ['post', 'api', 'endpoint', 'server action', 'redirect', 'react hook form', 'create', 'edit', 'update']
+    .filter(kw => lower.includes(kw));
+  const overrideHits = FRONTEND_PROFILE_OVERRIDES
+    .map(o => o.keywords.find(kw => matchesFrontendWord(lower, kw)))
+    .filter(Boolean);
+  console.log(
+    `PROFILE DETECTION: input signals = [form=${hasFormSignalDebug}, apiSubmit=[${hasApiSubmitDebug.join(',')}], overrideHits=[${overrideHits.join(',')}]] ` +
+    `for: "${taskDescription.substring(0, 120)}"`
+  );
+
   // ==============================
   // PASS 1: Check overrides (short-circuit)
   // ==============================
@@ -177,16 +189,31 @@ export function selectFrontendContextProfile(taskDescription: string): FrontendC
   let positiveKeyword = '';
 
   // API consumer detection - check FIRST (high priority)
+  // Includes forms that submit to an API (POST, create, edit, redirect)
+  const hasFormSignal = lower.includes('form') || lower.includes('submit') || lower.includes('validation');
+  const hasApiSubmissionSignal =
+    lower.includes('post') ||
+    lower.includes('api') ||
+    lower.includes('endpoint') ||
+    lower.includes('server action') ||
+    lower.includes('redirect') ||
+    lower.includes('react hook form') ||
+    lower.includes('create') ||
+    lower.includes('edit') ||
+    lower.includes('update');
   if (
     lower.includes('fetch') ||
     lower.includes('tanstack') ||
     lower.includes('react-query') ||
     lower.includes('usequery') ||
     lower.includes('usemutation') ||
-    (lower.includes('api') && (lower.includes('call') || lower.includes('endpoint') || lower.includes('request') || lower.includes('from')))
+    (lower.includes('api') && (lower.includes('call') || lower.includes('endpoint') || lower.includes('request') || lower.includes('from'))) ||
+    (hasFormSignal && hasApiSubmissionSignal)
   ) {
     selected = 'api-consumer';
-    positiveKeyword = 'fetch/tanstack/api';
+    positiveKeyword = hasFormSignal && hasApiSubmissionSignal
+      ? 'form+api-submission'
+      : 'fetch/tanstack/api';
   }
   // Form detection - check before bug-fix
   else if (

@@ -31,7 +31,31 @@ export interface ValidationOptions {
   importMap?: ImportMap;
   /** Skip files that aren't TypeScript */
   skipNonTS?: boolean;
+  /** Known @/ alias prefixes. Defaults to KNOWN_ALIAS_PREFIXES if not provided. */
+  aliasPrefixes?: string[];
 }
+
+// ============================================================================
+// Known @/ alias prefixes (standard Next.js + template repo structure)
+// ============================================================================
+
+/**
+ * Valid first-segment prefixes after @/.
+ * Anything not matching these is flagged as a hallucinated path.
+ */
+export const KNOWN_ALIAS_PREFIXES = [
+  'components',
+  'lib',
+  'app',
+  'hooks',
+  'db',
+  'server',
+  'types',
+  'styles',
+  'actions',
+  'config',
+  'providers',
+];
 
 // ============================================================================
 // Validation
@@ -67,8 +91,9 @@ export function validateGeneratedCode(
 
   // 2. Import validation (optional)
   if (options.checkImports && options.importMap) {
+    const prefixes = options.aliasPrefixes ?? KNOWN_ALIAS_PREFIXES;
     for (const file of tsFiles) {
-      const importErrors = validateImports(file.path, file.content, options.importMap);
+      const importErrors = validateImports(file.path, file.content, options.importMap, prefixes);
       errors.push(...importErrors);
     }
   }
@@ -81,12 +106,14 @@ export function validateGeneratedCode(
 
 /**
  * Validate that import sources in a file exist in the ImportMap.
- * Only checks imports from packages (not relative imports).
+ * Checks package imports against the ImportMap and @/ alias imports
+ * against known path prefixes.
  */
 function validateImports(
   filePath: string,
   content: string,
   importMap: ImportMap,
+  aliasPrefixes: string[],
 ): ValidationError[] {
   const errors: ValidationError[] = [];
 
@@ -101,8 +128,26 @@ function validateImports(
     // Skip relative imports — we can't validate those without full project context
     if (importSource.startsWith('.') || importSource.startsWith('/')) continue;
 
-    // Skip @/ path aliases — those are project-specific
-    if (importSource.startsWith('@/')) continue;
+    // Validate @/ alias imports against known prefixes
+    if (importSource.startsWith('@/')) {
+      // Extract the first path segment after @/
+      const afterAlias = importSource.slice(2); // strip "@/"
+      const firstSegment = afterAlias.split('/')[0];
+
+      if (!aliasPrefixes.includes(firstSegment)) {
+        const fullMatchText = match[0];
+        const lineNum = lines.findIndex(l => l.includes(fullMatchText)) + 1;
+
+        errors.push({
+          file: filePath,
+          line: lineNum || undefined,
+          message: `Unknown @/ alias path: '${importSource}'. ` +
+            `First segment '${firstSegment}' is not in known prefixes: [${aliasPrefixes.join(', ')}].`,
+          type: 'import',
+        });
+      }
+      continue;
+    }
 
     // Check if we know about this package
     const knownPackage = importMap.byPackage.has(importSource);
