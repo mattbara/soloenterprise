@@ -1176,7 +1176,7 @@ Understanding which technologies clients request informs scaffold template prior
 ### Checklist
 
 - [ ] Rewrite `MASTER_ARCHITECTURE.md`
-- [ ] Update `BOOTSTRAP.md`
+- [ ] Create onboarding/bootstrap guide (replaces deleted `BOOTSTRAP.md`)
 - [ ] Delete outdated docs (legacy monolithic SKILL files)
 - [ ] Create agent development guide (includes Tool/Service pattern from Phase 7.7)
 - [ ] Create SKILL file authoring guide
