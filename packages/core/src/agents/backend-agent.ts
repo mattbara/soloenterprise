@@ -632,11 +632,18 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     logger.error('BackendAgent', `Task ${taskId} failed: ${errorMessage}`);
 
-    // Update task status to failed (may already be set by throw sites above)
-    await updateTaskStatus(taskId, 'failed', {
-      success: false,
-      error: errorMessage,
+    // Only overwrite status if task is still in a processing state.
+    // Do NOT overwrite waiting_human (set when agent asks a question) or blocked.
+    const currentTask = await db.query.tasks.findFirst({
+      where: eq(tasks.id, taskId),
+      columns: { status: true },
     });
+    if (!currentTask || currentTask.status === 'running' || currentTask.status === 'queued') {
+      await updateTaskStatus(taskId, 'failed', {
+        success: false,
+        error: errorMessage,
+      });
+    }
 
     throw error; // Re-throw so BullMQ marks job as failed
   } finally {
