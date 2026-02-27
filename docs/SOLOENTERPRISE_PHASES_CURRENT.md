@@ -752,18 +752,109 @@ Split `skills/SKILL-devops-engineer.md` (757 lines) into:
 - [ ] pnpm audit in CI pipeline
 - [ ] Monorepo scaffold (Next.js + packages)
 - [ ] Docker Compose for local Postgres
+- [ ] Deployment sequencing enforced in DevOps agent (5-step order)
+- [ ] Rollback sequencing enforced (reverse order)
+- [ ] Deployment order validation test (out-of-order deploy → blocked)
+- [ ] Rollback order validation test
+- [ ] Container image tagging: SHA tags for staging/prod
+- [ ] Container image tagging: `:latest` only for local/dev environments
+
+### Deployment Sequencing Rules (DevOps SKILL)
+
+**Mandatory deployment order — no exceptions:**
+
+```
+1. Database migrations     (schema must exist before anything reads it)
+2. Shared packages         (types/utils consumed by backend + frontend)
+3. Backend services        (APIs must be live before frontend calls them)
+4. API gateway / proxy     (routes to backend, must be updated after backend)
+5. Frontend application    (consumes APIs, deployed last)
+```
+
+**Rollback order is the exact reverse:** Frontend → Gateway → Backend → Shared → Database.
+
+**Why this matters:** Deploying frontend before backend creates a window where the UI calls APIs that don't exist yet. Deploying backend before migrations creates a window where queries hit missing columns. The DevOps agent MUST enforce this order in CI/CD pipelines and reject out-of-order deployment requests.
+
+```markdown
+<!-- skills/devops/SKILL-devops-core.md (excerpt) -->
+## Deployment Order (MANDATORY)
+
+Deploy in this exact order. No exceptions. No "it's just a small change" shortcuts.
+
+1. DB migrations
+2. Shared packages
+3. Backend services
+4. API gateway
+5. Frontend
+
+Rollback: reverse order (5 → 4 → 3 → 2 → 1).
+
+If a deployment step fails, DO NOT continue to the next step. Roll back completed steps in reverse order.
+```
+
+### Container Image Tagging Rules
+
+**Rule:** Use commit SHA tags for staging and production. The `:latest` tag is ONLY for local development.
+
+| Environment | Tag Format | Example |
+|-------------|-----------|---------|
+| Local/Dev | `:latest` | `app:latest` |
+| Staging | `:sha-<short>` | `app:sha-a1b2c3d` |
+| Production | `:sha-<short>` | `app:sha-a1b2c3d` |
+
+**Why:** `:latest` is mutable — you can never tell what's actually running. SHA tags are immutable — you always know exactly which commit is deployed. This is critical for debugging production issues and for rollbacks (you roll back to a specific SHA, not "whatever latest was 20 minutes ago").
+
+```markdown
+<!-- skills/devops/SKILL-devops-core.md (excerpt) -->
+## Container Image Tags
+
+- Local/dev: `:latest` (convenience, OK because nothing depends on reproducibility)
+- Staging/prod: `:sha-<7-char-commit-hash>` (immutable, traceable)
+- NEVER use `:latest` in staging or production Dockerfiles, docker-compose files, or CI/CD pipelines
+```
 
 ### Principal Reviewer (Sub-task)
 
 **Model:** Claude Opus (critical review)
 
-**Scope:** Security anti-patterns (hardcoded secrets, SQL injection, XSS, auth bypass), performance issues, logic errors, error handling gaps.
+**Scope:** Security anti-patterns (hardcoded secrets, SQL injection, XSS, auth bypass), performance issues, logic errors, error handling gaps, **cross-agent contract compatibility**.
+
+#### Reviewer Contract Compatibility Checklist
+
+The reviewer verifies that each PR's code matches the contracts defined by the architect spec AND is compatible with other agents' outputs. This is the human-equivalent of "does this actually work when assembled?"
+
+1. **API contract alignment** — Route paths, request/response shapes, and status codes match the architect spec exactly. No undocumented endpoints, no missing fields.
+2. **Event schema compatibility** — If tasks communicate via events/queues, verify event payloads match producer and consumer expectations.
+3. **Shared type consistency** — Types imported from shared packages (`@soloenterprise/db/schema`, shared Zod schemas) are used correctly — no local redefinitions that drift from the source of truth.
+4. **Database ↔ API alignment** — Column names in Drizzle schema match API response field names (or have explicit mapping). No silent mismatches where the DB says `created_at` but the API returns `createdAt` without a transformer.
+5. **Boundary error handling** — Every cross-agent boundary (API call, queue message, file read) has error handling. No silent failures where agent A assumes agent B's output always succeeds.
+
+```markdown
+<!-- skills/reviewer/SKILL-reviewer-core.md (excerpt) -->
+## Contract Compatibility Review
+
+When reviewing a PR, verify cross-agent contracts:
+
+- [ ] API routes match architect spec (paths, methods, request/response types)
+- [ ] Event payloads match producer/consumer schemas
+- [ ] Shared types used directly from source packages (no local copies)
+- [ ] DB column names align with API field names (or explicit mapping exists)
+- [ ] All cross-boundary calls have error handling (no silent failures)
+
+Flag any mismatch as BLOCKING — contract drift causes cascading failures in multi-agent assembly.
+```
 
 - [ ] Create `SKILL-reviewer-*.md` files
 - [ ] Create `reviewer-agent.ts`
 - [ ] Define review checklist
 - [ ] Integrate into merge flow
 - [ ] Test against known-bad code
+- [ ] Reviewer contract check: API route alignment with architect spec
+- [ ] Reviewer contract check: event schema compatibility across agents
+- [ ] Reviewer contract check: shared type consistency (no local redefinitions)
+- [ ] Reviewer contract check: DB ↔ API field name alignment
+- [ ] Reviewer contract check: boundary error handling at every cross-agent call
+- [ ] Reviewer SKILL file includes contract compatibility checklist
 
 ### Security Review Gate
 
@@ -835,6 +926,31 @@ Lighthouse requires a deployed URL. This phase depends on Phase 7's **preview de
 - No critical/high severity issues from pnpm audit
 - Human reviews results before final production deployment
 
+### QA Context Isolation Guarantee
+
+**Hard Rule:** The QA agent NEVER receives the implementing agent's conversation history, internal reasoning, checkpoints, or debug context. QA tests against the CONTRACT (architect spec + generated artifacts), not against the implementation thought process.
+
+**Why:** If QA sees the implementing agent's reasoning, it writes tests that validate implementation details instead of behavior. This defeats the purpose of independent verification. The QA agent should be able to catch bugs that the implementing agent introduced BECAUSE of flawed reasoning.
+
+**Enforcement:**
+- Worker pipeline strips all non-artifact context before passing to QA agent
+- QA agent receives: architect spec, generated source files, generated test shells — nothing else
+- Unit tests on the prompt construction path verify no conversation history leaks through
+
+```typescript
+// In worker pipeline, before QA agent execution:
+function buildQAContext(task: Task, artifacts: Artifact[]): QAContext {
+  return {
+    architectSpec: task.metadata?.architectSpec,    // Contract
+    sourceFiles: artifacts.filter(a => a.type === 'source'),  // What to test
+    testShells: artifacts.filter(a => a.type === 'test'),      // Pre-generated test structure
+    // EXPLICITLY ABSENT: implementingAgent.conversationHistory
+    // EXPLICITLY ABSENT: implementingAgent.checkpoints
+    // EXPLICITLY ABSENT: implementingAgent.reasoningTrace
+  };
+}
+```
+
 ### Checklist
 
 - [ ] Update QA SKILL files for production readiness
@@ -845,6 +961,10 @@ Lighthouse requires a deployed URL. This phase depends on Phase 7's **preview de
 - [ ] Lighthouse CI integration (against preview deploy URLs from Phase 7)
 - [ ] All test types run in GitHub Actions CI
 - [ ] Human approval gate for production deployment
+- [ ] QA context isolation: strip implementing agent conversation before QA execution
+- [ ] QA context isolation: unit test on `buildQAContext()` verifying no conversation leakage
+- [ ] QA context isolation: integration test — QA agent prompt contains zero references to implementing agent reasoning
+- [ ] QA SKILL update: document that QA tests behavior against contract, never implementation internals
 
 ---
 
@@ -990,16 +1110,95 @@ class TokenBudgetMiddleware {
     reporter: 50_000,
   };
 
-  async checkBudget(agentType: string, cumulativeTokens: number): Promise<Action> {
+  private continuationCounts = new Map<string, number>(); // taskId → count
+
+  async checkBudget(agentType: string, taskId: string, cumulativeTokens: number): Promise<Action> {
     const budget = this.budgets[agentType];
-    if (cumulativeTokens > budget * 0.9) return 'compact'; // 90% → trigger compaction
     if (cumulativeTokens > budget) return 'escalate';       // 100% → escalate to human
+    if (cumulativeTokens > budget * 0.9) return 'checkpoint'; // 90% → save checkpoint, continue in new context
     return 'continue';
   }
 }
 ```
 
-Tracks cumulative tokens across turns within a session. At 90% → compact conversation. At 100% → stop and escalate.
+Tracks cumulative tokens across turns within a session. At 90% → save a checkpoint and continue in a fresh context window (see below). At 100% → stop and escalate to human.
+
+### Context Checkpointing (Mid-Task Continuation)
+
+When `TokenBudgetMiddleware` returns `checkpoint`, the agent saves its progress and continues in a new context window. This prevents token exhaustion on complex tasks without losing work.
+
+```typescript
+interface AgentCheckpoint {
+  taskId: string;
+  agentType: string;
+  completedSteps: string[];       // What's done (natural language summary)
+  pendingSteps: string[];         // What remains
+  artifacts: string[];            // File paths already written to sandbox
+  keyDecisions: string[];         // Architectural decisions made (prevents flip-flopping)
+  continuationNumber: number;     // 1-indexed (first continuation = 1)
+}
+```
+
+**Worker checkpoint flow:**
+```
+Agent reaches 90% token budget
+  → Worker calls agent with "summarize your progress" instruction
+  → Agent returns AgentCheckpoint
+  → Worker stores checkpoint in tasks.metadata (JSONB)
+  → Worker spawns NEW agent session with:
+      - Original architect spec
+      - Checkpoint summary (completedSteps, pendingSteps, keyDecisions)
+      - Previously written artifacts (file references, not full content)
+      - Fresh context window
+  → New session continues from where the previous left off
+```
+
+**Limits:**
+- Maximum **2 continuations** per task (original + 2 = 3 total context windows)
+- If task still incomplete after 2 continuations → escalate to human
+- Checkpoints stored in `tasks.metadata` JSONB (no new tables)
+- Each continuation gets the FULL token budget (not the remainder)
+
+### Pre-Execution Contract Validation
+
+Before an agent begins work, the dependency resolver validates that upstream task outputs are compatible with the current task's expected inputs. This catches contract mismatches BEFORE wasting tokens.
+
+```typescript
+async function validateContractCompatibility(
+  task: Task,
+  dependencies: Task[]
+): Promise<ContractValidation> {
+  const issues: ContractIssue[] = [];
+
+  for (const dep of dependencies) {
+    const depSpec = dep.metadata?.architectSpec;
+    const taskSpec = task.metadata?.architectSpec;
+
+    if (!depSpec || !taskSpec) continue;
+
+    // Check: does the upstream task's output API match what this task expects to consume?
+    if (taskSpec.expectedInputs) {
+      for (const input of taskSpec.expectedInputs) {
+        const provided = depSpec.outputs?.find(o => o.name === input.name);
+        if (!provided) {
+          issues.push({ type: 'missing_output', dep: dep.id, expected: input.name });
+        } else if (provided.type !== input.type) {
+          issues.push({ type: 'type_mismatch', dep: dep.id, field: input.name,
+            expected: input.type, actual: provided.type });
+        }
+      }
+    }
+  }
+
+  return {
+    compatible: issues.length === 0,
+    issues,
+    recommendation: issues.length > 0 ? 'Re-run architect spec for mismatched tasks' : 'proceed',
+  };
+}
+```
+
+**Integration point:** Called in `claimTaskForProcessing()` after dependency completion check, before agent dispatch. If validation fails → task stays `queued` and the Orchestrator is notified to re-spec the conflicting tasks.
 
 ### Verification Gate
 
@@ -1025,6 +1224,18 @@ Task cannot be marked complete without passing. Failure: retry → different app
 - [ ] Parallel agent test (concurrent execution)
 - [ ] Conflict resolution test
 - [ ] Rollback test
+- [ ] Context checkpointing: `AgentCheckpoint` interface + serialization
+- [ ] Context checkpointing: worker checkpoint flow (save → spawn new session)
+- [ ] Context checkpointing: checkpoint stored in `tasks.metadata` JSONB
+- [ ] Context checkpointing: max 2 continuations enforced, escalate after
+- [ ] Context checkpointing: continuation receives architect spec + checkpoint summary + artifact refs
+- [ ] Context checkpointing: integration test — agent hits 90% budget → checkpoint → continues in new session
+- [ ] Context checkpointing: key decisions preserved across continuations (no flip-flopping)
+- [ ] Pre-execution contract validation: `validateContractCompatibility()` in dependency resolver
+- [ ] Pre-execution contract validation: missing output detection (upstream doesn't provide what downstream expects)
+- [ ] Pre-execution contract validation: type mismatch detection (output type ≠ expected input type)
+- [ ] Pre-execution contract validation: failed validation → task stays queued, Orchestrator re-specs
+- [ ] Pre-execution contract validation: integration test — mismatched specs → validation fails → task not dispatched
 
 ### What's NOT in This Phase
 
