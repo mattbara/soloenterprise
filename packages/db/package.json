@@ -7,7 +7,8 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./schema": "./src/schema.ts"
+    "./schema": "./src/schema.ts",
+    "./constants": "./src/constants.ts"
   },
   "scripts": {
     "build": "tsc",
@@ -15,7 +16,8 @@
     "generate": "drizzle-kit generate",
     "migrate": "drizzle-kit migrate",
     "push": "drizzle-kit push",
-    "studio": "drizzle-kit studio"
+    "studio": "drizzle-kit studio",
+    "seed:test-project": "tsx src/seeds/test-sandbox-project.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.9.5",
