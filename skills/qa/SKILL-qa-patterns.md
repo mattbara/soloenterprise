@@ -277,3 +277,24 @@ describe('POST /api/resource', () => {
 | Unit | `[name].test.ts` | `pricing.test.ts` |
 | Component | `[name].test.tsx` | `button.test.tsx` |
 | Integration | `[name].integration.test.ts` | `users-api.integration.test.ts` |
+
+---
+
+## Test Patterns for Sandbox Execution
+
+### Backend Test Pattern
+- Mock the database at the module level with `vi.mock('@soloenterprise/db')`
+- Set up mock return values in `beforeEach`
+- Test the handler function directly, not via HTTP
+
+### Frontend Component Test Pattern
+- Use `@testing-library/react` for rendering
+- Use `@testing-library/jest-dom` for DOM assertions
+- Mock `next/navigation` hooks if the component uses routing
+- Test user-visible behavior, not implementation details
+
+### What NOT to Test in Sandbox
+- Actual database queries (mock them)
+- External API calls (mock them)
+- File system operations (mock them)
+- Browser-specific APIs beyond jsdom support (defer to E2E in Phase 7+)
