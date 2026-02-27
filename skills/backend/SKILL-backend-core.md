@@ -86,6 +86,20 @@ Request human input ONLY for:
 
 ---
 
+## Specialized SKILL Files
+
+The following SKILL files are auto-loaded when task keywords match their `<!-- Load When -->` headers:
+
+| File | Loaded For |
+|------|-----------|
+| `SKILL-backend-security.md` | Auth, login, API routes, uploads, CORS, rate limiting |
+| `SKILL-backend-architecture.md` | Services, repositories, features, modules, CRUD, refactoring |
+| `SKILL-backend-performance.md` | API endpoints, queries, database, lists, pagination, caching |
+
+You do NOT need to reference these files — the skill loader includes them automatically based on task context.
+
+---
+
 ## Scaffold Mode
 
 When your prompt contains a `--- SCAFFOLD ---` section, scaffold files have been pre-generated with correct imports, types, and TODO markers.

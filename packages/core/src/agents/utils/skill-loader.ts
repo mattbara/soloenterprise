@@ -2,10 +2,11 @@
  * Skill Loader Utility
  *
  * Dynamically loads SKILL file layers based on task complexity.
+ * Specialized SKILL files are auto-discovered via <!-- Load When: ... --> headers.
  * Reduces token usage by loading only what's needed.
  */
 
-import { readFile } from 'fs/promises';
+import { readFile, readdir } from 'fs/promises';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -13,6 +14,130 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Path to skills directory (from packages/core/src/agents/utils -> skills/)
 const SKILLS_DIR = resolve(__dirname, '../../../../../skills');
+
+// Standard layer filenames — handled by the existing system, excluded from header-based discovery
+const STANDARD_LAYERS = ['core', 'patterns', 'examples'];
+
+/**
+ * Parse the <!-- Load When: ... --> header from a SKILL file's content.
+ * Returns an array of lowercase keyword phrases, or null if no header found.
+ */
+export function parseLoadWhenHeader(content: string): string[] | null {
+  const match = content.match(/<!--\s*Load When:\s*(.+?)\s*-->/i);
+  if (!match) return null;
+  return match[1].split(',').map(k => k.trim().toLowerCase()).filter(Boolean);
+}
+
+/**
+ * Check if a task description matches any of the Load When keywords.
+ * "always" matches everything. Other keywords are matched as substrings.
+ */
+export function matchesLoadCondition(taskDescription: string, keywords: string[]): boolean {
+  const lower = taskDescription.toLowerCase();
+  for (const keyword of keywords) {
+    if (keyword === 'always') return true;
+    // Split multi-word keywords by / to support "route/page/layout" syntax
+    const alternatives = keyword.split('/').map(k => k.trim());
+    for (const alt of alternatives) {
+      if (alt && lower.includes(alt)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Discover specialized SKILL files in an agent's directory that match the task.
+ * Reads all SKILL-{agent}-*.md files, parses their Load When headers,
+ * and returns paths of files whose conditions match the task description.
+ * Excludes core/patterns/examples (handled by the existing layer system).
+ */
+export async function discoverSpecializedSkills(
+  agentType: string,
+  taskDescription: string
+): Promise<string[]> {
+  const agentDir = `${SKILLS_DIR}/${agentType}`;
+  const prefix = `SKILL-${agentType}-`;
+
+  let files: string[];
+  try {
+    files = await readdir(agentDir);
+  } catch {
+    return [];
+  }
+
+  // Filter to SKILL files, excluding standard layers
+  const candidates = files.filter(f => {
+    if (!f.startsWith(prefix) || !f.endsWith('.md')) return false;
+    const layerName = f.slice(prefix.length, -3); // Remove prefix and .md
+    return !STANDARD_LAYERS.includes(layerName);
+  });
+
+  if (candidates.length === 0) return [];
+
+  // Read headers in parallel and match against task
+  const matched: string[] = [];
+  await Promise.all(
+    candidates.map(async (filename) => {
+      const filepath = `${agentDir}/${filename}`;
+      try {
+        // Read only the first 500 bytes — header is always at the top
+        const fd = await readFile(filepath, 'utf-8');
+        const headerSlice = fd.slice(0, 500);
+        const keywords = parseLoadWhenHeader(headerSlice);
+        if (keywords && matchesLoadCondition(taskDescription, keywords)) {
+          matched.push(filepath);
+        }
+      } catch {
+        // File unreadable — skip silently
+      }
+    })
+  );
+
+  return matched.sort(); // Deterministic order
+}
+
+/**
+ * Discover specialized common SKILL files that match the task.
+ * Scans skills/common/ for non-standard SKILL files with matching Load When headers.
+ */
+export async function discoverCommonSkills(
+  taskDescription: string
+): Promise<string[]> {
+  const commonDir = `${SKILLS_DIR}/common`;
+
+  let files: string[];
+  try {
+    files = await readdir(commonDir);
+  } catch {
+    return [];
+  }
+
+  // Filter to SKILL files, excluding the main SKILL-common.md (already loaded)
+  const candidates = files.filter(f =>
+    f.startsWith('SKILL-common-') && f.endsWith('.md')
+  );
+
+  if (candidates.length === 0) return [];
+
+  const matched: string[] = [];
+  await Promise.all(
+    candidates.map(async (filename) => {
+      const filepath = `${commonDir}/${filename}`;
+      try {
+        const fd = await readFile(filepath, 'utf-8');
+        const headerSlice = fd.slice(0, 500);
+        const keywords = parseLoadWhenHeader(headerSlice);
+        if (keywords && matchesLoadCondition(taskDescription, keywords)) {
+          matched.push(filepath);
+        }
+      } catch {
+        // Skip
+      }
+    })
+  );
+
+  return matched.sort();
+}
 
 export interface TaskComplexity {
   simple: boolean;      // Single endpoint, bug fix, health check
@@ -181,6 +306,8 @@ export function estimateTokens(text: string): number {
 
 /**
  * Main entry point: Load skills for a task.
+ * Loads standard layers (core/patterns/examples) plus any specialized SKILL files
+ * whose <!-- Load When: ... --> headers match the task description.
  */
 export async function loadSkillsForTask(
   agentType: string,
@@ -188,13 +315,26 @@ export async function loadSkillsForTask(
 ): Promise<{ content: string; complexity: TaskComplexity; layers: string[]; tokens: number }> {
   const complexity = classifyTaskComplexity(taskDescription);
   const layers = selectSkillLayers(agentType, complexity);
-  const content = await loadSkillContent(layers);
+
+  // Discover specialized skills (agent-specific + common) in parallel
+  const [specializedAgent, specializedCommon] = await Promise.all([
+    discoverSpecializedSkills(agentType, taskDescription),
+    discoverCommonSkills(taskDescription),
+  ]);
+
+  // Append specialized files after standard layers
+  const allLayers = [...layers, ...specializedAgent, ...specializedCommon];
+
+  const content = await loadSkillContent(allLayers);
   const tokens = estimateTokens(content);
 
   console.log(`[SkillLoader] Task complexity:`, complexity);
-  console.log(`[SkillLoader] Layers: ${layers.map(l => l.split('/').pop()).join(', ')}`);
+  console.log(`[SkillLoader] Layers: ${allLayers.map(l => l.split('/').pop()).join(', ')}`);
+  if (specializedAgent.length > 0 || specializedCommon.length > 0) {
+    console.log(`[SkillLoader] Specialized: ${[...specializedAgent, ...specializedCommon].map(l => l.split('/').pop()).join(', ')}`);
+  }
 
-  return { content, complexity, layers, tokens };
+  return { content, complexity, layers: allLayers, tokens };
 }
 
 /**

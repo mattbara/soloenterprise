@@ -1,7 +1,7 @@
 # Frontend Engineer - Theming
 
 <!-- Token Target: 600-800 tokens -->
-<!-- Load When: any task involving styling, colors, layout, or new component creation -->
+<!-- Load When: styling, color, theme, layout, component, dark mode, design, tailwind, shadcn -->
 
 ## Tailwind CSS v4 — Theme Rules
 

@@ -1,7 +1,7 @@
 # SoloEnterprise: Project Phases
 
 **Last Updated:** 2026-02-27
-**Current Phase:** Phase 6.10 (Sandbox Test Execution Pipeline) — Next
+**Current Phase:** Phase 6.9.1 (Architecture Quality Standards) — Complete | Phase 6.10 — Next
 **Branch:** `development`
 
 ---
@@ -18,6 +18,7 @@
 | 6.7 Projects Management UI | ✅ COMPLETE | — | — | — |
 | 6.8 Scope Review UI | ✅ COMPLETE | — | — | — |
 | **6.9 Code Scaffolder + Local Validation** | **✅ COMPLETE** | **L** | **High** | **5-7 days** |
+| **6.9.1 Architecture Quality Standards** | **✅ COMPLETE** | **M** | **Critical** | **1 day** |
 | **6.10 Sandbox Test Execution Pipeline** | **🔵 NEXT** | **M** | **High** | **3-5 days** |
 | 7. DevOps Agent + Principal Reviewer | ⬜ NOT STARTED | L | Critical | 1-2 weeks |
 | 7.5 QA Production Readiness | ⬜ NOT STARTED | L | High | 1 week |
@@ -377,6 +378,41 @@ Two-stage code generation pipeline: scaffold locally (free) → Claude fills bus
 
 **Tests:** 92 new scaffolder tests, **663 total tests** (3 skipped), zero regressions
 **Integration tests:** 10/10 passed across backend, frontend, QA, orchestrator
+
+---
+
+## Phase 6.9.1: Architecture Quality Standards ✅ COMPLETE
+
+**Effort:** M | **Impact:** Critical
+**Duration:** 1 day
+**Status:** COMPLETE (2026-02-27)
+**Branch:** `phase691/quality-standards`
+**Prerequisite:** Phase 6.9 complete
+
+### Why This Phase Exists
+
+An audit of all SKILL files found that security, SEO, accessibility, caching, performance, routing, and SOLID/DI patterns were either missing or too superficial for production use. Without top-down enforcement, agents ship XSS-vulnerable, zero-SEO, WCAG-violating code.
+
+### Delivered
+
+**Tier 1: Architecture Quality Checklist (`docs/ARCHITECTURE_QUALITY_CHECKLIST.md`)**
+- 7 domains: Security, SEO, Accessibility, Performance, Caching, Routing, Architecture
+- Each domain: "Architect must spec" items + "Agent must implement" items + common violations
+- Domain applicability matrix (Public Website vs Dashboard vs API-Only)
+- Referenced by Architect (spec generation), Orchestrator (task planning), Reviewer (PR gates)
+
+**Tier 2: 9 Specialized SKILL Files**
+- Frontend: security, accessibility, SEO, performance, routing (5 files)
+- Backend: security, architecture, performance (3 files)
+- Common: security (1 file, loaded for all agents)
+- Each file: 400-800 tokens, concrete code patterns, framework-specific (Next.js 15, Hono, Drizzle)
+
+**Skill Loader Upgrade: Header-Based Auto-Discovery**
+- `skill-loader.ts` upgraded to parse `<!-- Load When: ... -->` headers from SKILL files
+- New specialized files are auto-discovered and loaded when task keywords match
+- Backward-compatible: existing core/patterns/examples system unchanged
+- Adding new SKILL files requires zero code changes — just create the file with a header
+- 34 new tests (74 total for skill-loader), **692 total tests**, zero regressions
 
 ---
 

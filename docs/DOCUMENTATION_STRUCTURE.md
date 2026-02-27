@@ -99,12 +99,20 @@ soloenterprise/
 │   ├── backend/
 │   │   ├── SKILL-backend-core.md
 │   │   ├── SKILL-backend-examples.md
-│   │   └── SKILL-backend-patterns.md
+│   │   ├── SKILL-backend-patterns.md
+│   │   ├── SKILL-backend-security.md      # Auto-loaded: auth, API, uploads
+│   │   ├── SKILL-backend-architecture.md  # Auto-loaded: services, repos, CRUD
+│   │   └── SKILL-backend-performance.md   # Auto-loaded: queries, pagination
 │   ├── frontend/
 │   │   ├── SKILL-frontend-core.md
 │   │   ├── SKILL-frontend-examples.md
 │   │   ├── SKILL-frontend-patterns.md
-│   │   └── SKILL-frontend-theming.md
+│   │   ├── SKILL-frontend-theming.md
+│   │   ├── SKILL-frontend-security.md      # Auto-loaded: forms, auth, input
+│   │   ├── SKILL-frontend-accessibility.md # Auto-loaded: components, pages
+│   │   ├── SKILL-frontend-seo.md           # Auto-loaded: pages, landing, public
+│   │   ├── SKILL-frontend-performance.md   # Auto-loaded: components, images
+│   │   └── SKILL-frontend-routing.md       # Auto-loaded: routes, layouts
 │   ├── orchestrator/
 │   │   ├── SKILL-orchestrator-core.md
 │   │   ├── SKILL-orchestrator-assignment.md
@@ -118,9 +126,11 @@ soloenterprise/
 │   │   ├── SKILL-client-reporter-core.md
 │   │   └── SKILL-client-reporter-patterns.md
 │   ├── common/                    # Shared skills
+│   │   ├── SKILL-common.md               # Base rules (always loaded)
+│   │   └── SKILL-common-security.md      # Auto-loaded: always (all agents)
 │   ├── devops/                    # DevOps agent skills
 │   ├── qa/                        # QA agent skills
-│   └── SKILL-*.md                 # Legacy monolithic files
+│   └── SKILL-devops-engineer.md    # Legacy monolithic (until DevOps agent Phase 7)
 │
 ├── src/                           # Next.js 15 application
 │   ├── app/                       # App Router
@@ -155,8 +165,10 @@ soloenterprise/
 | Client Reports | generated/reports/ | Client deliverables | Client Reporter Agent |
 | Project Scopes | generated/reports/ | Structured specs | Project Scoper Agent |
 | Antipatterns | docs/ | Data fetching/mutation decision trees | Human |
-| Scaffold Spec | docs/ | Code scaffolder architecture | Human |
-| Playwright Spec | docs/ | E2E test execution architecture | Human |
+| Quality Checklist | docs/ | Architecture quality standards for all projects | Human |
+| Full Task Flow | docs/ | Complete 10-phase task lifecycle | Human |
+| Master Architecture | docs/ | System design (65KB) | Human |
+| Parallel Workers Plan | docs/ | Future multi-project concurrency | Human |
 | Package READMEs | packages/core/, packages/db/ | Package docs | Relevant Agent |
 
 ---
