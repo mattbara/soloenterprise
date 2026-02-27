@@ -11,7 +11,8 @@
     "./locks": "./src/locks/index.ts",
     "./services": "./src/services/index.ts",
     "./agents": "./src/agents/index.ts",
-    "./scaffolder": "./src/scaffolder/index.ts"
+    "./scaffolder": "./src/scaffolder/index.ts",
+    "./test-runner": "./src/test-runner/index.ts"
   },
   "scripts": {
     "build": "tsc",
@@ -36,8 +37,12 @@
     "yaml": "^2.8.2"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@vitest/coverage-v8": "^4.0.18",
+    "jsdom": "^28.1.0",
     "tsx": "^4.7.0",
-    "vitest": "^4.0.18"
+    "vitest": "^4.0.18",
+    "zod": "^4.3.6"
   }
 }

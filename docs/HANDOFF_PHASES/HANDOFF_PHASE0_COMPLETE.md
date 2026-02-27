@@ -11,7 +11,7 @@ Phase 0 (Foundation) is complete. The entire infrastructure backbone of SoloEnte
 - **DB:** Neon PostgreSQL + Drizzle ORM (`packages/db/src/schema.ts`)
 - **Queue:** BullMQ + Upstash Redis
 - **Agent Runtime:** Anthropic Claude API (Sonnet for code generation)
-- **Agent Sandbox:** `generated/tasks/{task-id}/` (agents write here, never to actual codebase)
+- **Agent Sandbox:** `project-files/tasks/{task-id}/` (external to repo, agents never write to actual codebase)
 - **UI:** shadcn/ui + Tailwind CSS
 
 ## What Was Built
@@ -43,7 +43,7 @@ Phase 0 (Foundation) is complete. The entire infrastructure backbone of SoloEnte
 - **BullMQ + Redis over custom queue** — battle-tested, good visibility, per-agent-type queues
 - **Neon PostgreSQL over self-hosted** — serverless, branching, zero maintenance
 - **Drizzle ORM over Prisma** — type-safe, SQL-like, lighter footprint
-- **Sandboxed agent output** — agents write to `generated/tasks/{id}/`, never touch real codebase
+- **Sandboxed agent output** — agents write to `project-files/tasks/{id}/` (external), never touch real codebase
 - **Server-first architecture** — all data fetching in Server Components, no client-side fetch on mount
 - **SKILL files as agent prompts** — external markdown files loaded into agent context (not hardcoded)
 - **Next.js 15 App Router** — RSC for server-first rendering, Server Actions for mutations

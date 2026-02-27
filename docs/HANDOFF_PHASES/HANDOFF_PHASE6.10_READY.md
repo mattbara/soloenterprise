@@ -36,7 +36,7 @@ The original Phase 6.10 spec included Playwright. All Playwright was removed:
 
 ### Sandbox Test Runner
 
-The core challenge: generated code in `generated/tasks/{task-id}/` doesn't have its own `node_modules`, `tsconfig`, or test runner config. It's just loose files.
+The core challenge: generated code in `project-files/tasks/{task-id}/` (external sandbox, sibling to this repo — see CLAUDE.md guardrail #7) doesn't have its own `node_modules`, `tsconfig`, or test runner config. It's just loose files.
 
 Solution: A shared test harness that sandboxes reference via generated configs.
 

@@ -6,6 +6,7 @@
  * repeated page recompilations while agents are running.
  *
  * Logs are buffered in memory and flushed to disk every FLUSH_INTERVAL_MS.
+ * Active loggers register in a global set so SIGUSR1 can flush all at once.
  */
 
 import { mkdirSync, appendFileSync } from 'fs';
@@ -13,6 +14,20 @@ import { resolve, dirname } from 'path';
 import { GENERATED_TASKS_DIR } from './generated-dir';
 
 const FLUSH_INTERVAL_MS = 5000;
+
+/** Global registry of active loggers for signal-driven flushing. */
+const activeLoggers = new Set<TaskLogger>();
+
+/**
+ * Flush all active TaskLogger instances immediately.
+ * Called by the SIGUSR1 handler in worker.ts so log API routes
+ * can read up-to-date log files.
+ */
+export function flushAllLoggers(): void {
+  for (const logger of activeLoggers) {
+    logger.flush();
+  }
+}
 
 export class TaskLogger {
   private taskId: string;
@@ -25,6 +40,7 @@ export class TaskLogger {
     this.taskId = taskId;
     this.logFilePath = TaskLogger.getLogFilePath(taskId);
     this.flushTimer = setInterval(() => this.flush(), FLUSH_INTERVAL_MS);
+    activeLoggers.add(this);
   }
 
   private ensureDir(): void {
@@ -60,6 +76,7 @@ export class TaskLogger {
       this.flushTimer = null;
     }
     this.flush();
+    activeLoggers.delete(this);
   }
 
   private write(level: string, source: string, message: string): void {

@@ -23,6 +23,8 @@ import { getSharedRedisConnection, closeSharedRedisConnection } from '../utils/i
 import { TaskLogger } from '../utils/task-logger';
 import { recordAgentCost } from '../services/cost-tracking-service';
 import { generateScaffold, type ScaffoldResult } from '../scaffolder/index';
+import { executeTestsInSandbox } from '../test-runner/index';
+import { buildTestRetryPrompt, findTestFiles } from '../test-runner/test-retry-prompt';
 
 const QUEUE_NAME = 'backend-tasks';
 
@@ -571,7 +573,7 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
 
     // Write final validated files
     logger.log('BackendAgent', `Writing ${recoveryResult.files.length} validated files...`);
-    const writeResult = await writeGeneratedFiles(taskId, recoveryResult.files, 'backend');
+    let writeResult = await writeGeneratedFiles(taskId, recoveryResult.files, 'backend');
 
     // Skip bracket check — files already passed TS compiler validation in recovery loop.
     // The regex bracket counter produces false positives on valid code.
@@ -582,6 +584,74 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
         await db.update(tasks).set({ warnings: finalValidation.errors }).where(eq(tasks.id, taskId));
       } catch (err) {
         logger.error('BackendAgent', 'Failed to save warnings: ' + err);
+      }
+    }
+
+    // === Sandbox Test Execution ===
+    if (process.env.DISABLE_SANDBOX_TESTS !== 'true') {
+      const testFiles = findTestFiles(writeResult.taskDir);
+      if (testFiles.length > 0) {
+        logger.log('BackendAgent', `Found ${testFiles.length} test file(s), executing sandbox tests...`);
+        const testStart = Date.now();
+        let testResult = await executeTestsInSandbox(writeResult.taskDir, { environment: 'node' });
+        logger.log('BackendAgent', `Sandbox tests completed in ${Date.now() - testStart}ms`);
+
+        if (!testResult.passed) {
+          logger.warn('BackendAgent', `Sandbox tests failed: ${testResult.passedTests}/${testResult.totalTests} passed, retrying...`);
+
+          const testRetryPrompt = buildTestRetryPrompt(recoveryResult.files, testResult);
+          const retryResponse = await client.messages.create({
+            model: MODEL,
+            max_tokens: MAX_TOKENS,
+            temperature: TEMPERATURE,
+            system: cachedSystem,
+            messages: [{ role: 'user', content: testRetryPrompt }],
+          });
+
+          await recordAgentCost({
+            projectId,
+            taskId,
+            agentType: 'backend',
+            model: MODEL,
+            tokensInput: retryResponse.usage?.input_tokens ?? 0,
+            tokensOutput: retryResponse.usage?.output_tokens ?? 0,
+            cachedTokens: (retryResponse.usage as unknown as Record<string, number>)?.cache_read_input_tokens ?? 0,
+            callSource: 'test-retry',
+          });
+
+          const retryText = retryResponse.content.find(c => c.type === 'text');
+          const retryResponseText = retryText?.type === 'text' ? retryText.text : '';
+          const retryParsed = parseAgentOutput(retryResponseText);
+
+          if (retryParsed.files.length > 0) {
+            writeResult = await writeGeneratedFiles(taskId, retryParsed.files, 'backend');
+            const retryTestStart = Date.now();
+            testResult = await executeTestsInSandbox(writeResult.taskDir, { environment: 'node' });
+            logger.log('BackendAgent', `Retry sandbox tests completed in ${Date.now() - retryTestStart}ms`);
+          }
+
+          if (!testResult.passed) {
+            const failSummary = testResult.failures
+              .slice(0, 3)
+              .map(f => `${f.testName}: ${f.error.substring(0, 100)}`)
+              .join('; ');
+
+            await updateTaskStatus(taskId, 'failed', {
+              success: false,
+              error: `Sandbox tests failed after retry: ${failSummary}`,
+              outputs: {
+                testFailures: testResult.failures,
+                testResult: { passed: testResult.passed, total: testResult.totalTests, failed: testResult.failedTests },
+              },
+            });
+
+            throw new Error(`Sandbox tests failed after retry: ${failSummary}`);
+          }
+        }
+
+        logger.log('BackendAgent', `Sandbox tests: ${testResult.passedTests}/${testResult.totalTests} passed`);
+      } else {
+        logger.log('BackendAgent', 'Sandbox tests: skipped (no test files)');
       }
     }
 

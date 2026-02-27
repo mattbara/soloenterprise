@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { readFileSync, existsSync } from "fs";
 import { resolve } from "path";
 import { GENERATED_TASKS_DIR } from "@soloenterprise/core";
+import { getAllWorkerStatuses } from "@soloenterprise/core/services";
 
 function getLogFilePath(taskId: string): string {
   return resolve(GENERATED_TASKS_DIR, taskId, "task.log");
@@ -17,6 +18,31 @@ function readLogSafe(taskId: string): string {
     return readFileSync(logPath, "utf-8");
   } catch {
     return "";
+  }
+}
+
+/**
+ * Signal running workers to flush log buffers before reading files.
+ */
+async function signalFlush(): Promise<void> {
+  try {
+    const statuses = await getAllWorkerStatuses();
+    const pidsSignaled = new Set<number>();
+    for (const status of Object.values(statuses)) {
+      if (status.status === "running" && status.pid && !pidsSignaled.has(status.pid)) {
+        try {
+          process.kill(status.pid, "SIGUSR1");
+          pidsSignaled.add(status.pid);
+        } catch {
+          // Worker may have exited
+        }
+      }
+    }
+    if (pidsSignaled.size > 0) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  } catch {
+    // Non-fatal
   }
 }
 
@@ -53,6 +79,11 @@ export async function GET(
           isRunning = true;
         }
       }
+    }
+
+    // Signal workers to flush log buffers before reading
+    if (isRunning) {
+      await signalFlush();
     }
 
     // Read and merge log files

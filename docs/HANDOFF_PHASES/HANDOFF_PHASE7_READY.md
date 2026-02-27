@@ -28,10 +28,10 @@ Client brief (structured form in dashboard)
   → Architect Layer (Opus 4.6) generates tech spec per complex task
   → BullMQ queues tasks with dependencies
   → Agents (Sonnet 4.5) execute against spec + SKILL files
-  → Output to tmpdir/soloenterprise/generated/tasks/{task-id}/
+  → Output to project-files/tasks/{task-id}/ (external sandbox)
   → Human reviews via dashboard
   → Client Reporter Agent (Sonnet 4.5) → progress/milestone/blocker reports
-  → Output to tmpdir/soloenterprise/generated/reports/{project-id}/
+  → Output to project-files/reports/{project-id}/ (external sandbox)
   → [MISSING: DevOps deploys generated code → Phase 7]
 ```
 

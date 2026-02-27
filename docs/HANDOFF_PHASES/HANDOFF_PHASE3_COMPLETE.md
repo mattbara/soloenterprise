@@ -12,7 +12,7 @@ Phase 3 (Frontend Agent) is complete and merged to `development`. The second eng
 - **Queue:** `frontend-tasks` queue added to BullMQ
 - **SKILL Files:** Layered — `SKILL-frontend-core.md`, `SKILL-frontend-patterns.md`, `SKILL-frontend-examples.md`
 - **Model:** Claude Sonnet 4.5
-- **Sandbox:** Output to `generated/tasks/{task-id}/`
+- **Sandbox:** Output to `project-files/tasks/{task-id}/` (external to repo)
 
 ## What Was Built
 

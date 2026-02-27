@@ -251,6 +251,27 @@ When your prompt contains a `--- SCAFFOLD ---` section, test shell files have be
 4. Output complete files using `<file path="...">` tags — include the full file, not just changed parts
 5. Add additional test cases as needed — the scaffold provides structure, you provide coverage
 
+## Sandbox-Executable Tests
+
+All generated tests MUST be executable in sandbox isolation. The test runner provides
+mock stubs for common imports, but your tests must be self-contained.
+
+### Rules:
+- Import from `@soloenterprise/db/schema` for types — this resolves to the real schema
+- Use `vi.mock()` for ANY service or database call you depend on
+- Do NOT import from `@/` paths (Next.js app directory) — these won't resolve
+- Do NOT import components from other sandbox files unless they're in the same task
+- Test file naming: `{source-file}.test.ts` (co-located with source)
+
+### Available Mock Stubs (provided by test harness):
+- `@soloenterprise/db` — mock db client (returns empty arrays/null by default)
+- `@soloenterprise/core/*` — mock services (queue, locks, etc.)
+- `next/navigation` — mock useRouter, redirect, notFound
+- `next/image` — passthrough component
+- `drizzle-orm` — real operators (eq, and, or, etc.)
+
+---
+
 ## Model Configuration
 
 - **Model:** Claude Sonnet 4.5 (`claude-sonnet-4-5-20250929`)

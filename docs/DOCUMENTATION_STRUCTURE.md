@@ -162,8 +162,8 @@ soloenterprise/
 | ADRs | docs/adr/ | Decisions | Human (always) |
 | SKILLs | skills/{agent}/ | Agent prompts (modular) | Human |
 | Consulting Pipeline | docs/ | Business workflow | Human |
-| Client Reports | generated/reports/ | Client deliverables | Client Reporter Agent |
-| Project Scopes | generated/reports/ | Structured specs | Project Scoper Agent |
+| Client Reports | project-files/reports/ | Client deliverables | Client Reporter Agent |
+| Project Scopes | project-files/reports/ | Structured specs | Project Scoper Agent |
 | Antipatterns | docs/ | Data fetching/mutation decision trees | Human |
 | Quality Checklist | docs/ | Architecture quality standards for all projects | Human |
 | Full Task Flow | docs/ | Complete 10-phase task lifecycle | Human |
@@ -302,10 +302,10 @@ git commit -m "docs: migrate documentation to repository"
 → docs/CONSULTING_PIPELINE.md
 
 # Project scope output
-→ generated/reports/{project-id}/scope-{date}.md
+→ project-files/reports/{project-id}/scope-{date}.md
 
 # Client progress reports
-→ generated/reports/{project-id}/weekly-{date}.md
+→ project-files/reports/{project-id}/weekly-{date}.md
 ```
 
 ---

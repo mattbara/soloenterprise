@@ -100,7 +100,7 @@ Business agents (Project Scoper, Client Reporter) differ from engineering agents
 | Aspect | Engineering Agent | Business Agent |
 |--------|------------------|----------------|
 | Output | Code files in sandbox | Documents (markdown, YAML) |
-| Sandbox | `generated/tasks/{id}/` | `generated/reports/{project-id}/` |
+| Sandbox | `project-files/tasks/{id}/` | `project-files/reports/{project-id}/` |
 | Context needed | Code, schema, routes | Project scope, task statuses, client info |
 | Quality gates | Lint, type check, tests | Human review (always) |
 | Model | Sonnet (code generation) | Opus (scoper) or Sonnet (reporter) |
@@ -120,7 +120,7 @@ const context = await buildProjectContext(projectId);
 
 ### Output Handling
 
-Business agent outputs go to `generated/reports/{project-id}/`:
+Business agent outputs go to `project-files/reports/{project-id}/` (external sandbox):
 - `scope-{date}.md` — project scope documents
 - `weekly-{date}.md` — weekly client reports
 - `milestone-{name}.md` — milestone completion reports
@@ -401,7 +401,7 @@ Probe for weaknesses:
 | Dashboard dropdown | `src/app/page.tsx` (NewTaskModal) |
 | Worker panel | `src/components/worker-panel.tsx` |
 | Business SKILL files | `skills/{agent-type}/SKILL-{type}-*.md` |
-| Report outputs | `generated/reports/{project-id}/` |
+| Report outputs | `project-files/reports/{project-id}/` |
 | Project context loader | `packages/core/src/agents/utils/project-context-loader.ts` |
 | Scaffolder modules | `packages/core/src/scaffolder/` |
 | Test runner sandbox | `packages/core/src/test-runner/` |

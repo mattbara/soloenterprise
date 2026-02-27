@@ -139,22 +139,38 @@ export async function POST(
 
       // 3. Check worker statuses and start if needed
       try {
-        const { getAllWorkerStatuses } = await import("@soloenterprise/core/services");
+        const { ensureCleanBeforeSpawn, getAllWorkerStatuses } = await import("@soloenterprise/core/services");
+        const { isProcessAlive } = await import("@soloenterprise/core/services");
         const statuses = await getAllWorkerStatuses();
-        const allStopped = Object.values(statuses).every(
-          (s: any) => s.status === "stopped" || s.status === "unknown"
+
+        // A worker is truly running only if Redis says so AND PID is alive
+        const STARTUP_GRACE_MS = 30_000;
+        const now = Date.now();
+        const anyTrulyRunning = Object.values(statuses).some(
+          (s: any) =>
+            s.status === "running" &&
+            s.pid &&
+            isProcessAlive(s.pid) &&
+            s.startedAt && now - s.startedAt > STARTUP_GRACE_MS
         );
 
-        if (allStopped) {
+        if (!anyTrulyRunning) {
+          // Kill stale workers before spawning new ones
+          await ensureCleanBeforeSpawn("all");
+
+          const { openSync } = await import("fs");
+          const { resolve } = await import("path");
+          const { GENERATED_ROOT } = await import("@soloenterprise/core");
+          const logFd = openSync(resolve(GENERATED_ROOT, "worker-spawn.log"), "a");
           const child = spawn("pnpm", ["worker"], {
             detached: true,
-            stdio: "ignore",
+            stdio: ["ignore", logFd, logFd],
             cwd: process.cwd(),
             env: { ...process.env },
           });
           child.unref();
           workersStarted = true;
-          console.log(`[Approve] Started all workers (PID: ${child.pid})`);
+          console.log(`[Approve] Started all workers (PID: ${child.pid}), logs: ${resolve(GENERATED_ROOT, "worker-spawn.log")}`);
         }
       } catch (err) {
         console.error("[Approve] Failed to check/start workers:", err);

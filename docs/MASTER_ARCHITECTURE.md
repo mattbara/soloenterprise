@@ -730,7 +730,7 @@ Agent-generated code lives in sandboxes. It reaches the real codebase through a 
 ### Flow
 
 ```
-Agent completes task → writes to generated/tasks/{id}/
+Agent completes task → writes to project-files/tasks/{id}/
                                     │
 Orchestrator detects milestone done │
                                     ▼
