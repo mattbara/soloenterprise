@@ -12,7 +12,7 @@ interface GeneratedFile {
  * GET /api/tasks/[id]/files
  *
  * Returns the list of generated files for a completed task.
- * Files are read from packages/core/generated/tasks/{taskId}/
+ * Files are read from the external project-files/tasks/{taskId}/ directory
  */
 export async function GET(
   request: Request,

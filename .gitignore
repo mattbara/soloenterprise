@@ -52,11 +52,16 @@ credentials/
 # Drizzle
 drizzle/
 
-# Generated files (agent outputs)
-generated/
+# Generated files (agent outputs) — should never exist inside the repo
+packages/core/generated/
+packages/core/packages/
+packages/project-files/
 
 # External repos (local clones)
 soloenterprise-templates/
+recovered-transcripts/
+.orphaned*
+packages/generated/reports
 
 # OS
 Thumbs.db

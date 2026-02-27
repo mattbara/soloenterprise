@@ -180,22 +180,24 @@ const newState = await result.json(); // Use this, don't re-fetch
 
 ### 7. File Safety (CRITICAL SECURITY)
 
-**All agent file writes are SANDBOXED to `packages/core/generated/tasks/{task-id}/`.**
+**All agent file writes are SANDBOXED to an external `project-files/` directory (sibling to this repo).**
+
+The default location is `../project-files/tasks/{task-id}/`. Override via `SOLOENTERPRISE_PROJECT_FILES` env var.
 
 Agents CANNOT write to the actual codebase. The file-writer enforces this regardless of what paths Claude outputs:
-- Absolute paths like `/etc/passwd` → sandboxed to `generated/tasks/{id}/etc/passwd`
+- Absolute paths like `/etc/passwd` → sandboxed to `project-files/tasks/{id}/etc/passwd`
 - Traversal attempts like `../../../etc/passwd` → stripped and sandboxed
 - Production paths like `packages/db/src/schema.ts` → sandboxed, NOT written to actual codebase
 
-**If you see files appearing outside `packages/core/generated/`, this is a security bug. Stop and fix immediately.**
+**If you see generated files appearing inside this repo, this is a security bug. Stop and fix immediately.**
 
 To review generated code before applying to codebase:
 ```bash
 # View what was generated for a task
-ls packages/core/generated/tasks/{task-id}/
+ls ../project-files/tasks/{task-id}/
 
 # Copy to actual codebase (manual review required)
-cp packages/core/generated/tasks/{task-id}/src/file.ts src/file.ts
+cp ../project-files/tasks/{task-id}/src/file.ts src/file.ts
 ```
 
 ### 8. Git Workflow — Two Models
