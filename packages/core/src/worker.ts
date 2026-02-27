@@ -94,6 +94,17 @@ async function start() {
   const { tasks } = await import('@soloenterprise/db/schema');
   const { eq } = await import('drizzle-orm');
 
+  // Kill any stale workers from previous crashed runs before creating new ones
+  const { killAllStaleWorkers } = await import('./services/process-lifecycle');
+  try {
+    const { killed } = await killAllStaleWorkers();
+    if (killed.length > 0) {
+      console.log(`[Worker] Killed ${killed.length} stale worker(s) from previous run: ${killed.join(', ')}`);
+    }
+  } catch (err) {
+    console.warn('[Worker] Failed to kill stale workers (non-fatal):', err);
+  }
+
   // Safety net: resume any queues left paused from a previous crash
   try {
     await resumeAllQueues();
@@ -101,6 +112,13 @@ async function start() {
   } catch (err) {
     console.warn('[Worker] Failed to resume queues on startup (non-fatal):', err);
   }
+
+  // Clear any stale stop requests left from a previous crash/shutdown
+  const workerTypes: WorkerType[] = ['echo', 'backend', 'frontend', 'qa', 'orchestrator', 'scoper', 'client-reporter'];
+  for (const type of workerTypes) {
+    await clearStopRequest(type);
+  }
+  console.log('[Worker] Cleared stale stop requests from previous run');
 
   // Helper to setup worker event handlers
   function setupWorkerEvents(worker: Worker, type: WorkerType) {
@@ -310,26 +328,56 @@ async function shutdown() {
   const { deregisterWorker, closeRegistryConnection } = await import('./services/worker-registry');
   const { closePublisher } = await import('./services/task-events');
 
-  // Shutdown workers and deregister
-  for (const { worker, shutdown: shutdownFn, type } of workers) {
-    await shutdownFn(worker);
-    await deregisterWorker(type as 'backend' | 'echo');
-    console.log(`[Worker] Deregistered ${type}`);
-  }
+  const SHUTDOWN_TIMEOUT_MS = 15_000;
 
-  // Close registry connection
-  await closeRegistryConnection();
+  const gracefulShutdown = async () => {
+    // Shutdown workers and deregister
+    for (const { worker, shutdown: shutdownFn, type } of workers) {
+      await shutdownFn(worker);
+      await deregisterWorker(type as WorkerType);
+      console.log(`[Worker] Deregistered ${type}`);
+    }
 
-  // Close task events publisher
-  await closePublisher();
+    // Close registry connection
+    await closeRegistryConnection();
 
-  console.log('[Worker] Shutdown complete');
+    // Close task events publisher
+    await closePublisher();
+
+    console.log('[Worker] Shutdown complete');
+  };
+
+  // Race graceful shutdown against timeout to prevent infinite hang
+  await Promise.race([
+    gracefulShutdown(),
+    new Promise<void>((_, reject) =>
+      setTimeout(() => reject(new Error('Shutdown timeout')), SHUTDOWN_TIMEOUT_MS)
+    ),
+  ]).catch((err) => {
+    console.error(`[Worker] ${err.message} — forcing exit after ${SHUTDOWN_TIMEOUT_MS / 1000}s`);
+  });
+
   process.exit(0);
 }
 
 // Handle shutdown signals
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
+
+// Handle SIGUSR1 — flush all active TaskLogger buffers on demand.
+// Log API routes send this signal before reading log files to ensure
+// buffered lines are written to disk.
+// Import is dynamic because task-logger is only needed when the signal fires,
+// and the module is already loaded by the time any agent processes a task.
+process.on('SIGUSR1', async () => {
+  try {
+    const { flushAllLoggers } = await import('./utils/task-logger');
+    flushAllLoggers();
+    console.log('[Worker] SIGUSR1 received — flushed all active loggers');
+  } catch {
+    // Non-fatal — don't crash the worker
+  }
+});
 
 // Handle uncaught errors
 process.on('uncaughtException', (error) => {

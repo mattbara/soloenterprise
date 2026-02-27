@@ -78,16 +78,24 @@ export async function POST(request: Request) {
     }
 
     if (type === "all") {
+      // Kill stale workers before spawning new ones
+      const { ensureCleanBeforeSpawn } = await import("@soloenterprise/core/services");
+      await ensureCleanBeforeSpawn("all");
+
       // Start all workers in a single process (same as `pnpm worker` from terminal)
+      const { openSync } = await import("fs");
+      const { resolve } = await import("path");
+      const { GENERATED_ROOT } = await import("@soloenterprise/core");
+      const logFd = openSync(resolve(GENERATED_ROOT, "worker-spawn.log"), "a");
       const child = spawn("pnpm", ["worker"], {
         detached: true,
-        stdio: "ignore",
+        stdio: ["ignore", logFd, logFd],
         cwd: process.cwd(),
         env: { ...process.env },
       });
       child.unref();
 
-      console.log(`[API] Started all workers in single process with PID ${child.pid}`);
+      console.log(`[API] Started all workers in single process with PID ${child.pid}, logs: ${resolve(GENERATED_ROOT, "worker-spawn.log")}`);
 
       const now = Date.now();
       const statuses: Record<string, object> = {};
@@ -105,24 +113,32 @@ export async function POST(request: Request) {
       return NextResponse.json(statuses, { status: 201 });
     }
 
-    // Individual worker start
+    // Individual worker start — validate PID liveness, not just Redis status
+    const { isProcessAlive, ensureCleanBeforeSpawn } = await import("@soloenterprise/core/services");
     const status = await getWorkerStatus(type);
-    if (status.status === "running") {
+    if (status.status === "running" && status.pid && isProcessAlive(status.pid)) {
       return NextResponse.json(
         { error: `Worker ${type} is already running`, pid: status.pid },
         { status: 409 }
       );
     }
 
+    // Clean up stale state if Redis says running but process is dead
+    await ensureCleanBeforeSpawn(type);
+
+    const { openSync } = await import("fs");
+    const { resolve } = await import("path");
+    const { GENERATED_ROOT } = await import("@soloenterprise/core");
+    const logFd = openSync(resolve(GENERATED_ROOT, "worker-spawn.log"), "a");
     const child = spawn("pnpm", [`worker:${type}`], {
       detached: true,
-      stdio: "ignore",
+      stdio: ["ignore", logFd, logFd],
       cwd: process.cwd(),
       env: { ...process.env },
     });
     child.unref();
 
-    console.log(`[API] Started worker ${type} with PID ${child.pid}`);
+    console.log(`[API] Started worker ${type} with PID ${child.pid}, logs: ${resolve(GENERATED_ROOT, "worker-spawn.log")}`);
 
     return NextResponse.json(
       {

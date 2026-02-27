@@ -13,6 +13,7 @@ import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { getWorkerStatus } from './worker-registry';
 import type { WorkerType } from './worker-registry';
+import { isProcessAlive, ensureCleanBeforeSpawn } from './process-lifecycle';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -57,10 +58,16 @@ export async function ensureWorkerRunning(
       return { started: false };
     }
 
-    // Check registry status
+    // Check registry status + PID liveness
     const status = await getWorkerStatus(agentType as WorkerType);
     if (status.status === 'running') {
-      return { started: false };
+      // Validate the PID is actually alive — Redis may be stale
+      if (status.pid && isProcessAlive(status.pid)) {
+        return { started: false };
+      }
+      // PID dead but Redis says running — clean up and proceed to spawn
+      console.log(`[WorkerSupervisor] ${agentType} registered as running but PID ${status.pid} is dead, cleaning up`);
+      await ensureCleanBeforeSpawn(agentType as WorkerType);
     }
 
     // Spawn the worker

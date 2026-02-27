@@ -55,6 +55,10 @@ function getRegistryRedis() {
  * Sets status to running, stores PID, and sets initial heartbeat.
  */
 export async function registerWorker(type: WorkerType, pid: number): Promise<void> {
+  // Kill any stale worker before overwriting PID — prevents invisible duplicates
+  const { killStaleWorker } = await import('./process-lifecycle');
+  await killStaleWorker(type);
+
   const redis = getRegistryRedis();
   const now = Date.now();
 
@@ -166,8 +170,8 @@ export function shouldStopDueToIdleTimeout(
  */
 export async function requestWorkerStop(type: WorkerType): Promise<void> {
   const redis = getRegistryRedis();
-  // Set a stop signal that expires after 60 seconds
-  await redis.setex(getRedisKey(type, 'stopRequested'), 60, '1');
+  // Set a stop signal that expires after 120 seconds (4 chances at 30s poll interval)
+  await redis.setex(getRedisKey(type, 'stopRequested'), 120, '1');
   console.log(`[WorkerRegistry] Stop requested for worker ${type}`);
 }
 

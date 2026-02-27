@@ -95,6 +95,7 @@ Keep responses minimal. No verbose explanations.
 7. **No task created without a project_id**
 8. **No engineering work without an approved scope**
 9. **Scope changes require human approval before adding tasks**
+10. **Process lifecycle cleanup is automatic** — stale workers are killed on startup. Never create tasks to "restart workers" or "clean up processes" — infrastructure handles it.
 
 ## Quality Gates Quick Reference
 
