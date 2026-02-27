@@ -9,7 +9,7 @@ Phase 6.5 delivered the Client Reporter Agent — the second business-facing age
 ### Agent Implementation
 - `packages/core/src/agents/client-reporter-agent.ts` — Sonnet 4.5 agent, processes task data → client reports
 - Wired into orchestrator, worker registry, task queue, and task service
-- Output to `generated/reports/{project-id}/`
+- Output to `project-files/reports/{project-id}/` (external sandbox)
 
 ### SKILL Files
 - `skills/client-reporter/SKILL-client-reporter-core.md` — tone, structure, inclusion/exclusion rules
@@ -53,10 +53,10 @@ Client brief (unstructured text)
   → Architect Layer (Opus 4.6) generates tech spec per complex task
   → BullMQ queues tasks with dependencies
   → Agents (Sonnet 4.5) execute against spec + SKILL files
-  → Output to generated/tasks/{task-id}/
+  → Output to project-files/tasks/{task-id}/ (external sandbox)
   → Human reviews via dashboard
   → Client Reporter Agent (Sonnet 4.5) → progress/milestone/blocker reports
-  → Output to generated/reports/{project-id}/
+  → Output to project-files/reports/{project-id}/ (external sandbox)
 ```
 
 ## Working Agents (7 total)

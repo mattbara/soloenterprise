@@ -10,7 +10,7 @@ Phase 5 (Orchestrator Agent) is complete and merged to `development` branch. All
 - **DB:** Neon PostgreSQL + Drizzle ORM (`packages/db/src/schema.ts`)
 - **Queue:** BullMQ + Upstash Redis
 - **Agents:** Anthropic Claude API with prompt caching
-- **Agent sandbox:** `generated/tasks/{task-id}/` (agents have no git awareness)
+- **Agent sandbox:** `project-files/tasks/{task-id}/` (external to repo, agents have no git awareness)
 - **SKILL files:** Layered (core/patterns/examples) loaded dynamically via `skill-loader.ts`
 - **Context profiles:** simple-endpoint, database-task, full-feature, bug-fix
 
@@ -33,7 +33,7 @@ Pick a real project (small scope — maybe a personal tool or internal utility) 
 1. Submit a project requirement to the orchestrator
 2. Orchestrator decomposes into tasks with dependencies
 3. BullMQ workers pick up and route to Backend/Frontend/QA agents
-4. Agents write actual code to `generated/tasks/{id}/`
+4. Agents write actual code to `project-files/tasks/{id}/`
 5. QA agent validates the code output
 6. Human reviews output, creates branch, opens PR manually
 7. Iterate on feedback

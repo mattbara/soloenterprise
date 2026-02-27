@@ -20,7 +20,7 @@ The full pipeline ran end-to-end:
 1. Project requirement submitted to orchestrator
 2. Orchestrator decomposed into 5 tasks with dependencies
 3. BullMQ workers picked up tasks and routed to Backend/Frontend/QA agents
-4. Agents wrote actual code to `generated/tasks/{id}/`
+4. Agents wrote actual code to `project-files/tasks/{id}/`
 5. Dependency chains resolved correctly between tasks
 6. Output files generated without syntax errors
 

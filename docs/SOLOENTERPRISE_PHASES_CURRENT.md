@@ -444,7 +444,7 @@ See **"Playwright Roadmap"** section below for when Playwright gets introduced.
 
 #### Sandbox Test Runner
 
-The core challenge: generated code in `generated/tasks/{task-id}/` doesn't have its own `node_modules`, `tsconfig`, or test runner config. It's just loose files.
+The core challenge: generated code in `project-files/tasks/{task-id}/` (external sandbox, sibling to this repo) doesn't have its own `node_modules`, `tsconfig`, or test runner config. It's just loose files.
 
 Solution: A shared test harness that sandboxes reference via generated configs.
 
@@ -1005,9 +1005,9 @@ Tracks cumulative tokens across turns within a session. At 90% → compact conve
 
 After every agent task, orchestrator runs verification:
 ```bash
-test -f "generated/tasks/{id}/output.ts" && echo "✅" || echo "❌"
-npx tsc --noEmit "generated/tasks/{id}/output.ts"
-npx vitest run "generated/tasks/{id}/**/*.test.ts"
+test -f "$PROJECT_FILES/tasks/{id}/output.ts" && echo "✅" || echo "❌"
+npx tsc --noEmit "$PROJECT_FILES/tasks/{id}/output.ts"
+npx vitest run "$PROJECT_FILES/tasks/{id}/**/*.test.ts"
 ```
 Task cannot be marked complete without passing. Failure: retry → different approach → escalate to human.
 
@@ -1804,7 +1804,7 @@ Every security-relevant action is logged with: who, what, when, from where, and 
 - Rotated on schedule (90 days) or immediately on suspected breach
 
 #### Policy 8: Sandbox Isolation
-- Agent output ONLY to `generated/` directories
+- Agent output ONLY to external `project-files/` directory (sibling to repo)
 - No writes to SoloEnterprise codebase
 - No writes outside project sandbox boundaries
 - Path traversal permanently blocked
@@ -1892,7 +1892,7 @@ Log `cache_read_input_tokens`, `cache_creation_input_tokens` on every response. 
 2. **Tests before moving on** — baseline and stress tests per phase
 3. **Fix issues immediately** — don't defer bugs
 4. **SKILL files are source of truth** — behavior from SKILLs, not hardcoded
-5. **Sandbox isolation** — outputs to `generated/tasks/{id}/`, never modify SoloEnterprise code
+5. **Sandbox isolation** — outputs to `project-files/tasks/{id}/` (external, sibling to repo), never modify SoloEnterprise code
 6. **3-strike rule** — 3 failed attempts → escalate to human
 7. **Human approval gates** — scoping, production deploy, security escalation
 8. **Never skip steps or suggest workarounds** — find proper solutions

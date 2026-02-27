@@ -236,7 +236,7 @@ Per milestone:
 
 ### PR Workflow
 
-Agents write code to sandboxed directories (`generated/tasks/{task-id}/`). They have **no git awareness**. The orchestrator and command executor handle the entire git lifecycle:
+Agents write code to sandboxed directories (`project-files/tasks/{task-id}/`, external to the repo). They have **no git awareness**. The orchestrator and command executor handle the entire git lifecycle:
 
 - **Branch creation** from `development`
 - **File assembly** in dependency order (sandbox path → real codebase path). File path conflicts between non-dependent tasks → fail fast, escalate to human.

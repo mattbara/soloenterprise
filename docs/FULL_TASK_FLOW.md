@@ -273,7 +273,7 @@
 │  1. Skip if spec already exists                                          │
 │  2. Select context profile (simple/database/full-feature/bug-fix)       │
 │  3. Load dependency artifacts (if task has completed deps):              │
-│     Read files from generated/tasks/{depTaskId}/                         │
+│     Read files from project-files/tasks/{depTaskId}/                      │
 │     Summarize large files (API Surface Summary)                          │
 │  4. Build prompt:                                                        │
 │     - Task name, agent type, description, requirements                  │

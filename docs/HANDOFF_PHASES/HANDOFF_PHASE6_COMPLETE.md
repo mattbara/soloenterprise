@@ -15,7 +15,7 @@ The Project Scoper Agent takes unstructured client briefs and produces:
 ### Pipeline Flow
 
 ```
-POST /api/briefs → DB record + BullMQ queue → Scoper worker → Opus generates YAML + markdown → generated/reports/{briefId}/ + DB
+POST /api/briefs → DB record + BullMQ queue → Scoper worker → Opus generates YAML + markdown → project-files/reports/{briefId}/ + DB
 ```
 
 ### Key Files
@@ -29,7 +29,7 @@ POST /api/briefs → DB record + BullMQ queue → Scoper worker → Opus generat
 | API endpoint | `src/app/api/briefs/route.ts` |
 | Scope viewer | `src/app/briefs/[briefId]/scope/page.tsx` |
 | Worker | Started via `pnpm worker:scoper` |
-| Output directory | `generated/reports/{briefId}/` |
+| Output directory | `project-files/reports/{briefId}/` |
 
 ### Model
 
