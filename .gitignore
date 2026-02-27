@@ -58,6 +58,9 @@ packages/core/generated/
 packages/core/packages/
 packages/project-files/
 
+# Test runner (WIP, not ready for commit)
+packages/core/src/test-runner/__tests__/
+
 # External repos (local clones)
 soloenterprise-templates/
 recovered-transcripts/

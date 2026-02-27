@@ -92,7 +92,8 @@
       "Bash(path=\"/Users/matteobaratella/Projects/PERSONAL_PROJECTS/SoloEnterprise/soloenterprise/packages/core/generated/tasks/$id\")",
       "Bash(logfile=\"/Users/matteobaratella/Projects/PERSONAL_PROJECTS/SoloEnterprise/soloenterprise/packages/project-files/tasks/$id/task.log\")",
       "Bash(/tmp/question_flow_analysis.md:*)",
-      "Bash(gh pr edit:*)"
+      "Bash(gh pr edit:*)",
+      "WebFetch(domain:github.com)"
     ]
   }
 }
