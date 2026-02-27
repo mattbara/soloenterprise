@@ -62,7 +62,7 @@ github.com/mattbara/soloenterprise, `development` branch
 - `docs/SOLOENTERPRISE_PHASES_CURRENT.md` — phase roadmap
 - `docs/MASTER_ARCHITECTURE.md` — system architecture
 - `docs/CONSULTING_PIPELINE.md` — business pipeline
-- `docs/SCHEMA_ADDITIONS.md` — planned DB tables
+- `packages/db/src/schema.ts` — database schema (single source of truth)
 
 ## Key Code Files
 

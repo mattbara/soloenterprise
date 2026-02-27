@@ -196,6 +196,21 @@ When your prompt contains a `--- SCAFFOLD ---` section, scaffold files have been
 4. Output complete files using `<file path="...">` tags — include the full file, not just changed parts
 5. Do NOT add new files unless the task explicitly requires them
 
+## Specialized SKILL Files
+
+The following SKILL files are auto-loaded when task keywords match their `<!-- Load When -->` headers:
+
+| File | Loaded For |
+|------|-----------|
+| `SKILL-frontend-security.md` | Forms, auth, login, user input, data display |
+| `SKILL-frontend-accessibility.md` | Components, pages, forms, modals, navigation |
+| `SKILL-frontend-seo.md` | Pages, landing pages, marketing, public routes |
+| `SKILL-frontend-performance.md` | Components, pages, images, layouts, lists |
+| `SKILL-frontend-routing.md` | Routes, pages, layouts, navigation, middleware |
+| `SKILL-frontend-theming.md` | Styling, colors, layout, component creation |
+
+You do NOT need to reference these files — the skill loader includes them automatically based on task context.
+
 ## Model Configuration
 
 - **Model:** Claude Sonnet 4.5 (`claude-sonnet-4-5-20250929`)

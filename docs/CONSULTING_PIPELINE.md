@@ -246,7 +246,7 @@ Agents write code to sandboxed directories (`generated/tasks/{task-id}/`). They 
 
 **HARD RULE:** Only the Principal Software Engineer can merge PRs. No exceptions.
 
-See `MASTER_ARCHITECTURE.md` for the full PR pipeline diagram and `SCHEMA_ADDITIONS.md` for the `pull_requests` table schema.
+See `MASTER_ARCHITECTURE.md` for the full PR pipeline diagram. The `pull_requests` table schema is defined in `packages/db/src/schema.ts`.
 
 ---
 

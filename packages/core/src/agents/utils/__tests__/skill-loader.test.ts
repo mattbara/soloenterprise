@@ -10,9 +10,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Mock fs/promises before importing the module under test
 vi.mock('fs/promises', () => ({
   readFile: vi.fn(),
+  readdir: vi.fn(),
 }));
 
-import { readFile } from 'fs/promises';
+import { readFile, readdir } from 'fs/promises';
 import {
   classifyTaskComplexity,
   selectSkillLayers,
@@ -22,15 +23,23 @@ import {
   selectOrchestratorLayers,
   loadSkillsForTask,
   loadSkillsForOrchestrator,
+  parseLoadWhenHeader,
+  matchesLoadCondition,
+  discoverSpecializedSkills,
+  discoverCommonSkills,
 } from '../skill-loader';
 
 const mockedReadFile = vi.mocked(readFile);
+const mockedReaddir = vi.mocked(readdir);
 
 // Suppress console output
 beforeEach(() => {
   vi.spyOn(console, 'log').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   mockedReadFile.mockReset();
+  mockedReaddir.mockReset();
+  // Default: no specialized files in directories
+  mockedReaddir.mockResolvedValue([]);
 });
 
 // =============================================================================
@@ -404,5 +413,295 @@ describe('loadSkillsForOrchestrator', () => {
     const result = await loadSkillsForOrchestrator('Handle this task');
     expect(result.action).toBe('assign');
     expect(result.layers).toHaveLength(2);
+  });
+});
+
+// =============================================================================
+// parseLoadWhenHeader
+// =============================================================================
+
+describe('parseLoadWhenHeader', () => {
+  it('parses single keyword', () => {
+    const result = parseLoadWhenHeader('# Title\n<!-- Load When: always -->');
+    expect(result).toEqual(['always']);
+  });
+
+  it('parses multiple comma-separated keywords', () => {
+    const result = parseLoadWhenHeader('<!-- Load When: forms, auth, data display -->');
+    expect(result).toEqual(['forms', 'auth', 'data display']);
+  });
+
+  it('is case-insensitive for the header tag', () => {
+    const result = parseLoadWhenHeader('<!-- load when: Security -->');
+    expect(result).toEqual(['security']);
+  });
+
+  it('trims whitespace around keywords', () => {
+    const result = parseLoadWhenHeader('<!-- Load When:  route ,  page , layout  -->');
+    expect(result).toEqual(['route', 'page', 'layout']);
+  });
+
+  it('returns null when no header found', () => {
+    const result = parseLoadWhenHeader('# No header here\nJust content.');
+    expect(result).toBeNull();
+  });
+
+  it('handles header with extra spaces around colons', () => {
+    const result = parseLoadWhenHeader('<!--  Load When :  api, endpoint  -->');
+    expect(result).toBeNull(); // colon must follow "Load When" directly
+  });
+
+  it('filters out empty strings from trailing commas', () => {
+    const result = parseLoadWhenHeader('<!-- Load When: forms, auth, -->');
+    expect(result).toEqual(['forms', 'auth']);
+  });
+});
+
+// =============================================================================
+// matchesLoadCondition
+// =============================================================================
+
+describe('matchesLoadCondition', () => {
+  it('always matches for "always" keyword', () => {
+    expect(matchesLoadCondition('any task at all', ['always'])).toBe(true);
+  });
+
+  it('matches when task contains keyword', () => {
+    expect(matchesLoadCondition('Build a login form with auth', ['form', 'auth'])).toBe(true);
+  });
+
+  it('does not match when no keywords found in task', () => {
+    expect(matchesLoadCondition('Add a health check endpoint', ['form', 'auth'])).toBe(false);
+  });
+
+  it('is case-insensitive on task description', () => {
+    expect(matchesLoadCondition('Build a FORM component', ['form'])).toBe(true);
+  });
+
+  it('supports slash-separated alternatives (route/page/layout)', () => {
+    expect(matchesLoadCondition('Create a new page for users', ['route/page/layout'])).toBe(true);
+  });
+
+  it('does not match slash alternatives when none present', () => {
+    expect(matchesLoadCondition('Fix database query', ['route/page/layout'])).toBe(false);
+  });
+
+  it('matches multi-word keywords as substrings', () => {
+    expect(matchesLoadCondition('Build a data display table', ['data display'])).toBe(true);
+  });
+
+  it('returns false for empty keywords array', () => {
+    expect(matchesLoadCondition('any task', [])).toBe(false);
+  });
+});
+
+// =============================================================================
+// discoverSpecializedSkills
+// =============================================================================
+
+describe('discoverSpecializedSkills', () => {
+  it('discovers files matching task description', async () => {
+    mockedReaddir.mockResolvedValue([
+      'SKILL-frontend-core.md',
+      'SKILL-frontend-patterns.md',
+      'SKILL-frontend-security.md',
+      'SKILL-frontend-seo.md',
+    ] as any);
+
+    mockedReadFile.mockImplementation(async (path: any) => {
+      const p = String(path);
+      if (p.includes('security.md')) return '# Security\n<!-- Load When: form, auth, security -->';
+      if (p.includes('seo.md')) return '# SEO\n<!-- Load When: page, landing -->';
+      return '';
+    });
+
+    const result = await discoverSpecializedSkills('frontend', 'Build a login form with auth');
+    expect(result).toHaveLength(1);
+    expect(result[0]).toContain('SKILL-frontend-security.md');
+  });
+
+  it('excludes core/patterns/examples from discovery', async () => {
+    mockedReaddir.mockResolvedValue([
+      'SKILL-frontend-core.md',
+      'SKILL-frontend-patterns.md',
+      'SKILL-frontend-examples.md',
+      'SKILL-frontend-theming.md',
+    ] as any);
+
+    mockedReadFile.mockImplementation(async () => '<!-- Load When: always -->');
+
+    const result = await discoverSpecializedSkills('frontend', 'any task');
+    expect(result).toHaveLength(1);
+    expect(result[0]).toContain('SKILL-frontend-theming.md');
+  });
+
+  it('returns empty array when directory does not exist', async () => {
+    mockedReaddir.mockRejectedValue(new Error('ENOENT'));
+    const result = await discoverSpecializedSkills('nonexistent', 'any task');
+    expect(result).toEqual([]);
+  });
+
+  it('returns empty array when no files match', async () => {
+    mockedReaddir.mockResolvedValue([
+      'SKILL-frontend-seo.md',
+    ] as any);
+
+    mockedReadFile.mockImplementation(async () => '<!-- Load When: page, landing -->');
+
+    const result = await discoverSpecializedSkills('frontend', 'Fix database migration');
+    expect(result).toEqual([]);
+  });
+
+  it('discovers multiple matching files', async () => {
+    mockedReaddir.mockResolvedValue([
+      'SKILL-frontend-accessibility.md',
+      'SKILL-frontend-security.md',
+      'SKILL-frontend-performance.md',
+    ] as any);
+
+    mockedReadFile.mockImplementation(async (path: any) => {
+      const p = String(path);
+      if (p.includes('accessibility.md')) return '<!-- Load When: component/page -->';
+      if (p.includes('security.md')) return '<!-- Load When: form, auth -->';
+      if (p.includes('performance.md')) return '<!-- Load When: component/page -->';
+      return '';
+    });
+
+    const result = await discoverSpecializedSkills('frontend', 'Build a page component');
+    expect(result).toHaveLength(2);
+    expect(result[0]).toContain('SKILL-frontend-accessibility.md');
+    expect(result[1]).toContain('SKILL-frontend-performance.md');
+  });
+
+  it('handles file with "always" keyword', async () => {
+    mockedReaddir.mockResolvedValue([
+      'SKILL-frontend-theming.md',
+    ] as any);
+
+    mockedReadFile.mockImplementation(async () => '<!-- Load When: always -->');
+
+    const result = await discoverSpecializedSkills('frontend', 'literally anything');
+    expect(result).toHaveLength(1);
+  });
+
+  it('skips files without Load When header', async () => {
+    mockedReaddir.mockResolvedValue([
+      'SKILL-frontend-theming.md',
+    ] as any);
+
+    mockedReadFile.mockImplementation(async () => '# Just a title\nNo header here.');
+
+    const result = await discoverSpecializedSkills('frontend', 'any task');
+    expect(result).toEqual([]);
+  });
+
+  it('ignores files that do not match agent prefix', async () => {
+    mockedReaddir.mockResolvedValue([
+      'SKILL-frontend-security.md',
+      'SKILL-backend-security.md',  // wrong prefix
+      'README.md',                   // not a SKILL file
+    ] as any);
+
+    mockedReadFile.mockImplementation(async () => '<!-- Load When: always -->');
+
+    const result = await discoverSpecializedSkills('frontend', 'any task');
+    expect(result).toHaveLength(1);
+    expect(result[0]).toContain('SKILL-frontend-security.md');
+  });
+});
+
+// =============================================================================
+// discoverCommonSkills
+// =============================================================================
+
+describe('discoverCommonSkills', () => {
+  it('discovers common skill files matching task', async () => {
+    mockedReaddir.mockResolvedValue([
+      'SKILL-common.md',
+      'SKILL-common-security.md',
+    ] as any);
+
+    mockedReadFile.mockImplementation(async () => '<!-- Load When: always -->');
+
+    const result = await discoverCommonSkills('any task');
+    expect(result).toHaveLength(1);
+    expect(result[0]).toContain('SKILL-common-security.md');
+  });
+
+  it('excludes main SKILL-common.md (already loaded separately)', async () => {
+    mockedReaddir.mockResolvedValue([
+      'SKILL-common.md',
+    ] as any);
+
+    const result = await discoverCommonSkills('any task');
+    expect(result).toEqual([]);
+  });
+
+  it('returns empty when directory missing', async () => {
+    mockedReaddir.mockRejectedValue(new Error('ENOENT'));
+    const result = await discoverCommonSkills('any task');
+    expect(result).toEqual([]);
+  });
+
+  it('filters by task description keywords', async () => {
+    mockedReaddir.mockResolvedValue([
+      'SKILL-common-security.md',
+    ] as any);
+
+    mockedReadFile.mockImplementation(async () => '<!-- Load When: auth, api, endpoint -->');
+
+    expect(await discoverCommonSkills('Build an auth endpoint')).toHaveLength(1);
+    expect(await discoverCommonSkills('Update documentation')).toHaveLength(0);
+  });
+});
+
+// =============================================================================
+// loadSkillsForTask with specialized skills
+// =============================================================================
+
+describe('loadSkillsForTask with specialized discovery', () => {
+  it('includes specialized files in loaded layers', async () => {
+    // readdir returns specialized files for the agent dir
+    mockedReaddir.mockImplementation(async (path: any) => {
+      const p = String(path);
+      if (p.includes('/frontend')) {
+        return ['SKILL-frontend-core.md', 'SKILL-frontend-security.md'] as any;
+      }
+      // common dir
+      return ['SKILL-common.md', 'SKILL-common-security.md'] as any;
+    });
+
+    mockedReadFile.mockImplementation(async (path: any) => {
+      const p = String(path);
+      if (p.includes('SKILL-frontend-security.md')) return '<!-- Load When: form, auth -->\nSecurity content';
+      if (p.includes('SKILL-common-security.md')) return '<!-- Load When: always -->\nCommon security';
+      return 'generic content';
+    });
+
+    const result = await loadSkillsForTask('frontend', 'Build a login form with auth');
+    // Should include standard layers + specialized
+    const filenames = result.layers.map(l => l.split('/').pop());
+    expect(filenames).toContain('SKILL-frontend-security.md');
+    expect(filenames).toContain('SKILL-common-security.md');
+  });
+
+  it('does not include specialized files that do not match', async () => {
+    mockedReaddir.mockImplementation(async (path: any) => {
+      const p = String(path);
+      if (p.includes('/backend')) {
+        return ['SKILL-backend-core.md', 'SKILL-backend-security.md'] as any;
+      }
+      return [] as any;
+    });
+
+    mockedReadFile.mockImplementation(async (path: any) => {
+      const p = String(path);
+      if (p.includes('SKILL-backend-security.md')) return '<!-- Load When: auth, api -->';
+      return 'content';
+    });
+
+    const result = await loadSkillsForTask('backend', 'Fix a bug in the endpoint');
+    const filenames = result.layers.map(l => l.split('/').pop());
+    expect(filenames).not.toContain('SKILL-backend-security.md');
   });
 });

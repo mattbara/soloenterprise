@@ -644,15 +644,17 @@ Why fourth?
 
 ## Agent SKILL Files
 
-All SKILL files are located in `/skills/`:
+SKILL files are organized in `/skills/{agent-type}/` with modular layers:
 
-| File | Agent |
-|------|-------|
-| `SKILL-orchestrator.md` | Agent Orchestrator |
-| `SKILL-backend-engineer.md` | Backend Engineer |
-| `SKILL-frontend-engineer.md` | Frontend Engineer |
-| `SKILL-qa-engineer.md` | QA Engineer |
-| `SKILL-devops-engineer.md` | DevOps Engineer |
+| Directory | Agent | Core File |
+|-----------|-------|-----------|
+| `skills/orchestrator/` | Agent Orchestrator | `SKILL-orchestrator-core.md` |
+| `skills/backend/` | Backend Engineer | `SKILL-backend-core.md` |
+| `skills/frontend/` | Frontend Engineer | `SKILL-frontend-core.md` |
+| `skills/qa/` | QA Engineer | `SKILL-qa-core.md` |
+| `skills/common/` | All Agents | `SKILL-common.md` |
+
+Each agent directory contains core + patterns + examples layers, plus specialized files (security, performance, etc.) auto-loaded via `<!-- Load When: ... -->` headers. See `docs/DOCUMENTATION_STRUCTURE.md` for the full tree.
 
 ---
 
@@ -779,7 +781,7 @@ Orchestrator detects milestone done │
 - **The orchestrator drives the PR lifecycle.** It detects when a milestone's tasks are all `completed` (or explicitly descoped by human), then triggers PR creation. No partial PRs — 3-strike failures escalate to human first.
 - **The command executor handles all git operations.** Branch creation, file assembly from sandboxes **in dependency order**, conflict detection, commit, push, PR creation via GitHub API.
 - **File path conflicts:** If two non-dependent tasks wrote to the same file, the assembly step **fails fast and escalates to human**. If tasks are in a dependency chain, later task's version wins. No automatic merging.
-- **`pull_requests` table** tracks PR state in the database (see SCHEMA_ADDITIONS.md).
+- **`pull_requests` table** tracks PR state in the database (see `packages/db/src/schema.ts`).
 - **Dashboard shows pending PRs** for the human Principal to review.
 - **GitHub webhook** receives PR events (approved, changes_requested, merged) and updates the DB accordingly.
 - **Changes requested (v1):** A single new orchestrator task is created with the full review comments pasted in. The orchestrator re-decomposes into agent tasks. No clever per-comment-to-agent routing — that's fragile and unnecessary for v1.
