@@ -31,6 +31,7 @@
 | 9.x Technology Tracking Dashboard | 💡 PROPOSED | S | Medium | 2-3 days |
 | **10. Platform Security** | ⬜ NOT STARTED | **XL** | **Critical** | **2-3 weeks** |
 | 11+ Business Automation (PM, Design, GTM, Ops) | 🔮 FUTURE | — | — | TBD |
+| **999. Billing, Credits & Membership** | ⬜ NOT STARTED | **XL** | **Critical** | **3-4 weeks** |
 
 **Remaining Estimate:** 8-14 weeks (Phases 6.10–9.5)
 
@@ -2082,6 +2083,503 @@ Every security-relevant action is logged with: who, what, when, from where, and 
 
 ---
 
+## Phase 999: Billing, Credits & Membership Architecture
+
+**Effort:** XL | **Impact:** Critical (revenue)
+**Duration:** 3-4 weeks
+**Status:** NOT STARTED
+**Branch:** `phase-999/billing`
+**Prerequisite:** Platform functionally complete (Phases 7-10). Users must be able to build real projects before you charge for it.
+**Priority:** This is the LAST engineering phase before public launch.
+
+### Why Phase 999
+
+This number is intentional — billing ships LAST. Every phase before this builds the product. This phase makes the product a business. Building billing early is a waste because: (1) the credit deduction logic depends on the final agent pipeline shape, (2) tier feature gates depend on knowing which features exist, (3) premature billing code rots as the product changes underneath it.
+
+---
+
+### Business Model: Membership Tiers + Prepaid Credits
+
+**Tiers gate access. Credits gate usage.** These solve different problems and work together.
+
+#### Tier Structure
+
+| | Starter ($799/mo) | Growth ($1,470/mo) | Scale ($2,480/mo) |
+|--|---|---|---|
+| Active projects | 2 | 5 | Unlimited |
+| Included credits/mo | $300 worth | $700 worth | $1,500 worth |
+| Overage rate | Full price | 10% discount | 20% discount |
+| Agent access | Backend + Frontend + QA | + Architect + Scoper + Reporter | All agents + priority queue |
+| Reports | Monthly summary | Weekly detailed | Real-time + custom |
+| Support | Email (48h) | Email (24h) | Dedicated Slack channel |
+| Unused credits | Expire end of month | Roll over 1 month | Roll over 3 months |
+
+#### Credit Economics
+
+Credits are an abstraction over raw Anthropic API cost. The user never sees token counts or model names — they see "credits consumed."
+
+| Concept | Value |
+|---------|-------|
+| 1 credit | ~$0.01 of platform value |
+| Your Anthropic cost per credit | ~$0.003–0.005 (depending on model mix + caching) |
+| **Gross margin per credit** | **~60-70%** |
+| Typical project build cost | 5,000–30,000 credits ($50–$300) |
+| Starter included credits | 30,000/mo |
+| Growth included credits | 70,000/mo |
+| Scale included credits | 150,000/mo |
+
+**Margin math (Starter tier):**
+- User pays: $799/mo
+- Included credits cost you: ~$100–150 in API spend (30K credits × $0.003-0.005)
+- Infrastructure (Neon + Redis + hosting): ~$30–50/mo
+- **Gross margin: ~$550–650/mo per user (~75%)**
+
+#### Credit Deduction Rules
+
+Every agent action deducts credits based on actual token usage. The existing `cost-tracking-service.ts` is the billing meter.
+
+```typescript
+interface CreditDeduction {
+  taskId: string;
+  projectId: string;
+  agentType: string;
+  tokensUsed: {
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheCreation: number;
+  };
+  modelUsed: string;
+  creditsDeducted: number;  // Calculated from token costs → credit conversion
+  timestamp: Date;
+}
+
+function calculateCredits(tokens: TokenUsage, model: string): number {
+  const usdCost = calculateUsdCost(tokens, model); // Existing token-pricing.ts
+  const credits = Math.ceil(usdCost / CREDIT_VALUE_USD);   // $0.01 per credit
+  return credits;
+}
+```
+
+**Deduction happens AFTER each agent turn**, not after task completion. This prevents a runaway task from burning credits that don't exist.
+
+#### Low Credit Flow (Pause & Resume)
+
+```
+Credits at 20% of included balance
+  → Warning banner in dashboard: "Low credits — builds will pause at 10%"
+  → Email notification to account owner
+
+Credits at 10% of included balance
+  → All running agent tasks PAUSE (status → 'paused_credits')
+  → Tasks preserve full state (checkpoint if mid-execution)
+  → Email + in-app notification: "Top up credits to continue"
+  → Dashboard shows prominent "Add Credits" CTA
+
+User purchases credit top-up
+  → Credits added to balance immediately
+  → All paused tasks eligible to resume
+  → User clicks "Resume Project" → agents pick up from checkpoint
+  → No work is lost. No restarts.
+```
+
+**Critical UX detail:** Pause, NEVER cancel. The user's project state is preserved. They shouldn't feel punished for running out of credits — they should feel safe that their work is protected.
+
+---
+
+### Payment Provider: Paddle
+
+**Why Paddle over Stripe:**
+- Paddle is a Merchant of Record (MoR) — they handle VAT/GST/sales tax globally. You don't.
+- For a solo founder selling internationally, tax compliance is a nightmare. Paddle absorbs it.
+- Stripe requires YOU to calculate, collect, and remit sales tax in every jurisdiction. That means registering for VAT in the EU, GST in Australia, etc. Paddle does all of this.
+- Paddle fees are higher (~5% vs Stripe's ~2.9%) but the tax compliance savings dwarf the fee difference.
+
+**When to switch to Stripe:** If you hire a finance person AND most revenue is US-domestic. Until then, Paddle.
+
+#### Paddle Integration Architecture
+
+```
+User clicks "Subscribe" or "Buy Credits"
+  → Paddle.js overlay opens (hosted by Paddle — PCI compliant, you never touch card data)
+  → User completes payment
+  → Paddle sends webhook to your API:
+      POST /api/webhooks/paddle
+        - subscription.created (new tier)
+        - subscription.updated (tier change)
+        - subscription.cancelled
+        - transaction.completed (credit top-up)
+        - transaction.payment_failed
+  → Your webhook handler updates the database
+  → User sees updated tier/credits on next page load (router.refresh)
+```
+
+**Paddle products to create:**
+1. `starter_monthly` — $799/mo recurring
+2. `growth_monthly` — $1,470/mo recurring
+3. `scale_monthly` — $2,480/mo recurring
+4. `credits_small` — 10,000 credits one-time ($100)
+5. `credits_medium` — 50,000 credits one-time ($450, 10% bonus)
+6. `credits_large` — 100,000 credits one-time ($800, 20% bonus)
+
+#### Webhook Security
+
+```typescript
+// /api/webhooks/paddle/route.ts
+import { verifyPaddleWebhook } from '@paddle/paddle-node-sdk';
+
+export async function POST(req: Request) {
+  const rawBody = await req.text();
+  const signature = req.headers.get('paddle-signature');
+
+  // Verify webhook authenticity (Paddle signs every webhook)
+  const isValid = verifyPaddleWebhook(rawBody, signature, PADDLE_WEBHOOK_SECRET);
+  if (!isValid) {
+    logSecurityEvent({ type: 'invalid_webhook', severity: 'HIGH' });
+    return new Response('Invalid signature', { status: 401 });
+  }
+
+  const event = JSON.parse(rawBody);
+  await processWebhookEvent(event);
+  return new Response('OK', { status: 200 });
+}
+```
+
+**Idempotency:** Paddle can send the same webhook multiple times. Every handler MUST be idempotent — check if the event was already processed before mutating state.
+
+---
+
+### Database Schema
+
+```sql
+-- User's billing account (1:1 with user)
+CREATE TABLE billing_accounts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id),
+  paddle_customer_id TEXT,           -- Paddle's customer ID
+  tier TEXT NOT NULL DEFAULT 'none', -- 'none' | 'starter' | 'growth' | 'scale'
+  tier_started_at TIMESTAMPTZ,
+  credit_balance INTEGER NOT NULL DEFAULT 0,  -- Current credits
+  included_credits_remaining INTEGER NOT NULL DEFAULT 0, -- Monthly included, resets
+  included_credits_reset_at TIMESTAMPTZ,      -- When monthly credits reset
+  overage_discount_pct INTEGER NOT NULL DEFAULT 0, -- 0, 10, or 20
+  paddle_subscription_id TEXT,       -- Active subscription ID
+  subscription_status TEXT,          -- 'active' | 'past_due' | 'cancelled' | 'paused'
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  UNIQUE(user_id)
+);
+
+-- Credit transactions (append-only ledger)
+CREATE TABLE credit_transactions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  billing_account_id UUID NOT NULL REFERENCES billing_accounts(id),
+  type TEXT NOT NULL,
+  -- 'monthly_grant'     = included credits added at billing cycle start
+  -- 'purchase'          = one-time credit top-up
+  -- 'deduction'         = agent usage
+  -- 'expiry'            = unused monthly credits expired
+  -- 'refund'            = manual refund
+  amount INTEGER NOT NULL,           -- Positive for grants/purchases, negative for deductions
+  balance_after INTEGER NOT NULL,    -- Running balance after this transaction
+  metadata JSONB,                    -- { taskId, projectId, agentType, model } for deductions
+                                     -- { paddleTransactionId } for purchases
+                                     -- { reason } for refunds
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+CREATE INDEX idx_credit_tx_account ON credit_transactions(billing_account_id);
+CREATE INDEX idx_credit_tx_created ON credit_transactions(created_at);
+CREATE INDEX idx_credit_tx_type ON credit_transactions(type);
+
+-- Paddle webhook event log (idempotency + audit trail)
+CREATE TABLE paddle_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  paddle_event_id TEXT NOT NULL UNIQUE,  -- Paddle's event ID (idempotency key)
+  event_type TEXT NOT NULL,
+  payload JSONB NOT NULL,
+  processed_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+```
+
+**Why an append-only ledger for credits:** You need a full audit trail. "Where did my credits go?" is the #1 billing support question. The ledger answers it: every grant, every deduction, every expiry, with timestamps and metadata. The `balance_after` column lets you reconstruct the balance at any point in time without summing the entire history.
+
+---
+
+### Technical Architecture
+
+#### Credit Deduction Pipeline
+
+Hooks into the existing agent execution pipeline. After every agent API call:
+
+```
+Agent API call completes
+  → cost-tracking-service.ts records token usage (existing)
+  → credit-service.ts converts to credits and deducts
+  → If balance < 10% threshold → pause task
+  → If balance > 10% → continue
+```
+
+```typescript
+// packages/core/src/services/credit-service.ts
+
+class CreditService {
+  async deductCredits(params: {
+    userId: string;
+    taskId: string;
+    projectId: string;
+    agentType: string;
+    tokenUsage: TokenUsage;
+    model: string;
+  }): Promise<DeductionResult> {
+    const credits = calculateCredits(params.tokenUsage, params.model);
+
+    // Atomic: read balance + deduct + write transaction in one DB call
+    const result = await db.transaction(async (tx) => {
+      const account = await tx.query.billingAccounts.findFirst({
+        where: eq(billingAccounts.userId, params.userId),
+      });
+
+      if (!account) throw new NoBillingAccountError(params.userId);
+
+      // Deduct from included first, then purchased
+      const newIncluded = Math.max(0, account.includedCreditsRemaining - credits);
+      const overflowToBalance = credits - (account.includedCreditsRemaining - newIncluded);
+      const newBalance = account.creditBalance - Math.max(0, overflowToBalance);
+
+      // Update account
+      await tx.update(billingAccounts).set({
+        includedCreditsRemaining: newIncluded,
+        creditBalance: newBalance,
+        updatedAt: new Date(),
+      }).where(eq(billingAccounts.id, account.id));
+
+      // Append ledger entry
+      const totalRemaining = newIncluded + newBalance;
+      await tx.insert(creditTransactions).values({
+        billingAccountId: account.id,
+        type: 'deduction',
+        amount: -credits,
+        balanceAfter: totalRemaining,
+        metadata: {
+          taskId: params.taskId,
+          projectId: params.projectId,
+          agentType: params.agentType,
+          model: params.model,
+        },
+      });
+
+      return { totalRemaining, threshold: account.includedCreditsRemaining === 0 };
+    });
+
+    // Check pause threshold
+    if (result.totalRemaining <= LOW_CREDIT_THRESHOLD) {
+      return { deducted: credits, action: 'pause' };
+    }
+    return { deducted: credits, action: 'continue' };
+  }
+}
+```
+
+**Critical:** The deduction MUST be atomic (single transaction). Race condition: two agents deducting simultaneously could overdraw the balance without a transaction.
+
+#### Tier Feature Gating
+
+```typescript
+// packages/core/src/services/tier-service.ts
+
+const TIER_LIMITS: Record<string, TierConfig> = {
+  none: { maxActiveProjects: 0, agents: [], reports: 'none' },
+  starter: {
+    maxActiveProjects: 2,
+    agents: ['backend', 'frontend', 'qa'],
+    reports: 'monthly',
+    creditRollover: 0, // months
+  },
+  growth: {
+    maxActiveProjects: 5,
+    agents: ['backend', 'frontend', 'qa', 'architect', 'scoper', 'reporter'],
+    reports: 'weekly',
+    creditRollover: 1,
+  },
+  scale: {
+    maxActiveProjects: Infinity,
+    agents: ['backend', 'frontend', 'qa', 'architect', 'scoper', 'reporter', 'devops', 'reviewer'],
+    reports: 'realtime',
+    creditRollover: 3,
+    priorityQueue: true,
+  },
+};
+
+function assertTierPermission(userId: string, action: string): void {
+  // Called before: project creation, agent dispatch, report generation
+  // Throws TierLimitExceeded if action not allowed on current tier
+}
+```
+
+#### Monthly Credit Reset (Cron)
+
+```typescript
+// Runs at the start of each billing cycle (Paddle webhook: subscription.renewed)
+async function grantMonthlyCredits(billingAccountId: string, tier: string): Promise<void> {
+  const included = TIER_INCLUDED_CREDITS[tier]; // 30000, 70000, or 150000
+  const account = await db.query.billingAccounts.findFirst({ ... });
+
+  // Expire unused included credits (or roll over based on tier)
+  const maxRollover = TIER_LIMITS[tier].creditRollover;
+  // ... rollover logic
+
+  // Grant new monthly credits
+  await db.transaction(async (tx) => {
+    await tx.update(billingAccounts).set({
+      includedCreditsRemaining: included + rolledOver,
+      includedCreditsResetAt: new Date(),
+    });
+    await tx.insert(creditTransactions).values({
+      billingAccountId: account.id,
+      type: 'monthly_grant',
+      amount: included,
+      balanceAfter: account.creditBalance + included + rolledOver,
+    });
+  });
+}
+```
+
+---
+
+### Dashboard UI
+
+#### Billing Page (`/settings/billing`)
+
+**Sections:**
+1. **Current Plan** — tier name, price, renewal date, upgrade/downgrade buttons
+2. **Credit Balance** — prominent number, progress bar (included + purchased), "Buy Credits" button
+3. **Usage This Month** — credits consumed, broken down by project and agent type
+4. **Transaction History** — paginated table from `credit_transactions` (date, type, amount, balance, metadata)
+5. **Payment Method** — managed by Paddle (link to Paddle customer portal)
+
+**No polling.** `router.refresh()` after mutations. Transaction history fetched server-side.
+
+#### Credit Usage Widget (Project Detail Page)
+
+Small widget showing credits consumed per project:
+- Total credits used
+- Breakdown by agent (backend: 2,340 | frontend: 1,890 | QA: 670)
+- Estimated credits remaining to complete (based on task count × average cost)
+
+---
+
+### Pros and Cons
+
+#### Pros
+- **Zero credit risk** — money collected before work starts, pause before overdraft
+- **Predictable revenue** — monthly subscription baseline regardless of usage
+- **Natural upsell path** — users outgrow tiers organically
+- **Tax handled** — Paddle as MoR eliminates VAT/GST compliance burden
+- **Transparent** — users see exactly where credits go (ledger)
+- **No surprise bills** — users control spend via prepaid credits
+- **Existing infrastructure** — `cost-tracking-service.ts` already records per-call costs
+
+#### Cons
+- **Higher payment fees** — Paddle ~5% vs Stripe ~2.9% (offset by tax compliance savings)
+- **Credit pricing complexity** — must maintain credit-to-USD conversion as Anthropic changes prices
+- **Paddle dependency** — MoR model means Paddle owns the customer relationship legally
+- **Monthly credit expiry** — some users will feel penalized (mitigated by rollover on higher tiers)
+- **Pause UX risk** — if builds pause too often, users churn. Must set thresholds carefully.
+- **Refund complexity** — Paddle handles subscription refunds, but credit refunds are manual
+- **No free tier** — high entry price ($799) limits top-of-funnel. Consider a trial (see below).
+
+#### Risk Mitigations
+
+| Risk | Mitigation |
+|------|-----------|
+| Anthropic price change breaks margin | Credit conversion rate is a config value, not hardcoded. Adjust quarterly. |
+| User disputes Paddle charge | Paddle handles disputes as MoR. Their problem, not yours. |
+| Runaway agent burns credits | Per-turn deduction + pause threshold. Max 2 continuations per task (Phase 8). |
+| User wants refund for bad output | Policy: credits for failed tasks refunded automatically. Agent failure = your cost, not theirs. |
+| Paddle goes down | Webhook retry queue. Graceful degradation: allow current builds to finish, block new projects until webhook processing resumes. |
+
+#### Future Consideration: Free Trial
+
+Don't launch with a free tier. Launch with a **14-day trial of Starter** (capped at 5,000 credits). This gives users enough to build one small project and see value. Trial → conversion is your growth lever.
+
+---
+
+### Dependencies
+
+| Dependency | Package | Purpose |
+|-----------|---------|---------|
+| `@paddle/paddle-node-sdk` | Webhook verification, customer portal links | Payment processing |
+| None new for UI | shadcn/ui components already available | Dashboard billing pages |
+| `cost-tracking-service.ts` | Already exists | Billing meter (token usage → credit deduction) |
+| `token-pricing.ts` | Already exists | USD cost calculation per model |
+
+---
+
+### Checklist
+
+**Schema & Core:**
+- [ ] `billing_accounts` table + migration
+- [ ] `credit_transactions` table + migration (append-only ledger)
+- [ ] `paddle_events` table + migration (idempotency)
+- [ ] `CreditService` class — atomic deduction, balance checks
+- [ ] `TierService` class — feature gating per tier
+- [ ] Credit calculation: token usage → USD → credits conversion
+
+**Paddle Integration:**
+- [ ] Paddle account setup + product/price creation
+- [ ] Webhook endpoint: `POST /api/webhooks/paddle`
+- [ ] Webhook signature verification
+- [ ] Webhook idempotency (check `paddle_events` before processing)
+- [ ] Handle `subscription.created` → set tier + grant credits
+- [ ] Handle `subscription.updated` → tier change
+- [ ] Handle `subscription.cancelled` → downgrade to 'none'
+- [ ] Handle `transaction.completed` → add purchased credits
+- [ ] Handle `transaction.payment_failed` → notify user, grace period
+- [ ] Monthly credit grant on subscription renewal
+- [ ] Credit expiry logic (with rollover for Growth/Scale)
+
+**Agent Pipeline Integration:**
+- [ ] Credit deduction hook after every agent API call
+- [ ] Low credit detection (20% warning, 10% pause)
+- [ ] Task pause on insufficient credits (`paused_credits` status)
+- [ ] Task resume after credit top-up
+- [ ] Tier permission check before project creation
+- [ ] Tier permission check before agent dispatch
+- [ ] Agent type gating per tier
+
+**Dashboard UI:**
+- [ ] `/settings/billing` page — plan, credits, usage, transactions, payment method
+- [ ] Credit balance widget in dashboard header
+- [ ] Credit usage widget on project detail page
+- [ ] "Buy Credits" flow (opens Paddle overlay)
+- [ ] "Upgrade Plan" flow (opens Paddle overlay)
+- [ ] Low credit warning banner
+- [ ] Paused project indicator + "Resume" button
+- [ ] Transaction history table (paginated, server-rendered)
+
+**Testing:**
+- [ ] Credit deduction atomicity (concurrent agents don't overdraw)
+- [ ] Tier feature gating (Starter can't use Architect agent)
+- [ ] Pause threshold triggers correctly at 10%
+- [ ] Resume after top-up works (tasks pick up from checkpoint)
+- [ ] Webhook idempotency (duplicate event → no double credit)
+- [ ] Monthly credit reset + rollover logic
+- [ ] Credit expiry at end of billing cycle
+- [ ] Paddle webhook signature verification (valid + invalid)
+
+### What's NOT in This Phase
+
+- **Usage-based pricing (no tiers)** — too unpredictable for users, too risky for you
+- **Stripe integration** — Paddle handles tax compliance. Switch to Stripe only if/when you hire finance.
+- **Annual plans** — add after 6 months of monthly data shows retention
+- **Team/org billing** — single-user accounts only at launch
+- **Crypto payments** — no
+- **Invoice generation** — Paddle generates invoices as MoR
+- **Free tier** — start with 14-day trial, not permanent free
+
+---
+
 ## Cross-Cutting Concerns
 
 These are applied across ALL phases — not standalone tasks.
@@ -2119,4 +2617,4 @@ Log `cache_read_input_tokens`, `cache_creation_input_tokens` on every response. 
 
 ---
 
-*Version 10.4 — Phase 6.9 testing COMPLETE: 10/10 integration tests, 663 total tests, 15 bugs fixed, 20-22% token reduction (honest). Added proposed Phase 8.x (Multi-Framework Scaffold) and Phase 9.x (Technology Tracking Dashboard). — 2026-02-27*
+*Version 10.5 — Added multi-repo architecture insights (context checkpointing, contract validation, deployment sequencing, container tagging, QA isolation). Added Phase 999 (Billing, Credits & Membership — Paddle + prepaid credits + tier gating). — 2026-02-27*
