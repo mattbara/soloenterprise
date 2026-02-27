@@ -263,23 +263,27 @@ async function processQATask(job: Job<TaskJobData>): Promise<{
     // Wire source file data from QA context so test-shell scaffolder can parse exports
     const primarySource = qaContext.rawSourceFiles[0];
     let scaffoldResult: ScaffoldResult | null = null;
-    try {
-      scaffoldResult = generateScaffold({
-        agentType: 'qa',
-        taskDescription: description,
-        taskName: name,
-        requirements: buildPrompt(name, description, context),
-        techSpec: taskRecord?.technicalSpec ?? undefined,
-        sourceFilePath: primarySource?.path,
-        sourceContent: primarySource?.content,
-      });
-      if (scaffoldResult.success && scaffoldResult.files.length > 0) {
-        logger.log('QAAgent', `Scaffold generated: ${scaffoldResult.scaffoldType}, ${scaffoldResult.files.length} files`);
-      } else {
-        logger.warn('QAAgent', `Scaffold skipped: success=${scaffoldResult.success}, files=${scaffoldResult.files.length}, type=${scaffoldResult.scaffoldType ?? 'none'}${scaffoldResult.error ? `, reason=${scaffoldResult.error}` : ''}`);
+    if (process.env.DISABLE_SCAFFOLD === 'true') {
+      logger.log('QAAgent', 'Scaffold DISABLED (comparison mode)');
+    } else {
+      try {
+        scaffoldResult = generateScaffold({
+          agentType: 'qa',
+          taskDescription: description,
+          taskName: name,
+          requirements: buildPrompt(name, description, context),
+          techSpec: taskRecord?.technicalSpec ?? undefined,
+          sourceFilePath: primarySource?.path,
+          sourceContent: primarySource?.content,
+        });
+        if (scaffoldResult.success && scaffoldResult.files.length > 0) {
+          logger.log('QAAgent', `Scaffold generated: ${scaffoldResult.scaffoldType}, ${scaffoldResult.files.length} files`);
+        } else {
+          logger.warn('QAAgent', `Scaffold skipped: success=${scaffoldResult.success}, files=${scaffoldResult.files.length}, type=${scaffoldResult.scaffoldType ?? 'none'}${scaffoldResult.error ? `, reason=${scaffoldResult.error}` : ''}`);
+        }
+      } catch (err) {
+        logger.warn('QAAgent', 'Scaffold generation failed, continuing without it: ' + err);
       }
-    } catch (err) {
-      logger.warn('QAAgent', 'Scaffold generation failed, continuing without it: ' + err);
     }
 
     // Build user prompt (task-specific, not cached)

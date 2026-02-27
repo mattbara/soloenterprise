@@ -1,8 +1,8 @@
 # Product Factory: Master Architecture
 ## AI-Powered Development Team Orchestration System
 
-**Version:** 2.2
-**Last Updated:** 2026-02-24
+**Version:** 2.4
+**Last Updated:** 2026-02-27
 **Status:** Technical Specification
 
 ---
@@ -494,17 +494,23 @@ The code generation pipeline uses a two-stage approach to reduce API costs and p
 Mechanical code generation from templates. Reads Drizzle schema, generates Zod validators, type definitions, route shells, test structures. All with correct imports from the Import Resolver.
 
 **Stage 2 — Claude API (Costs Money):**
-Claude receives the scaffold + requirements. Only needs to fill in business logic (TODOs), not generate boilerplate. Output tokens reduced 40-60%.
+Claude receives the scaffold + requirements. Only needs to fill in business logic (TODOs), not generate boilerplate. Measured output token reduction: 20-22% (below original 40-60% projection — scaffolds provide structure but Claude still regenerates content around TODOs).
 
 **Stage 3 — Local Validation (Free, No AI):**
-TypeScript compilation (`tsc --noEmit`), ESLint, and optionally Vitest. Catches errors before marking task complete.
+TypeScript syntax checking and unknown import detection. Catches the two most common failure modes before marking task complete.
 
 **Stage 4 — Retry (One Attempt):**
 If validation fails, errors sent back to Claude with the failing code. One retry allowed. If retry fails → 3-strike rule applies.
 
-**Location:** `packages/core/src/scaffolder/`
+**Location:** `packages/core/src/scaffolder/` (16 source files, 92 tests)
+
+**Multi-table Detection:** The scaffold orchestrator (`scaffold-orchestrator.ts`) uses `extractRelatedTableNames()` with singular-stem matching to detect related tables from task descriptions. A task mentioning "milestones" also generates Zod schemas for related foreign-key targets like "projects" and "tasks".
 
 **TDD Design:** The test scaffolder has a TDD mode (`test-shell-tdd.ts`) that generates tests from spec only — no source code required. This enables a future workflow (Phase 8) where QA generates tests before implementation agents run.
+
+**System Test Sandbox:** A permanent test project (UUID `00000000-0000-0000-0000-000000000000`) is seeded in the database with a permissive scope covering all agent types, eliminating the need to create/clean up test projects during integration testing.
+
+**Future: Multi-Framework Scaffold Support:** The scaffold type detection architecture (task → detect scaffold type → pick template) is designed to support additional frameworks. Each scaffold type can have framework-specific templates (e.g., `backend-route/hono.ts`, `backend-route/fastify.ts`) layered on top of the existing detection system. Currently only Hono (backend) and Next.js (frontend) are supported. Unsupported frameworks fall through gracefully — agents proceed without scaffold (existing fallback pattern).
 
 ---
 
@@ -815,7 +821,9 @@ The scaffolder layer sits between task assignment and Claude API calls. It gener
 | Test Shell (TDD) | Vitest test file generated from spec only (no source code) |
 | Local Validator | tsc + eslint + vitest validation gate |
 
-**Cost Impact:** Reduces output tokens by 40-60%. Scaffold is ~200 lines of boilerplate that Claude would otherwise generate. Validator catches syntax/type errors before retry, preventing wasted API calls.
+**Cost Impact:** Measured 20-22% output token reduction (below 40-60% projection). Scaffold provides ~200 lines of imports, types, and file structure that Claude would otherwise generate. Validator catches syntax errors and unknown imports before retry, preventing wasted API calls. Consistent ~20% floor across all three integrated agents (backend, frontend, QA).
+
+**Multi-table Detection:** `scaffold-orchestrator.ts` includes `extractRelatedTableNames()` — singular-stem matching to find related tables from task descriptions. A task about "milestones" also pulls Zod schemas for foreign-key targets ("projects", "tasks").
 
 **TDD Mode:** The test-shell-tdd scaffolder generates tests from spec alone. This enables Phase 8's TDD workflow where QA runs BEFORE implementation agents.
 
@@ -941,10 +949,12 @@ Non-code agents need defined output formats:
 3. **Real project validation** (Phase 5.5) ✅ COMPLETE — proved end-to-end
 4. **Architect + Image Extractor** (Phase 5.6-5.7) ✅ COMPLETE — tech specs + context profiles
 5. **Business operations agents** (Phase 6-6.5) ✅ COMPLETE — Project Scoper + Client Reporter + Cost Tracking
-6. **Dashboard + UI** (Phase 6.6-6.8) — navigation, projects management, scope review
-7. **DevOps + Reviewer agents** (Phase 7) — automation and quality
-8. **Multi-agent integration** (Phase 8) — parallel execution at scale
-9. **Product/Design/Growth agents** (Phase 10+) — only after revenue validation
+6. **Dashboard + UI** (Phase 6.6-6.8) ✅ COMPLETE — navigation, projects management, scope review
+7. **Code Scaffolder + Validation** (Phase 6.9) ✅ COMPLETE — 20-22% token reduction, 16 scaffolders, 663 total tests
+8. **Sandbox Test Execution** (Phase 6.10) — behavioral validation in sandboxes
+9. **DevOps + Reviewer agents** (Phase 7) — automation and quality
+10. **Multi-agent integration** (Phase 8) — parallel execution at scale
+11. **Product/Design/Growth agents** (Phase 10+) — only after revenue validation
 
 ---
 
@@ -972,4 +982,4 @@ Before proceeding:
 
 ---
 
-*Document version 2.3 — Added `packages/theme/` (TW4 shared theme package) to tech stack. Dashboard, client templates, and shadcn/ui bridge all use CSS-first `@theme` configuration (2026-02-25).*
+*Document version 2.4 — Phase 6.9 COMPLETE: 10/10 integration tests, 20-22% token reduction (honest: below 40-60% projection), multi-table detection, System Test Sandbox, 663 total tests. Added multi-framework scaffold future note. (2026-02-27)*

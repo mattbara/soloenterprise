@@ -1,6 +1,6 @@
 # SoloEnterprise: Project Phases
 
-**Last Updated:** 2026-02-25
+**Last Updated:** 2026-02-27
 **Current Phase:** Phase 6.10 (Sandbox Test Execution Pipeline) — Next
 **Branch:** `development`
 
@@ -24,8 +24,10 @@
 | 7.7 Tool/Service Separation Refactor | ⬜ NOT STARTED | M | High | 3-5 days |
 | 8. Multi-Agent Integration | ⬜ NOT STARTED | XL | Critical | 2-3 weeks |
 | 8.5 Model Routing & Cost Optimization | ⬜ NOT STARTED | M | High | 3-5 days |
+| 8.x Multi-Framework Scaffold Support | 💡 PROPOSED | M | High | 1-2 weeks |
 | 9. Documentation | ⬜ NOT STARTED | S | Medium | 3 days |
 | 9.5 Institutional Memory & Knowledge Persistence | ⬜ NOT STARTED | L | High | 1-2 weeks |
+| 9.x Technology Tracking Dashboard | 💡 PROPOSED | S | Medium | 2-3 days |
 | **10. Platform Security** | ⬜ NOT STARTED | **XL** | **Critical** | **2-3 weeks** |
 | 11+ Business Automation (PM, Design, GTM, Ops) | 🔮 FUTURE | — | — | TBD |
 
@@ -331,13 +333,13 @@ Full-page overlay rendering the scoper's output:
 
 **Effort:** L | **Impact:** High
 **Duration:** 5-7 days
-**Status:** COMPLETE (2026-02-25)
+**Status:** COMPLETE (2026-02-27) — 10/10 integration tests passed
 **Branch:** `phase69/scaffolding`
 **Prerequisite:** Phases 6.6-6.8 complete
 
 ### Delivered
 
-Two-stage code generation pipeline: scaffold locally (free) → Claude fills business logic (API cost) → validate locally (free). Reduces output tokens by 40-60% and prevents most retry-causing failures.
+Two-stage code generation pipeline: scaffold locally (free) → Claude fills business logic (API cost) → validate locally (free). Measured 20-22% output token reduction (below original 40-60% projection — scaffolds provide structure but Claude regenerates content around TODOs). Consistent ~20% floor across all integrated agents.
 
 **Pre-work:**
 - ✅ `packages/theme/` — shared TW4 theme package (base.css, dashboard.css, client-template.css)
@@ -359,13 +361,22 @@ Two-stage code generation pipeline: scaffold locally (free) → Claude fills bus
 - ✅ Scope template — YAML scope skeleton
 - ✅ Local validator — TS syntax + import validation
 - ✅ Prompt builder — scaffold → prompt formatter
-- ✅ Scaffold orchestrator — heuristic type detection + main entry point
+- ✅ Scaffold orchestrator — heuristic type detection + multi-table detection
 
 **Integration (3 agents + 3 SKILLs):**
-- ✅ Backend, frontend, QA agents — scaffold pipeline (try/catch, backward-compatible)
+- ✅ Backend, frontend, QA agents — scaffold pipeline (try/catch, backward-compatible, DISABLE_SCAFFOLD env var)
 - ✅ SKILL-backend-core, SKILL-frontend-core, SKILL-qa-core — Scaffold Mode section
 
-**Tests:** 92 new scaffolder tests, 601 total tests, zero regressions
+**Testing changes during Phase 6.9:**
+- ✅ Frontend context loader rewrite — dynamic hook discovery, TanStack Query fallback
+- ✅ ANTIPATTERNS.md created — data fetching decision tree, mutation patterns
+- ✅ Multi-table detection — singular-stem matching for related Zod schemas
+- ✅ Heartbeat logging — 30s heartbeat during Claude API calls
+- ✅ System Test Sandbox — permanent test project UUID `00000000-0000-0000-0000-000000000000`
+- ✅ 15 bugs found and fixed (9 new + 3 pre-existing + 3 documented-as-expected)
+
+**Tests:** 92 new scaffolder tests, **663 total tests** (3 skipped), zero regressions
+**Integration tests:** 10/10 passed across backend, frontend, QA, orchestrator
 
 ---
 
@@ -1030,6 +1041,92 @@ class ModelRouter {
 - [ ] Cache performance monitoring (alert if hit rate < 70%)
 - [ ] Per-request cost logging with model attribution
 - [ ] Cost dashboard queries (daily/weekly/monthly)
+
+---
+
+## Phase 8.x: Multi-Framework Scaffold Support (Proposed)
+
+**Effort:** M | **Impact:** High
+**Duration:** 1-2 weeks
+**Status:** PROPOSED — identified during Phase 6.9 testing
+**Prerequisite:** Phase 8 complete (multi-agent integration provides the project framework context)
+
+### Why
+
+Currently the scaffold pipeline only generates Hono (backend) and Next.js (frontend) templates. Client projects using other frameworks (Fastify, Express, SvelteKit, Angular) get zero scaffold benefit — agents fall back to generating everything from scratch (more tokens, more retries). This phase adds framework detection and framework-specific templates.
+
+### Architecture
+
+The existing scaffold type detection system (task → detect scaffold type → pick template) is extended with a framework layer:
+
+```
+task → detect scaffold type (backend-route, frontend-page)
+     → detect framework (from project scope/settings)
+     → pick framework-specific template
+```
+
+Each scaffold type gets a framework subfolder:
+```
+scaffolder/backend-route/hono.ts      # Current (default)
+scaffolder/backend-route/fastify.ts   # New
+scaffolder/backend-route/express.ts   # New
+scaffolder/frontend-page/nextjs.ts    # Current (default)
+scaffolder/frontend-page/svelte.ts    # New
+```
+
+The `scaffold-orchestrator.ts` routes to the correct template based on project framework config. Unsupported framework → scaffold returns 0 files → agents proceed without scaffold (existing fallback pattern).
+
+### Scope
+
+**Frontend frameworks to support:** React/Next.js (current), Svelte/SvelteKit, Angular, Vue/Nuxt
+**Backend frameworks to support:** Hono (current), Fastify, NestJS, Express, Bun native
+
+### Notification System
+
+When a project scope specifies a technology not in the supported scaffold list, flag it to the admin via the dashboard UI. This does NOT block agents — they build with any technology, it just costs more tokens and takes longer without scaffold support.
+
+### Checklist
+
+- [ ] Framework detection from project scope/settings
+- [ ] Template routing in scaffold-orchestrator.ts
+- [ ] Fastify backend-route template
+- [ ] Express backend-route template
+- [ ] SvelteKit frontend-page template
+- [ ] Unsupported framework notification in dashboard
+- [ ] Tests for each new template
+
+---
+
+## Phase 9.x: Technology Tracking Dashboard (Proposed)
+
+**Effort:** S | **Impact:** Medium
+**Duration:** 2-3 days
+**Status:** PROPOSED — identified during Phase 6.9 testing
+**Prerequisite:** 5+ production projects (data must be meaningful)
+
+### Why
+
+Understanding which technologies clients request informs scaffold template priority, pricing decisions, and business strategy. Currently this data is buried in project scopes.
+
+### Scope
+
+- Parse project scopes for tech stack on project creation, store in a `project_technologies` table
+- Schema: technology name (string), project count (integer), first seen date, last used date
+- Dashboard widget: table listing each technology with usage count, sorted by frequency
+- No duplicates — only increment count when a new project uses an existing technology, add new row for unseen technologies
+
+### Business Value
+
+- Identify which scaffold templates to prioritize (Phase 8.x)
+- Understand client demand patterns
+- Pricing decisions (common stack = lower effort = competitive pricing)
+
+### Checklist
+
+- [ ] `project_technologies` table + migration
+- [ ] Parser to extract tech stack from project scopes
+- [ ] Dashboard widget with technology usage table
+- [ ] Auto-populate on project creation
 
 ---
 
@@ -1775,4 +1872,4 @@ Log `cache_read_input_tokens`, `cache_creation_input_tokens` on every response. 
 
 ---
 
-*Version 10.3 — Phase 6.9 COMPLETE: 16 scaffolder source files, 92 tests, 3 agent integrations, 3 SKILL updates. 601 total tests, zero regressions. — 2026-02-25*
+*Version 10.4 — Phase 6.9 testing COMPLETE: 10/10 integration tests, 663 total tests, 15 bugs fixed, 20-22% token reduction (honest). Added proposed Phase 8.x (Multi-Framework Scaffold) and Phase 9.x (Technology Tracking Dashboard). — 2026-02-27*
