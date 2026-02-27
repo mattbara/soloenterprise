@@ -43,9 +43,11 @@ describe('scaffold-orchestrator', () => {
       expect(detectScaffoldType('Create vitest spec for auth', 'qa')).toBe('test-shell');
     });
 
-    it('should detect test-tdd for TDD tasks', () => {
-      expect(detectScaffoldType('Write tests first using TDD approach', 'qa')).toBe('test-tdd');
-      expect(detectScaffoldType('Test-driven development for user API', 'qa')).toBe('test-tdd');
+    it('should detect test-shell for TDD-like tasks (TDD detection disabled)', () => {
+      // TDD detection is disabled — all QA tasks use test-shell for now.
+      // TDD will be reintroduced in a later phase.
+      expect(detectScaffoldType('Write tests first using TDD approach', 'qa')).toBe('test-shell');
+      expect(detectScaffoldType('Test-driven development for user API', 'qa')).toBe('test-shell');
     });
 
     it('should return scope for scoper agent', () => {
@@ -318,7 +320,9 @@ export async function createUser(data: { name: string }) {
       expect(result.files[0].path).toContain('payment');
     });
 
-    it('should generate test-tdd scaffold without endpointSpecs using default CRUD', () => {
+    // TDD scaffold generation tests — skipped while TDD detection is disabled.
+    // These will be re-enabled when TDD workflow is reintroduced.
+    it.skip('should generate test-tdd scaffold without endpointSpecs using default CRUD', () => {
       const result = generateScaffold({
         agentType: 'qa',
         taskDescription: 'TDD approach for bookings API',
@@ -337,7 +341,7 @@ export async function createUser(data: { name: string }) {
       expect(result.files[0].content).toContain('TODO');
     });
 
-    it('should generate test-tdd scaffold with derived name when description is vague', () => {
+    it.skip('should generate test-tdd scaffold with derived name when description is vague', () => {
       const result = generateScaffold({
         agentType: 'qa',
         taskDescription: 'Use TDD to build this feature',
@@ -352,7 +356,7 @@ export async function createUser(data: { name: string }) {
       expect(result.files[0].content).toContain('/api/invoice');
     });
 
-    it('should generate test-tdd with explicit endpointSpecs when provided', () => {
+    it.skip('should generate test-tdd with explicit endpointSpecs when provided', () => {
       const result = generateScaffold({
         agentType: 'qa',
         taskDescription: 'TDD for users API',

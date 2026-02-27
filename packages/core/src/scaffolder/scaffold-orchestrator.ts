@@ -142,7 +142,9 @@ export function detectScaffoldType(description: string, agentType: AgentType): S
       return 'frontend-page'; // default for frontend
 
     case 'qa':
-      if (matchesAny(lower, TDD_KEYWORDS)) return 'test-tdd';
+      // TDD detection disabled — will be reintroduced in a later phase.
+      // QA always uses test-shell (regular testing from existing code/spec).
+      // if (matchesAny(lower, TDD_KEYWORDS)) return 'test-tdd';
       if (matchesAny(lower, TEST_KEYWORDS)) return 'test-shell';
       return 'test-shell'; // default for QA
 
