@@ -254,26 +254,27 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
 
     // Scaffold pipeline: generate boilerplate locally (free), send to Claude with TODO markers
     let scaffoldResult: ScaffoldResult | null = null;
-    try {
-      scaffoldResult = generateScaffold({
-        agentType: 'backend',
-        taskDescription: description,
-        taskName: name,
-        requirements: buildPrompt(name, description, context),
-        techSpec: taskRecord?.technicalSpec ?? undefined,
-        resourceName: (context.resourceName as string) ?? undefined,
-        schemaPath: (context.schemaPath as string) ?? undefined,
-      });
-      // if (scaffoldResult.success && scaffoldResult.files.length > 0) {
-      //   logger.log('BackendAgent', `Scaffold generated: ${scaffoldResult.scaffoldType}, ${scaffoldResult.files.length} files`);
-      // }
-      if (scaffoldResult.success && scaffoldResult.files.length > 0) {
-        logger.log('BackendAgent', `Scaffold generated: ${scaffoldResult.scaffoldType}, ${scaffoldResult.files.length} files`);
-      } else {
-        logger.warn('BackendAgent', `Scaffold skipped: success=${scaffoldResult.success}, files=${scaffoldResult.files.length}, type=${scaffoldResult.scaffoldType ?? 'none'}${scaffoldResult.error ? `, reason=${scaffoldResult.error}` : ''}`);
+    if (process.env.DISABLE_SCAFFOLD === 'true') {
+      logger.log('BackendAgent', 'Scaffold DISABLED (comparison mode)');
+    } else {
+      try {
+        scaffoldResult = generateScaffold({
+          agentType: 'backend',
+          taskDescription: description,
+          taskName: name,
+          requirements: buildPrompt(name, description, context),
+          techSpec: taskRecord?.technicalSpec ?? undefined,
+          resourceName: (context.resourceName as string) ?? undefined,
+          schemaPath: (context.schemaPath as string) ?? undefined,
+        });
+        if (scaffoldResult.success && scaffoldResult.files.length > 0) {
+          logger.log('BackendAgent', `Scaffold generated: ${scaffoldResult.scaffoldType}, ${scaffoldResult.files.length} files`);
+        } else {
+          logger.warn('BackendAgent', `Scaffold skipped: success=${scaffoldResult.success}, files=${scaffoldResult.files.length}, type=${scaffoldResult.scaffoldType ?? 'none'}${scaffoldResult.error ? `, reason=${scaffoldResult.error}` : ''}`);
+        }
+      } catch (err) {
+        logger.warn('BackendAgent', 'Scaffold generation failed, continuing without it: ' + err);
       }
-    } catch (err) {
-      logger.warn('BackendAgent', 'Scaffold generation failed, continuing without it: ' + err);
     }
 
     const userPrompt = (scaffoldResult?.success && scaffoldResult.files.length > 0)

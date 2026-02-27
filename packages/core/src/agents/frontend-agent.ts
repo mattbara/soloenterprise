@@ -246,21 +246,25 @@ async function processFrontendTask(job: Job<TaskJobData>): Promise<{
 
     // Scaffold pipeline: generate boilerplate locally (free), send to Claude with TODO markers
     let scaffoldResult: ScaffoldResult | null = null;
-    try {
-      scaffoldResult = generateScaffold({
-        agentType: 'frontend',
-        taskDescription: description,
-        taskName: name,
-        requirements: buildPrompt(name, description, context),
-        techSpec: taskRecord?.technicalSpec ?? undefined,
-      });
-      if (scaffoldResult.success && scaffoldResult.files.length > 0) {
-        logger.log('FrontendAgent', `Scaffold generated: ${scaffoldResult.scaffoldType}, ${scaffoldResult.files.length} files`);
-      } else {
-        logger.warn('FrontendAgent', `Scaffold skipped: success=${scaffoldResult.success}, files=${scaffoldResult.files.length}, type=${scaffoldResult.scaffoldType ?? 'none'}${scaffoldResult.error ? `, reason=${scaffoldResult.error}` : ''}`);
+    if (process.env.DISABLE_SCAFFOLD === 'true') {
+      logger.log('FrontendAgent', 'Scaffold DISABLED (comparison mode)');
+    } else {
+      try {
+        scaffoldResult = generateScaffold({
+          agentType: 'frontend',
+          taskDescription: description,
+          taskName: name,
+          requirements: buildPrompt(name, description, context),
+          techSpec: taskRecord?.technicalSpec ?? undefined,
+        });
+        if (scaffoldResult.success && scaffoldResult.files.length > 0) {
+          logger.log('FrontendAgent', `Scaffold generated: ${scaffoldResult.scaffoldType}, ${scaffoldResult.files.length} files`);
+        } else {
+          logger.warn('FrontendAgent', `Scaffold skipped: success=${scaffoldResult.success}, files=${scaffoldResult.files.length}, type=${scaffoldResult.scaffoldType ?? 'none'}${scaffoldResult.error ? `, reason=${scaffoldResult.error}` : ''}`);
+        }
+      } catch (err) {
+        logger.warn('FrontendAgent', 'Scaffold generation failed, continuing without it: ' + err);
       }
-    } catch (err) {
-      logger.warn('FrontendAgent', 'Scaffold generation failed, continuing without it: ' + err);
     }
 
     // Build prompt with codebase context prepended and tech spec appended

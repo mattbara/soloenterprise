@@ -84,7 +84,15 @@
       "Bash(gh auth:*)",
       "Bash(git mv:*)",
       "Bash(xargs -I {} bash -c 'echo \"\"=== {} ===\"\" && cat {}')",
-      "WebFetch(domain:upstash.com)"
+      "WebFetch(domain:upstash.com)",
+      "Bash(git -C:*)",
+      "Bash(python3:*)",
+      "Bash(for id in 2f5fa557-0eba-4627-813a-579b41223a42 cf23b2d5-e703-4985-aee5-909329d09d33 04dfa132-3e7c-4f42-8795-3f702d343b84)",
+      "Bash(path=\"/Users/matteobaratella/Projects/PERSONAL_PROJECTS/SoloEnterprise/soloenterprise/packages/project-files/tasks/$id\")",
+      "Bash(path=\"/Users/matteobaratella/Projects/PERSONAL_PROJECTS/SoloEnterprise/soloenterprise/packages/core/generated/tasks/$id\")",
+      "Bash(logfile=\"/Users/matteobaratella/Projects/PERSONAL_PROJECTS/SoloEnterprise/soloenterprise/packages/project-files/tasks/$id/task.log\")",
+      "Bash(/tmp/question_flow_analysis.md:*)",
+      "Bash(gh pr edit:*)"
     ]
   }
 }
