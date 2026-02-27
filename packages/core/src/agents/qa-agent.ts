@@ -23,6 +23,7 @@ import { buildCachedSystemPrompt, extractCacheMetrics, logCacheMetrics } from '.
 import { getSharedRedisConnection, closeSharedRedisConnection } from '../utils/index';
 import { TaskLogger } from '../utils/task-logger';
 import { recordAgentCost } from '../services/cost-tracking-service';
+import { generateScaffold, type ScaffoldResult } from '../scaffolder/index';
 
 const QUEUE_NAME = 'qa-tasks';
 
@@ -258,8 +259,37 @@ async function processQATask(job: Job<TaskJobData>): Promise<{
       logger.log('QAAgent', 'No tech spec for this task');
     }
 
+    // Scaffold pipeline: generate test shells locally (free), send to Claude with TODO markers
+    // Wire source file data from QA context so test-shell scaffolder can parse exports
+    const primarySource = qaContext.rawSourceFiles[0];
+    let scaffoldResult: ScaffoldResult | null = null;
+    if (process.env.DISABLE_SCAFFOLD === 'true') {
+      logger.log('QAAgent', 'Scaffold DISABLED (comparison mode)');
+    } else {
+      try {
+        scaffoldResult = generateScaffold({
+          agentType: 'qa',
+          taskDescription: description,
+          taskName: name,
+          requirements: buildPrompt(name, description, context),
+          techSpec: taskRecord?.technicalSpec ?? undefined,
+          sourceFilePath: primarySource?.path,
+          sourceContent: primarySource?.content,
+        });
+        if (scaffoldResult.success && scaffoldResult.files.length > 0) {
+          logger.log('QAAgent', `Scaffold generated: ${scaffoldResult.scaffoldType}, ${scaffoldResult.files.length} files`);
+        } else {
+          logger.warn('QAAgent', `Scaffold skipped: success=${scaffoldResult.success}, files=${scaffoldResult.files.length}, type=${scaffoldResult.scaffoldType ?? 'none'}${scaffoldResult.error ? `, reason=${scaffoldResult.error}` : ''}`);
+        }
+      } catch (err) {
+        logger.warn('QAAgent', 'Scaffold generation failed, continuing without it: ' + err);
+      }
+    }
+
     // Build user prompt (task-specific, not cached)
-    const userPrompt = buildPrompt(name, description, context) + techSpecBlock;
+    const userPrompt = (scaffoldResult?.success && scaffoldResult.files.length > 0)
+      ? scaffoldResult.prompt + techSpecBlock
+      : buildPrompt(name, description, context) + techSpecBlock;
 
     logger.log('QAAgent', 'Calling Claude API...');
 
@@ -599,11 +629,18 @@ async function processQATask(job: Job<TaskJobData>): Promise<{
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     logger.error('QAAgent', `Task ${taskId} failed: ${errorMessage}`);
 
-    // Update task status to failed (may already be set by throw sites above)
-    await updateTaskStatus(taskId, 'failed', {
-      success: false,
-      error: errorMessage,
+    // Only overwrite status if task is still in a processing state.
+    // Do NOT overwrite waiting_human (set when agent asks a question) or blocked.
+    const currentTask = await db.query.tasks.findFirst({
+      where: eq(tasks.id, taskId),
+      columns: { status: true },
     });
+    if (!currentTask || currentTask.status === 'running' || currentTask.status === 'queued') {
+      await updateTaskStatus(taskId, 'failed', {
+        success: false,
+        error: errorMessage,
+      });
+    }
 
     throw error; // Re-throw so BullMQ marks job as failed
   } finally {

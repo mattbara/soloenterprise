@@ -57,15 +57,23 @@ soloenterprise/
 │   │   │   │   ├── task-service.ts
 │   │   │   │   ├── cost-tracking-service.ts
 │   │   │   │   └── worker-registry.ts
-│   │   │   ├── scaffolder/        # Code scaffold generators (Phase 6.9)
-│   │   │   │   ├── import-resolver.ts
-│   │   │   │   ├── zod-from-drizzle.ts
-│   │   │   │   ├── type-generator.ts
-│   │   │   │   ├── backend-route.ts
-│   │   │   │   ├── frontend-page.ts
-│   │   │   │   ├── test-shell.ts
-│   │   │   │   ├── test-shell-tdd.ts
-│   │   │   │   └── local-validator.ts
+│   │   │   ├── scaffolder/        # Code scaffold generators (Phase 6.9) — 16 files
+│   │   │   │   ├── index.ts               # Barrel exports
+│   │   │   │   ├── scaffold-orchestrator.ts # Heuristic type detection + multi-table detection
+│   │   │   │   ├── drizzle-schema-parser.ts # Regex parser for schema.ts
+│   │   │   │   ├── import-resolver.ts     # ImportMap from known packages
+│   │   │   │   ├── zod-from-drizzle.ts    # Zod schemas from Drizzle
+│   │   │   │   ├── type-generator.ts      # TS interfaces from Zod
+│   │   │   │   ├── backend-route.ts       # Hono route scaffold
+│   │   │   │   ├── backend-service.ts     # CRUD service scaffold
+│   │   │   │   ├── frontend-page.ts       # Next.js page scaffold
+│   │   │   │   ├── frontend-form.ts       # React Hook Form scaffold
+│   │   │   │   ├── test-shell.ts          # Vitest from source code
+│   │   │   │   ├── test-shell-tdd.ts      # Vitest from spec only
+│   │   │   │   ├── report-template.ts     # Markdown report pre-fill
+│   │   │   │   ├── scope-template.ts      # YAML scope skeleton
+│   │   │   │   ├── prompt-builder.ts      # Scaffold → prompt formatter
+│   │   │   │   └── local-validator.ts     # TS syntax + import validation
 │   │   │   ├── test-runner/       # Sandbox test execution (Phase 6.10)
 │   │   │   │   ├── sandbox-runner.ts
 │   │   │   │   ├── vitest-sandbox-config.ts
@@ -75,6 +83,12 @@ soloenterprise/
 │   │   └── generated/             # Sandboxed agent outputs
 │   │       ├── tasks/{task-id}/   # Generated code per task
 │   │       └── reports/{project-id}/   # Client-facing reports
+│   │
+│   ├── theme/                     # @soloenterprise/theme - TW4 design tokens
+│   │   ├── package.json           # Workspace package with CSS exports
+│   │   ├── base.css               # Foundation: spacing, typography, radii, motion
+│   │   ├── dashboard.css          # SoloEnterprise brand + shadcn/ui bridge
+│   │   └── client-template.css    # Agent-generated project template theme
 │   │
 │   └── db/                        # @soloenterprise/db - Database layer
 │       └── src/
@@ -89,7 +103,8 @@ soloenterprise/
 │   ├── frontend/
 │   │   ├── SKILL-frontend-core.md
 │   │   ├── SKILL-frontend-examples.md
-│   │   └── SKILL-frontend-patterns.md
+│   │   ├── SKILL-frontend-patterns.md
+│   │   └── SKILL-frontend-theming.md
 │   ├── orchestrator/
 │   │   ├── SKILL-orchestrator-core.md
 │   │   ├── SKILL-orchestrator-assignment.md
@@ -139,6 +154,7 @@ soloenterprise/
 | Consulting Pipeline | docs/ | Business workflow | Human |
 | Client Reports | generated/reports/ | Client deliverables | Client Reporter Agent |
 | Project Scopes | generated/reports/ | Structured specs | Project Scoper Agent |
+| Antipatterns | docs/ | Data fetching/mutation decision trees | Human |
 | Scaffold Spec | docs/ | Code scaffolder architecture | Human |
 | Playwright Spec | docs/ | E2E test execution architecture | Human |
 | Package READMEs | packages/core/, packages/db/ | Package docs | Relevant Agent |

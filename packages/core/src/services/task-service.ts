@@ -7,7 +7,7 @@
 
 import { db } from '@soloenterprise/db';
 import { tasks, projects } from '@soloenterprise/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { Queue } from 'bullmq';
 import { getSharedRedisConnection, closeSharedRedisConnection } from '../utils/index';
 import { publishTaskEvent, type TaskEvent } from './task-events';
@@ -173,11 +173,45 @@ export async function updateTaskStatus(
  * Atomically claim a task for processing (queued → running).
  * Uses UPDATE...WHERE status='queued' RETURNING to prevent double-processing.
  * If the task is not in 'queued' status, another worker already claimed it.
+ *
+ * DEPENDENCY GUARD: Before claiming, verifies all tasks in dependsOn are
+ * in 'completed' status. Prevents wasting Anthropic API tokens on tasks
+ * whose dependencies haven't finished or have failed.
  */
 export async function claimTaskForProcessing(taskId: string): Promise<{
   claimed: boolean;
   currentStatus: string;
+  reason?: string;
 }> {
+  // --- Dependency guard: verify all deps are completed before claiming ---
+  const task = await db.query.tasks.findFirst({
+    where: eq(tasks.id, taskId),
+    columns: { status: true, dependsOn: true },
+  });
+
+  if (!task) {
+    return { claimed: false, currentStatus: 'unknown', reason: 'task not found' };
+  }
+
+  const deps = (task.dependsOn ?? []) as string[];
+  if (deps.length > 0) {
+    const depTasks = await db.query.tasks.findMany({
+      where: inArray(tasks.id, deps),
+      columns: { id: true, status: true },
+    });
+
+    const incompleteDeps = depTasks.filter(d => d.status !== 'completed');
+    if (incompleteDeps.length > 0) {
+      const summary = incompleteDeps.map(d => `${d.id.substring(0, 8)}:${d.status}`).join(', ');
+      console.log(`[TaskService] Dependency guard blocked task ${taskId}: incomplete deps [${summary}]`);
+      return {
+        claimed: false,
+        currentStatus: task.status ?? 'queued',
+        reason: `dependencies not completed: ${summary}`,
+      };
+    }
+  }
+
   // Atomic: only succeeds if task is still in 'queued' status
   const claimed = await db.update(tasks)
     .set({

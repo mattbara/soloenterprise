@@ -22,6 +22,7 @@ import { buildCachedSystemPrompt, extractCacheMetrics, logCacheMetrics } from '.
 import { getSharedRedisConnection, closeSharedRedisConnection } from '../utils/index';
 import { TaskLogger } from '../utils/task-logger';
 import { recordAgentCost } from '../services/cost-tracking-service';
+import { generateScaffold, type ScaffoldResult } from '../scaffolder/index';
 
 const QUEUE_NAME = 'backend-tasks';
 
@@ -88,7 +89,7 @@ function getAnthropicClient(): Anthropic {
     if (!apiKey) {
       throw new Error('ANTHROPIC_API_KEY environment variable is required');
     }
-    anthropicClient = new Anthropic({ apiKey });
+    anthropicClient = new Anthropic({ apiKey, timeout: 120_000, maxRetries: 2 });
   }
   return anthropicClient;
 }
@@ -251,7 +252,34 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
       logger.log('BackendAgent', 'No tech spec for this task');
     }
 
-    const userPrompt = buildPrompt(name, description, context) + techSpecBlock;
+    // Scaffold pipeline: generate boilerplate locally (free), send to Claude with TODO markers
+    let scaffoldResult: ScaffoldResult | null = null;
+    if (process.env.DISABLE_SCAFFOLD === 'true') {
+      logger.log('BackendAgent', 'Scaffold DISABLED (comparison mode)');
+    } else {
+      try {
+        scaffoldResult = generateScaffold({
+          agentType: 'backend',
+          taskDescription: description,
+          taskName: name,
+          requirements: buildPrompt(name, description, context),
+          techSpec: taskRecord?.technicalSpec ?? undefined,
+          resourceName: (context.resourceName as string) ?? undefined,
+          schemaPath: (context.schemaPath as string) ?? undefined,
+        });
+        if (scaffoldResult.success && scaffoldResult.files.length > 0) {
+          logger.log('BackendAgent', `Scaffold generated: ${scaffoldResult.scaffoldType}, ${scaffoldResult.files.length} files`);
+        } else {
+          logger.warn('BackendAgent', `Scaffold skipped: success=${scaffoldResult.success}, files=${scaffoldResult.files.length}, type=${scaffoldResult.scaffoldType ?? 'none'}${scaffoldResult.error ? `, reason=${scaffoldResult.error}` : ''}`);
+        }
+      } catch (err) {
+        logger.warn('BackendAgent', 'Scaffold generation failed, continuing without it: ' + err);
+      }
+    }
+
+    const userPrompt = (scaffoldResult?.success && scaffoldResult.files.length > 0)
+      ? scaffoldResult.prompt + techSpecBlock
+      : buildPrompt(name, description, context) + techSpecBlock;
 
     logger.log('BackendAgent', 'Calling Claude API...');
 
@@ -260,20 +288,33 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
     // Codebase context is NOT cached (varies per task)
     const cachedSystem = buildCachedSystemPrompt(skillContent, codebaseContext.content);
 
-    // Call Claude API with cached system prompt
+    // Call Claude API with cached system prompt + heartbeat so UI never looks idle
     const client = getAnthropicClient();
-    const response = await client.messages.create({
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
-      temperature: TEMPERATURE,
-      system: cachedSystem,
-      messages: [
-        {
-          role: 'user',
-          content: userPrompt,
-        },
-      ],
-    });
+    const apiStart = Date.now();
+    const heartbeat = setInterval(() => {
+      const elapsed = Math.round((Date.now() - apiStart) / 1000);
+      logger.log('BackendAgent', `Still waiting for Claude API response... (${elapsed}s)`);
+    }, 30_000);
+
+    let response: Anthropic.Message;
+    try {
+      response = await client.messages.create({
+        model: MODEL,
+        max_tokens: MAX_TOKENS,
+        temperature: TEMPERATURE,
+        system: cachedSystem,
+        messages: [
+          {
+            role: 'user',
+            content: userPrompt,
+          },
+        ],
+      });
+    } finally {
+      clearInterval(heartbeat);
+    }
+    const apiDuration = Math.round((Date.now() - apiStart) / 1000);
+    logger.log('BackendAgent', `Claude API responded in ${apiDuration}s`);
 
     // Extract text response
     const textContent = response.content.find((block) => block.type === 'text');
@@ -592,11 +633,18 @@ async function processBackendTask(job: Job<TaskJobData>): Promise<{
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     logger.error('BackendAgent', `Task ${taskId} failed: ${errorMessage}`);
 
-    // Update task status to failed (may already be set by throw sites above)
-    await updateTaskStatus(taskId, 'failed', {
-      success: false,
-      error: errorMessage,
+    // Only overwrite status if task is still in a processing state.
+    // Do NOT overwrite waiting_human (set when agent asks a question) or blocked.
+    const currentTask = await db.query.tasks.findFirst({
+      where: eq(tasks.id, taskId),
+      columns: { status: true },
     });
+    if (!currentTask || currentTask.status === 'running' || currentTask.status === 'queued') {
+      await updateTaskStatus(taskId, 'failed', {
+        success: false,
+        error: errorMessage,
+      });
+    }
 
     throw error; // Re-throw so BullMQ marks job as failed
   } finally {

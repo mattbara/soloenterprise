@@ -152,14 +152,64 @@ describe('selectFrontendContextProfile', () => {
   });
 
   describe('form-component', () => {
-    it('form → form-component', () => {
+    it('form (no API signals) → form-component', () => {
       expect(selectFrontendContextProfile('Build the booking form')).toBe('form-component');
     });
 
-    it('validation → form-component', () => {
+    it('validation (no API signals) → form-component', () => {
       expect(selectFrontendContextProfile('Add validation to the signup page')).toBe(
         'form-component'
       );
+    });
+
+    it('form with date picker → form-component', () => {
+      expect(selectFrontendContextProfile('Build the booking form with date picker')).toBe(
+        'form-component'
+      );
+    });
+  });
+
+  describe('form + API submission → api-consumer', () => {
+    it('form that POSTs to API → api-consumer', () => {
+      expect(
+        selectFrontendContextProfile('Build a client creation form that POSTs to /api/clients with Zod validation')
+      ).toBe('api-consumer');
+    });
+
+    it('form with React Hook Form → api-consumer', () => {
+      expect(
+        selectFrontendContextProfile('Build a registration form with React Hook Form and Zod schema')
+      ).toBe('api-consumer');
+    });
+
+    it('form with create action → api-consumer', () => {
+      expect(
+        selectFrontendContextProfile('Build a form to create a new project with validation')
+      ).toBe('api-consumer');
+    });
+
+    it('form with edit action → api-consumer', () => {
+      expect(
+        selectFrontendContextProfile('Build a form to edit user profile with validation')
+      ).toBe('api-consumer');
+    });
+
+    it('form with redirect on success → api-consumer', () => {
+      expect(
+        selectFrontendContextProfile('Submit form and redirect to dashboard on success')
+      ).toBe('api-consumer');
+    });
+
+    it('form with server action → api-consumer', () => {
+      expect(
+        selectFrontendContextProfile('Build a form that calls a server action to update settings')
+      ).toBe('api-consumer');
+    });
+
+    it('submit to API endpoint → api-consumer', () => {
+      expect(
+        selectFrontendContextProfile('Form that submits to the API endpoint for user registration')
+      ).toBe('api-consumer');
     });
   });
 
@@ -222,6 +272,7 @@ describe('selectFrontendContextProfile', () => {
       ['Build the design system with Button, Input, Card, Modal', 'simple-component'],
       ['Create reusable components for the app', 'simple-component'],
       ['Build the booking form with date picker', 'form-component'],
+      ['Build a client creation form that POSTs to /api/clients', 'api-consumer'],
       ['Fetch bookings from the API', 'api-consumer'],
       ['Fix broken layout on mobile devices', 'bug-fix'],
       ['Implement the user dashboard feature', 'full-feature'],

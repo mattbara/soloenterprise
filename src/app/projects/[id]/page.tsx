@@ -52,18 +52,31 @@ async function getProjectActivity(projectId: string) {
 
     const running = typeTasks.find((t) => t.status === "running");
     const queued = typeTasks.find((t) => t.status === "queued");
-    const failed = typeTasks.find((t) => t.status === "failed");
-    const allCompleted = typeTasks.every((t) => t.status === "completed");
-    const anyPending = typeTasks.some(
-      (t) => t.status === "pending" || t.status === "queued" || t.status === "blocked"
-    );
 
+    // Determine status from most recent task (already sorted by updatedAt desc)
+    // Priority: running/queued (active work) > most recent task outcome
     let status: AgentStatus;
-    if (running || queued) status = "running";
-    else if (allCompleted) status = "completed";
-    else if (failed && !anyPending) status = "failed";
-    else if (anyPending) status = "pending";
-    else status = "idle";
+    if (running || queued) {
+      status = "running";
+    } else {
+      const mostRecent = typeTasks[0];
+      switch (mostRecent.status) {
+        case "completed":
+          status = "completed";
+          break;
+        case "failed":
+          status = "failed";
+          break;
+        case "pending":
+        case "queued":
+        case "blocked":
+          status = "pending";
+          break;
+        default:
+          // waiting_human, or any other status
+          status = "idle";
+      }
+    }
 
     const activeTask = running || queued || null;
 

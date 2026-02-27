@@ -1,6 +1,14 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+
+interface Run {
+  id: string;
+  name: string;
+  createdAt: string;
+  status: string;
+  taskCount: number;
+}
 
 interface WorkerLogModalProps {
   workerType: string;
@@ -16,12 +24,22 @@ export function WorkerLogModal({ workerType, logEndpoint, onClose }: WorkerLogMo
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [runs, setRuns] = useState<Run[]>([]);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const logContainerRef = useRef<HTMLPreElement>(null);
 
-  const fetchLogs = async () => {
+  const fetchLogs = useCallback(async (runId?: string | null) => {
     try {
       setError(null);
-      const endpoint = logEndpoint || `/api/workers/${workerType}/logs`;
+      const baseEndpoint = logEndpoint || `/api/workers/${workerType}/logs`;
+
+      // Append runId if provided and this is a project logs endpoint
+      let endpoint = baseEndpoint;
+      if (runId && baseEndpoint.includes("/api/projects/")) {
+        const separator = baseEndpoint.includes("?") ? "&" : "?";
+        endpoint = `${baseEndpoint}${separator}runId=${runId}`;
+      }
+
       const response = await fetch(endpoint);
       if (!response.ok) {
         const data = await response.json();
@@ -33,17 +51,25 @@ export function WorkerLogModal({ workerType, logEndpoint, onClose }: WorkerLogMo
       setTaskName(data.taskName || null);
       setTaskStatus(data.taskStatus || null);
       setIsRunning(data.isRunning ?? false);
+
+      // Update runs list if returned
+      if (data.runs) {
+        setRuns(data.runs);
+      }
+      // Set selected run from API response on initial load
+      if (data.selectedRunId && !runId) {
+        setSelectedRunId(data.selectedRunId);
+      }
     } catch {
       setError("Failed to load logs");
     } finally {
       setLoading(false);
     }
-  };
+  }, [logEndpoint, workerType]);
 
   useEffect(() => {
     fetchLogs();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workerType]);
+  }, [fetchLogs]);
 
   // Auto-scroll to bottom on initial load
   useEffect(() => {
@@ -54,7 +80,13 @@ export function WorkerLogModal({ workerType, logEndpoint, onClose }: WorkerLogMo
 
   const handleRefresh = () => {
     setLoading(true);
-    fetchLogs();
+    fetchLogs(selectedRunId);
+  };
+
+  const handleRunChange = (newRunId: string) => {
+    setSelectedRunId(newRunId);
+    setLoading(true);
+    fetchLogs(newRunId);
   };
 
   const handleCopy = async () => {
@@ -62,6 +94,11 @@ export function WorkerLogModal({ workerType, logEndpoint, onClose }: WorkerLogMo
     await navigator.clipboard.writeText(logs);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const formatRunDate = (iso: string) => {
+    const d = new Date(iso);
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
   };
 
   const renderLogLine = (line: string, index: number) => {
@@ -77,6 +114,8 @@ export function WorkerLogModal({ workerType, logEndpoint, onClose }: WorkerLogMo
       </div>
     );
   };
+
+  const isProjectEndpoint = logEndpoint?.includes("/api/projects/");
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
@@ -128,6 +167,20 @@ export function WorkerLogModal({ workerType, logEndpoint, onClose }: WorkerLogMo
               )}
             </div>
             <div className="flex items-center gap-2">
+              {/* Run Picker */}
+              {isProjectEndpoint && runs.length > 0 && (
+                <select
+                  value={selectedRunId || ""}
+                  onChange={(e) => handleRunChange(e.target.value)}
+                  className="px-2 py-1.5 text-sm font-medium text-gray-300 bg-gray-800 border border-gray-600 rounded-md hover:bg-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500 max-w-[280px] truncate"
+                >
+                  {runs.map((run) => (
+                    <option key={run.id} value={run.id}>
+                      {run.name} ({formatRunDate(run.createdAt)}) [{run.taskCount}]
+                    </option>
+                  ))}
+                </select>
+              )}
               <button
                 onClick={handleRefresh}
                 disabled={loading}

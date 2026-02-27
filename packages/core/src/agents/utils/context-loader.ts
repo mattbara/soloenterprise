@@ -8,6 +8,7 @@
  */
 
 import { readFile } from 'fs/promises';
+import { readFileSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import type { ContextConfig, ContextProfileName, ProfileSelectionOptions } from './context-profiles';
@@ -47,6 +48,37 @@ async function safeReadFile(filePath: string): Promise<string | null> {
 }
 
 /**
+ * Find the schema file using multiple candidate paths.
+ * Mirrors the scaffolder's robust resolution approach.
+ */
+function findSchemaPath(): string | null {
+  const repoRoot = getRepoRoot();
+  const candidates = [
+    resolve(repoRoot, 'packages', 'db', 'src', 'schema.ts'),
+    resolve(process.cwd(), 'packages', 'db', 'src', 'schema.ts'),
+    resolve(process.cwd(), '..', 'db', 'src', 'schema.ts'),
+    resolve(process.cwd(), 'src', 'db', 'schema.ts'),
+  ];
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  console.warn(`[ContextLoader] Schema not found. Tried:\n${candidates.map(c => `  - ${c}`).join('\n')}`);
+  return null;
+}
+
+/**
+ * Count table definitions in schema content (export const X = pgTable patterns).
+ */
+function countTablesInSchema(content: string): number {
+  const matches = content.match(/export const \w+\s*=\s*pgTable/g);
+  return matches ? matches.length : 0;
+}
+
+/**
  * Truncate content if it exceeds max lines.
  */
 function truncateContent(content: string, filePath: string): string {
@@ -71,14 +103,20 @@ export async function loadCodebaseContext(): Promise<CodebaseContext> {
     serviceExamples: [],
   };
 
-  // 1. Always load the database schema
-  const schemaPath = 'packages/db/src/schema.ts';
-  const schemaContent = await safeReadFile(resolve(repoRoot, schemaPath));
-  if (schemaContent) {
-    context.schema = {
-      path: schemaPath,
-      content: truncateContent(schemaContent, schemaPath),
-    };
+  // 1. Always load the database schema (multi-candidate resolution)
+  const schemaFullPath = findSchemaPath();
+  if (schemaFullPath) {
+    const schemaContent = await safeReadFile(schemaFullPath);
+    // Derive display path relative to repo root
+    const schemaPath = schemaFullPath.startsWith(repoRoot)
+      ? schemaFullPath.slice(repoRoot.length + 1)
+      : schemaFullPath;
+    if (schemaContent) {
+      context.schema = {
+        path: schemaPath,
+        content: truncateContent(schemaContent, schemaPath),
+      };
+    }
   }
 
   // 2. Load route examples (pick 2 representative ones)
@@ -303,8 +341,8 @@ export async function buildContextWithProfile(
       sections.push('```typescript');
       sections.push(cachedContext.schema.content);
       sections.push('```\n');
-      tablesLoaded = -1; // Indicates full schema loaded
-      console.log('[ContextLoader] Loaded full schema');
+      tablesLoaded = countTablesInSchema(cachedContext.schema.content);
+      console.log(`[ContextLoader] Loaded full schema (${tablesLoaded} tables)`);
     }
   }
 

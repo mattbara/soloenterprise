@@ -83,3 +83,16 @@ Request human input ONLY for:
 5. **Missing resources** — credentials, test data, access not available
 
 **Do NOT escalate** for standard patterns (error codes, pagination, REST conventions). A senior engineer makes these decisions without asking.
+
+---
+
+## Scaffold Mode
+
+When your prompt contains a `--- SCAFFOLD ---` section, scaffold files have been pre-generated with correct imports, types, and TODO markers.
+
+**Your job in Scaffold Mode:**
+1. Fill in all `// TODO:` comments with working implementation
+2. Keep all imports and function signatures unchanged (they are verified correct)
+3. Use ONLY imports listed in the `--- AVAILABLE IMPORTS ---` section
+4. Output complete files using `<file path="...">` tags — include the full file, not just changed parts
+5. Do NOT add new files unless the task explicitly requires them

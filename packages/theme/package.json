@@ -1,0 +1,10 @@
+{
+  "name": "@soloenterprise/theme",
+  "version": "0.1.0",
+  "private": true,
+  "exports": {
+    "./base": "./base.css",
+    "./dashboard": "./dashboard.css",
+    "./client-template": "./client-template.css"
+  }
+}

@@ -21,6 +21,7 @@ import type { FrontendContextProfileName } from './utils/frontend-context-profil
 import { getSharedRedisConnection, closeSharedRedisConnection } from '../utils/index';
 import { TaskLogger } from '../utils/task-logger';
 import { recordAgentCost } from '../services/cost-tracking-service';
+import { generateScaffold, type ScaffoldResult } from '../scaffolder/index';
 
 const QUEUE_NAME = 'frontend-tasks';
 
@@ -226,7 +227,7 @@ async function processFrontendTask(job: Job<TaskJobData>): Promise<{
     }
 
     logger.log('FrontendAgent', `Context profile: ${codebaseContext.profile}`);
-    logger.log('FrontendAgent', `Components loaded: ${codebaseContext.componentExamplesLoaded}, Hooks: ${codebaseContext.hookExamplesLoaded}`);
+    logger.log('FrontendAgent', `Components loaded: ${codebaseContext.componentExamplesLoaded}, Hooks: ${codebaseContext.hookExamplesLoaded}, API patterns: ${codebaseContext.apiPatternsLoaded}`);
     logger.log('FrontendAgent', `Context tokens: ~${codebaseContext.tokens}`);
 
     // Load tech spec from architect layer (if generated)
@@ -243,8 +244,33 @@ async function processFrontendTask(job: Job<TaskJobData>): Promise<{
       logger.log('FrontendAgent', 'No tech spec for this task');
     }
 
+    // Scaffold pipeline: generate boilerplate locally (free), send to Claude with TODO markers
+    let scaffoldResult: ScaffoldResult | null = null;
+    if (process.env.DISABLE_SCAFFOLD === 'true') {
+      logger.log('FrontendAgent', 'Scaffold DISABLED (comparison mode)');
+    } else {
+      try {
+        scaffoldResult = generateScaffold({
+          agentType: 'frontend',
+          taskDescription: description,
+          taskName: name,
+          requirements: buildPrompt(name, description, context),
+          techSpec: taskRecord?.technicalSpec ?? undefined,
+        });
+        if (scaffoldResult.success && scaffoldResult.files.length > 0) {
+          logger.log('FrontendAgent', `Scaffold generated: ${scaffoldResult.scaffoldType}, ${scaffoldResult.files.length} files`);
+        } else {
+          logger.warn('FrontendAgent', `Scaffold skipped: success=${scaffoldResult.success}, files=${scaffoldResult.files.length}, type=${scaffoldResult.scaffoldType ?? 'none'}${scaffoldResult.error ? `, reason=${scaffoldResult.error}` : ''}`);
+        }
+      } catch (err) {
+        logger.warn('FrontendAgent', 'Scaffold generation failed, continuing without it: ' + err);
+      }
+    }
+
     // Build prompt with codebase context prepended and tech spec appended
-    const basePrompt = buildPrompt(name, description, context) + techSpecBlock;
+    const basePrompt = (scaffoldResult?.success && scaffoldResult.files.length > 0)
+      ? scaffoldResult.prompt + techSpecBlock
+      : buildPrompt(name, description, context) + techSpecBlock;
     const userPrompt = codebaseContext.content
       ? `${codebaseContext.content}\n\n${basePrompt}`
       : basePrompt;
@@ -582,11 +608,18 @@ async function processFrontendTask(job: Job<TaskJobData>): Promise<{
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     logger.error('FrontendAgent', `Task ${taskId} failed: ${errorMessage}`);
 
-    // Update task status to failed (may already be set by throw sites above)
-    await updateTaskStatus(taskId, 'failed', {
-      success: false,
-      error: errorMessage,
+    // Only overwrite status if task is still in a processing state.
+    // Do NOT overwrite waiting_human (set when agent asks a question) or blocked.
+    const currentTask = await db.query.tasks.findFirst({
+      where: eq(tasks.id, taskId),
+      columns: { status: true },
     });
+    if (!currentTask || currentTask.status === 'running' || currentTask.status === 'queued') {
+      await updateTaskStatus(taskId, 'failed', {
+        success: false,
+        error: errorMessage,
+      });
+    }
 
     throw error; // Re-throw so BullMQ marks job as failed
   } finally {
